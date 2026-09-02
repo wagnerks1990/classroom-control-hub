@@ -2,45 +2,85 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Project status:** early alpha. The current production prototype is being migrated into this repository and containerized for repeatable deployment.
+> **Status:** `1.0.0-alpha.63` — initial public GitHub/Docker migration. The project is actively being generalized from a production classroom deployment.
 
-## Goals
+## What it does
 
-Classroom Control Hub is designed to provide one control plane for a technology classroom or lab while keeping site-specific configuration outside the application source.
+Classroom Control Hub provides a single web controller for classroom and lab operations, including:
 
-Core capabilities include:
+- browser-based display clients and digital signage
+- scheduled classroom automations
+- priority live/morning announcements
+- background music through Music Assistant
+- AV routing and TV control integrations
+- lighting integrations through MQTT
+- class schedules, cycle days, closures, delays, half-days, and remote-day rules
+- lab/client management integrations
+- diagnostics, backup/recovery, and host-management tooling
 
-- Classroom display control and digital signage
-- Scheduled classroom automations
-- Priority morning/live announcements
-- Background music through Music Assistant
-- AV routing and TV control
-- Lighting integrations
-- Class, cycle-day, delay, half-day, remote-day, and closure scheduling
-- Lab/client management integrations
-- Diagnostics, backup, recovery, and host management
-
-## Deployment model
-
-The project is being structured around Docker Compose:
+## Architecture
 
 ```text
 Ubuntu host
-├── Classroom Control Hub Host Agent (systemd)
+├── classroom-control-hub-host-agent.service
 └── Docker
     ├── classroom-control-hub
     └── classroom-control-hub-maintenance
 ```
 
-Persistent runtime data, site configuration, secrets, media, and databases are stored outside the application image so container upgrades do not erase configuration.
+The application and maintenance service run in containers. Host-level operations are delegated to a small systemd host agent instead of giving the main application broad host privileges.
 
-## Container registry
+## Quick start for development
 
-GitHub Actions will publish versioned images to GitHub Container Registry (GHCR). Alpha images will use the `alpha` channel. The `latest` tag will be reserved for stable releases.
+```bash
+cp .env.example .env
+docker compose build
+docker compose up -d
+```
 
-## Security
+Then open:
 
-Do not commit `.env`, runtime databases, credentials, API tokens, private keys, backups, or site-specific secret configuration. See `SECURITY.md` as the migration is completed.
+```text
+http://localhost:3000
+```
+
+## Persistent data
+
+Runtime state must remain outside the container image. The default Compose configuration stores persistent application data in `./data` and keeps site-specific secrets in `.env`, mounted secret files, or encrypted application storage.
+
+Never commit production `.env` files, databases, API tokens, private keys, backups, or site-specific secrets.
+
+## Site configuration
+
+The public repository intentionally does **not** include a specific school's internal IP addresses, calendars, credentials, stream URLs, or classroom hardware mappings. Configure those after deployment through environment variables and the controller.
+
+Important optional settings include:
+
+- `MORNING_ANNOUNCEMENTS_URL`
+- `MUSIC_ASSISTANT_URL`
+- `MQTT_URL`
+- `PLUTO_URL`
+- `VEYON_WEBAPI_URL`
+- `VEYON_SCAN_SUBNET`
+- `SCHOOL_CALENDAR_ANCHOR_DATE`
+- `SCHOOL_CALENDAR_ANCHOR_CYCLE_DAY`
+
+See `.env.example` and `INSTALL.md`.
+
+## Container images
+
+GitHub Actions is configured to publish alpha container builds to GitHub Container Registry (GHCR):
+
+```text
+ghcr.io/wagnerks1990/classroom-control-hub
+ghcr.io/wagnerks1990/classroom-control-hub-maintenance
+```
+
+The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a future stable release.
+
+## Project maturity
+
+This repository is currently alpha software. Production deployments should pin a specific version and maintain backups before upgrades.
 
 ## License
 
