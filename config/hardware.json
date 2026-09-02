@@ -1,0 +1,8 @@
+{
+  "matrix": {},
+  "lighting": {
+    "devices": {},
+    "groups": {}
+  },
+  "notes": "Configure site-specific hardware in the controller or local runtime configuration."
+}
