@@ -1,0 +1,42 @@
+name: Materialize Source Archive
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'source-archive/**'
+      - 'scripts/materialize-source-archive.sh'
+      - '.github/workflows/materialize-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Materialize staged source
+        run: bash scripts/materialize-source-archive.sh
+
+      - name: Commit materialized source
+        run: |
+          if git diff --quiet -- src maintenance-agent public/controller public/display; then
+            echo 'No materialized source changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src maintenance-agent public/controller public/display
+          git commit -m 'Materialize staged application source'
+          git push origin HEAD:main
