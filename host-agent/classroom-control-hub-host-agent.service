@@ -1,0 +1,26 @@
+[Unit]
+Description=Classroom Control Hub Native Host Agent
+After=local-fs.target
+Before=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/classroom-control-hub
+EnvironmentFile=-/opt/classroom-control-hub/.env
+Environment=CLASSROOM_HUB_HOST_AGENT_SOCKET=/run/classroom-control-hub/host-agent.sock
+RuntimeDirectory=classroom-hub
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/python3 /opt/classroom-control-hub/host-agent/server.py
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/run/classroom-control-hub /opt
+
+[Install]
+WantedBy=multi-user.target

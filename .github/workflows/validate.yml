@@ -1,0 +1,23 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm install --ignore-scripts
+      - run: node --check src/server.js
+      - run: node --check maintenance-agent/server.js
+      - run: node tools/validate-controller.js
+      - run: python -m py_compile host-agent/server.py
+      - run: docker build -t classroom-control-hub:test .
+      - run: docker build -t classroom-control-hub-maintenance:test maintenance-agent
