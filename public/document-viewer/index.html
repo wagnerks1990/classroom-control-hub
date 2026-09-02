@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Classroom Document Viewer</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#090b0f;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
+#wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+canvas{max-width:100%;max-height:100%;object-fit:contain}
+#bar{position:fixed;left:12px;right:12px;bottom:10px;display:flex;justify-content:center;gap:7px;align-items:center;opacity:.18;transition:.2s;z-index:5}
+#bar:hover{opacity:1}button{background:#111c2d;color:#fff;border:1px solid #42516a;border-radius:7px;padding:6px 10px}
+#status{background:#0009;border-radius:6px;padding:5px 8px;font-size:12px}
+#error{padding:25px;color:#ffb7b7}
+</style></head>
+<body><div id="wrap"><canvas id="canvas"></canvas><div id="error" hidden></div></div>
+<div id="bar"><button id="prev">◀</button><span id="status">Loading…</span><button id="next">▶</button><button id="play">Auto</button></div>
+<script type="module">
+import * as pdfjsLib from '/vendor/pdfjs/pdf.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc='/vendor/pdfjs/pdf.worker.mjs';
+const q=new URLSearchParams(location.search),file=q.get('file'),autoMs=Math.max(0,Number(q.get('auto')||0)),loop=q.get('loop')!=='0';
+let pdf=null,page=Math.max(1,Number(q.get('page')||1)),timer=null,playing=autoMs>0,busy=false;
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d'),status=document.getElementById('status'),error=document.getElementById('error');
+async function render(){
+ if(!pdf||busy)return;busy=true;
+ try{
+  page=Math.min(Math.max(1,page),pdf.numPages);
+  const p=await pdf.getPage(page),base=p.getViewport({scale:1});
+  const scale=Math.min(innerWidth/base.width,innerHeight/base.height);
+  const vp=p.getViewport({scale});
+  canvas.width=Math.floor(vp.width*devicePixelRatio);canvas.height=Math.floor(vp.height*devicePixelRatio);
+  canvas.style.width=vp.width+'px';canvas.style.height=vp.height+'px';
+  const transform=devicePixelRatio!==1?[devicePixelRatio,0,0,devicePixelRatio,0,0]:null;
+  await p.render({canvasContext:ctx,viewport:vp,transform}).promise;
+  status.textContent=`Page ${page} / ${pdf.numPages}`;
+ }finally{busy=false}
+}
+function next(){
+ if(!pdf)return;
+ if(page<pdf.numPages)page++;else if(loop)page=1;else{playing=false;syncTimer();return}
+ render();
+}
+function syncTimer(){if(timer)clearInterval(timer);timer=null;if(playing&&autoMs>0)timer=setInterval(next,autoMs);play.textContent=playing?'Pause':'Auto'}
+prev.onclick=()=>{if(page>1)page--;else if(loop&&pdf)page=pdf.numPages;render()};
+next.onclick=next;play.onclick=()=>{playing=!playing;syncTimer()};
+addEventListener('resize',()=>render());
+addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='PageDown')next();if(e.key==='ArrowLeft'||e.key==='PageUp')prev.click();if(e.key===' ')play.click()});
+try{
+ if(!file)throw Error('No PDF specified');
+ pdf=await pdfjsLib.getDocument(file).promise;
+ await render();syncTimer();
+}catch(e){canvas.hidden=true;error.hidden=false;error.textContent='Unable to display document: '+e.message;status.textContent='Error'}
+</script></body></html>
