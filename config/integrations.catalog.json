@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "integrations": [
+    {"id":"mosquitto","name":"MQTT Broker","type":"docker","image":"eclipse-mosquitto:latest","optional":true},
+    {"id":"govee2mqtt","name":"Govee Lighting","type":"docker","image":"ghcr.io/wez/govee2mqtt:latest","requires":["mosquitto"],"optional":true},
+    {"id":"nodered","name":"Node-RED","type":"docker","image":"nodered/node-red:latest","optional":true},
+    {"id":"portainer","name":"Portainer","type":"docker","image":"portainer/portainer-ce:latest","optional":true},
+    {"id":"pluto","name":"HDMI / HDBaseT Matrix","type":"external","optional":true},
+    {"id":"veyon","name":"Veyon Computer Management","type":"external","optional":true}
+  ]
+}
