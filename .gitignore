@@ -1,0 +1,17 @@
+.env
+data/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.zip
+node_modules/
+**/node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/
+config/devices.local.json
+config/hardware.local.json
