@@ -1,0 +1,21 @@
+{
+  "name": "classroom-control-hub",
+  "version": "1.0.0-alpha.63",
+  "private": true,
+  "description": "Centralized classroom control and automation platform for displays, AV, lighting, media, announcements, schedules, and lab infrastructure.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "mqtt": "^5.14.1",
+    "multer": "^2.0.2",
+    "ws": "^8.18.3",
+    "pdfjs-dist": "^5.4.149",
+    "adm-zip": "^0.5.16",
+    "@sendspin/sendspin-js": "3.2.0",
+    "esbuild": "^0.25.9"
+  }
+}
