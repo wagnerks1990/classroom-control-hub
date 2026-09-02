@@ -6,9 +6,17 @@ cd "$ROOT"
 
 mkdir -p src maintenance-agent public/display public/controller
 
+warn_skip() {
+  echo "::warning::$1"
+}
+
 materialize_gzip() {
   local src="$1" dst="$2"
   if [[ -f "$src" ]]; then
+    if ! gzip -t "$src" 2>/dev/null; then
+      warn_skip "Skipping corrupt gzip archive: $src"
+      return 0
+    fi
     mkdir -p "$(dirname "$dst")"
     gzip -dc "$src" > "$dst"
     echo "materialized $dst"
@@ -16,22 +24,36 @@ materialize_gzip() {
 }
 
 materialize_b64_gzip() {
-  local src="$1" dst="$2"
+  local src="$1" dst="$2" tmp
   if [[ -f "$src" ]]; then
+    tmp="$(mktemp)"
+    if ! base64 -d "$src" > "$tmp" 2>/dev/null || ! gzip -t "$tmp" 2>/dev/null; then
+      rm -f "$tmp"
+      warn_skip "Skipping invalid base64/gzip archive: $src"
+      return 0
+    fi
     mkdir -p "$(dirname "$dst")"
-    base64 -d "$src" | gzip -dc > "$dst"
+    gzip -dc "$tmp" > "$dst"
+    rm -f "$tmp"
     echo "materialized $dst"
   fi
 }
 
 materialize_parts_b64_gzip() {
-  local pattern="$1" dst="$2"
+  local pattern="$1" dst="$2" tmp
   shopt -s nullglob
   local parts=( $pattern )
   shopt -u nullglob
   if (( ${#parts[@]} )); then
+    tmp="$(mktemp)"
+    if ! cat "${parts[@]}" | base64 -d > "$tmp" 2>/dev/null || ! gzip -t "$tmp" 2>/dev/null; then
+      rm -f "$tmp"
+      warn_skip "Chunk set is not complete/valid yet for $dst (${#parts[@]} part(s)); leaving existing direct file unchanged."
+      return 0
+    fi
     mkdir -p "$(dirname "$dst")"
-    cat "${parts[@]}" | base64 -d | gzip -dc > "$dst"
+    gzip -dc "$tmp" > "$dst"
+    rm -f "$tmp"
     echo "materialized $dst from ${#parts[@]} part(s)"
   fi
 }
