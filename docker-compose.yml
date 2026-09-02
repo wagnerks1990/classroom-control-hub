@@ -1,0 +1,85 @@
+services:
+  classroom-hub:
+    build: .
+    image: ghcr.io/wagnerks1990/classroom-control-hub:${CLASSROOM_CONTROL_HUB_TAG:-alpha}
+    container_name: classroom-control-hub
+    restart: unless-stopped
+    ports:
+      - "${HUB_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      ROOM_NAME: ${ROOM_NAME:-Classroom}
+      TZ: ${TZ:-America/New_York}
+      SCHEDULER_TIMEZONE: ${SCHEDULER_TIMEZONE:-America/New_York}
+      SCHEDULER_CATCHUP_MINUTES: ${SCHEDULER_CATCHUP_MINUTES:-5}
+      PLUTO_URL: ${PLUTO_URL:-}
+      PLUTO_TIMEOUT_MS: ${PLUTO_TIMEOUT_MS:-4000}
+      PLUTO_READ_RETRIES: ${PLUTO_READ_RETRIES:-4}
+      MQTT_URL: ${MQTT_URL:-mqtt://host.docker.internal:1883}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_LEGACY_BRIDGE: ${MQTT_LEGACY_BRIDGE:-true}
+      MQTT_JSON_BRIDGE: ${MQTT_JSON_BRIDGE:-true}
+      CONTROL_TOKEN: ${CONTROL_TOKEN:-}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_WINDOW_MS: ${LOGIN_WINDOW_MS:-900000}
+      LOGIN_LOCK_MS: ${LOGIN_LOCK_MS:-900000}
+      DISPLAY_TOKEN: ${DISPLAY_TOKEN:-}
+      MAINTENANCE_URL: http://maintenance-agent:3010
+      MUSIC_ASSISTANT_URL: ${MUSIC_ASSISTANT_URL:-http://host.docker.internal:8095}
+      DATABASE_FILE: ${DATABASE_FILE:-/app/data/classroom-control-hub.db}
+      MASTER_KEY_FILE: ${MASTER_KEY_FILE:-/run/secrets/classroom-control-hub-master-key}
+      LEGACY_JSON_MIRROR: ${LEGACY_JSON_MIRROR:-false}
+      MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-classroom-hub-internal-agent}
+      VEYON_WEBAPI_URL: ${VEYON_WEBAPI_URL:-http://host.docker.internal:11080}
+      VEYON_KEY_NAME: ${VEYON_KEY_NAME:-ClassroomControlHub}
+      VEYON_PRIVATE_KEY_FILE: ${VEYON_PRIVATE_KEY_FILE:-/run/secrets/veyon-private-key}
+      VEYON_SCAN_SUBNET: ${VEYON_SCAN_SUBNET:-}
+      VEYON_SCAN_START: ${VEYON_SCAN_START:-1}
+      VEYON_SCAN_END: ${VEYON_SCAN_END:-254}
+      VEYON_POOL_MAX: ${VEYON_POOL_MAX:-24}
+      VEYON_AUTH_RETRIES: ${VEYON_AUTH_RETRIES:-2}
+      VEYON_THUMBNAIL_CONCURRENCY: ${VEYON_THUMBNAIL_CONCURRENCY:-8}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-500}
+      DEVICE_OFFLINE_SECONDS: ${DEVICE_OFFLINE_SECONDS:-45}
+      SESSION_EFFECT_INTERVAL_MS: ${SESSION_EFFECT_INTERVAL_MS:-4500}
+      SESSION_MAX_QUEUE: ${SESSION_MAX_QUEUE:-80}
+      SESSION_EFFECT_DURATION_MS: ${SESSION_EFFECT_DURATION_MS:-7000}
+      SESSION_CLEAR_GAP_MS: ${SESSION_CLEAR_GAP_MS:-1200}
+      SESSION_SPOTLIGHT_ROTATE_MS: ${SESSION_SPOTLIGHT_ROTATE_MS:-9000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+      - ${VEYON_HOST_PRIVATE_KEY_FILE:-/etc/classroom-control-hub/veyon/private.pem}:/run/secrets/veyon-private-key:ro
+      - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
+    depends_on:
+      - maintenance-agent
+
+  maintenance-agent:
+    build: ./maintenance-agent
+    # Host system management is delegated to the native Classroom Control Hub Host Agent
+    # over a local Unix socket; the container does not enter host namespaces.
+    image: ghcr.io/wagnerks1990/classroom-control-hub-maintenance:${CLASSROOM_CONTROL_HUB_TAG:-alpha}
+    container_name: classroom-control-hub-maintenance
+    restart: unless-stopped
+    environment:
+      PORT: 3010
+      TZ: ${TZ:-America/New_York}
+      MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-classroom-hub-internal-agent}
+      MAINTENANCE_ALLOW_SHELL: ${MAINTENANCE_ALLOW_SHELL:-false}
+      MANAGED_HUB_ROOT: /managed/classroom-hub
+      MANAGED_Classroom_ROOT: /managed/services
+      HOST_HUB_PATH: ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-control-hub}
+      HOST_AGENT_SOCKET: /run/classroom-control-hub/host-agent.sock
+      MASTER_KEY_FILE: /run/secrets/classroom-control-hub-master-key
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /run/classroom-control-hub:/run/classroom-control-hub
+      - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-control-hub}:/managed/classroom-hub
+      - ${HOST_Classroom_DIR:-/opt/services}:/managed/services
+      - /opt/classroom-control-hub-backups:/host-backups:ro
+      - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
+    # Deliberately not published to the host. Access is proxied by Classroom Control Hub.
