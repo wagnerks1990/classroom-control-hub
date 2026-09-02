@@ -1,0 +1,14 @@
+.git
+.github
+.env
+data
+backups
+node_modules
+**/node_modules
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.zip
+__pycache__
+*.pyc
