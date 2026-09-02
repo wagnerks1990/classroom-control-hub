@@ -1,0 +1,615 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Classroom Control Hub — Lab Computers</title>
+<style>
+:root{--bg:#0b0f12;--panel:#11171c;--card:#151d23;--border:#2a3640;--text:#eef4f7;--muted:#93a4ae;--green:#39e58c;--red:#ff6b6b;--amber:#ffc857;--blue:#66b3ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,Segoe UI,Arial,sans-serif}main{padding:16px;max-width:1600px;margin:auto}
+.top,.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.top{justify-content:space-between;margin-bottom:14px}h1,h2{margin:0}.muted{color:var(--muted)}
+button,input{background:#0d1317;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px}button{cursor:pointer}.primary{background:#153f2c;border-color:#2aa866}.danger{background:#461b1b;border-color:#a33}.warn{background:#4c3814;border-color:#9a7622}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(275px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:12px}.online{border-color:#23764d}.offline{opacity:.72}.selected{outline:2px solid var(--blue)}
+.pill{display:inline-flex;padding:3px 7px;border:1px solid var(--border);border-radius:999px;font-size:11px}.good{color:var(--green)}.bad{color:var(--red)}.url{word-break:break-all;color:#b8d9ff}.kpi{font-size:27px;font-weight:700}
+.computerHead{display:flex;justify-content:space-between;gap:8px}.row{display:flex;gap:8px;align-items:center;margin:6px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted)}
+dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:12px}dialog::backdrop{background:#000a}#historyWrap{max-height:65vh;overflow:auto} select{background:#0d1317;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1>Lab Computers</h1><div class="muted">Classroom Control Hub v0.18.6 • outbound Windows agents • no inbound management ports</div></div>
+    <div class="toolbar"><button onclick="loadAll()">Refresh</button><span id="configState" class="pill">Loading…</span></div>
+  </div>
+
+  <div class="panel"><div class="toolbar">
+    <div><div class="muted">Total</div><div id="total" class="kpi">0</div></div>
+    <div><div class="muted">Online</div><div id="online" class="kpi good">0</div></div>
+    <div><div class="muted">Offline</div><div id="offline" class="kpi bad">0</div></div>
+    <div style="flex:1"></div>
+    <button onclick="selectAll(true)">Select All</button><button onclick="selectOnline()">Select Online</button><button onclick="selectAll(false)">Clear</button>
+  </div></div>
+
+  <div class="panel" id="aiAlertPanel">
+    <div class="top">
+      <div><h2>AI Usage Monitor</h2><div class="muted">Browser history checks automatically every 60 seconds; screenshots are manual.</div></div>
+      <div class="toolbar"><span id="aiMonitorState" class="pill">Loading…</span><button onclick="openAiAlerts()">View Alerts</button></div>
+    </div>
+    <div class="toolbar">
+      <div><div class="muted">New Alerts</div><div id="aiNewCount" class="kpi">0</div></div>
+      <div><div class="muted">Total Alerts</div><div id="aiTotalCount" class="kpi">0</div></div>
+      <div style="flex:1"></div>
+      <div><div class="muted">History Poll</div><div class="pill good">60 sec</div></div>
+      <div id="aiLatestSummary" class="muted">No AI alerts.</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Selected Computer Actions</h2>
+    <div class="toolbar" style="margin-top:10px">
+      <button class="primary" onclick="sendMessage()">Send Message</button>
+      <button onclick="sendAction('lock')">Windows Lock</button>
+      <button class="primary" onclick="openInstructorLock()">Instructor Lock</button>
+      <button onclick="sendAction('instructor-unlock')">Instructor Unlock</button>
+      <button class="primary" onclick="openAppLock()">App / Site Lock</button>
+      <button onclick="sendAction('app-unlock')">Exit App Lock</button>
+      <button onclick="sendAction('logoff')">Log Off</button>
+      <button class="warn" onclick="sendAction('restart')">Restart</button>
+      <button class="danger" onclick="sendAction('shutdown')">Shutdown</button>
+      <button onclick="sendAction('cancel-shutdown')">Cancel Shutdown</button>
+      <button onclick="sendAction('refresh-history')">Refresh Browser History</button>
+      <button class="primary" onclick="saveSelectedScreenshots()">Take Screenshot</button>
+      <button onclick="openPresetDialog()">PowerShell Presets</button>
+      <button onclick="sendAction('update-agent')">Update Agent</button>
+    </div>
+    <div id="actionResult" class="muted" style="margin-top:8px"></div>
+  </div>
+
+  <div id="computerGrid" class="grid"><div class="muted">Loading…</div></div>
+
+  <dialog id="aiAlertDialog">
+    <div class="top">
+      <div><h2>AI Usage Alerts</h2><div id="aiAlertMeta" class="muted"></div></div>
+      <button onclick="aiAlertDialog.close()">Close</button>
+    </div>
+    <div class="panel">
+      <div class="toolbar">
+        <label>Status <select id="aiStatus" onchange="loadAiAlerts()"><option value="">All</option><option value="new" selected>New</option><option value="acknowledged">Acknowledged</option><option value="dismissed">Dismissed</option></select></label>
+        <label>Last <select id="aiHours" onchange="loadAiAlerts()"><option value="1">1 hour</option><option value="4" selected>4 hours</option><option value="8">8 hours</option><option value="24">24 hours</option><option value="168">7 days</option><option value="720">30 days</option></select></label>
+        <label>User <input id="aiUserSearch" placeholder="student/profile" oninput="debouncedAiLoad()"></label>
+        <label>Search <input id="aiTextSearch" placeholder="site, title, URL…" oninput="debouncedAiLoad()"></label>
+      </div>
+    </div>
+    <div id="aiAlertList" class="grid"></div>
+  </dialog>
+
+  <dialog id="screenDialog">
+    <div class="top">
+      <div>
+        <h2 id="screenTitle">Screen View</h2>
+        <div id="screenMeta" class="muted">On-demand capture from the active Windows desktop.</div>
+      </div>
+      <div class="toolbar">
+        <span id="liveScreenState" class="pill good">LIVE • 5 sec</span>
+        <button class="primary" onclick="saveCurrentScreenshot()">Take Screenshot</button>
+        <button onclick="downloadCurrentScreen()">Download Current View</button>
+        <button onclick="openCurrentScreen()">Open Full Size</button>
+        <button onclick="closeScreenView()">Close</button>
+      </div>
+    </div>
+    <div style="text-align:center;background:#050708;border:1px solid var(--border);border-radius:8px;padding:8px">
+      <img id="screenImage" alt="Computer screen" style="max-width:100%;max-height:65vh;object-fit:contain">
+    </div>
+    <div class="panel" style="margin-top:10px">
+      <div class="top"><h2 style="font-size:16px">Screenshot History</h2><div class="muted" id="screenHistoryMeta"></div></div>
+      <div id="screenHistory" class="grid"></div>
+    </div>
+  </dialog>
+
+  <dialog id="presetDialog">
+    <div class="top"><div><h2>PowerShell / Admin Presets</h2><div class="muted">Allowlisted administrative actions only.</div></div><button onclick="presetDialog.close()">Close</button></div>
+    <div id="presetList" class="grid"></div>
+  </dialog>
+
+  <dialog id="instructorLockDialog">
+    <div class="top">
+      <div><h2>Instructor Lock</h2><div class="muted">Blocks normal keyboard/mouse input and displays a full-screen instructor message.</div></div>
+      <button onclick="instructorLockDialog.close()">Close</button>
+    </div>
+    <div class="panel">
+      <label>Message
+        <input id="lockMessage" value="LOCKED BY INSTRUCTOR" style="width:100%;margin-top:6px">
+      </label>
+      <label style="display:block;margin-top:10px">Image URL (optional)
+        <input id="lockImageUrl" placeholder="https://classroom-hub.example/..." style="width:100%;margin-top:6px">
+      </label>
+      <label style="display:block;margin-top:10px">Unlock Passcode
+        <input id="lockPasscode" type="password" inputmode="numeric" maxlength="12" placeholder="e.g. 2468" style="width:100%;margin-top:6px">
+      </label>
+      <label style="display:block;margin-top:10px">Auto-release after
+        <select id="lockMinutes">
+          <option value="10">10 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="30" selected>30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">60 minutes</option>
+          <option value="120">2 hours</option>
+          <option value="240">4 hours</option>
+        </select>
+      </label>
+      <div class="toolbar" style="margin-top:12px">
+        <button class="primary" onclick="applyInstructorLock()">Lock Selected Computers</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="appLockDialog">
+    <div class="top">
+      <div><h2>Application / Site Lock</h2><div class="muted">Restricts the interactive session to one application, or opens a browser in kiosk mode at one approved site.</div></div>
+      <button onclick="appLockDialog.close()">Close</button>
+    </div>
+    <div class="panel">
+      <label>Mode
+        <select id="appLockType" onchange="renderAppLockMode()">
+          <option value="browser" selected>Browser Site</option>
+          <option value="application">Application</option>
+        </select>
+      </label>
+      <div id="browserLockFields" style="margin-top:10px">
+        <label>Browser Mode
+          <select id="appLockBrowser">
+            <option value="edge-public" selected>Microsoft Edge — Public Browsing (multi-tab)</option>
+            <option value="edge">Microsoft Edge — Normal Browser</option>
+            <option value="chrome">Google Chrome — Normal Browser</option>
+          </select>
+        </label>
+        <label style="display:block;margin-top:10px">Start Page
+          <input id="appLockUrl" placeholder="https://lms.example.edu/" style="width:100%;margin-top:6px">
+        </label>
+        <label style="display:block;margin-top:10px">Allowed Websites
+          <textarea id="appLockAllowedSites" rows="9" placeholder="Add as many sites as needed — one per line&#10;lms.example.edu&#10;sis.example.edu&#10;docs.google.com&#10;drive.google.com&#10;*.google.com" style="width:100%;margin-top:6px"></textarea>
+        </label>
+        <div class="muted" style="margin-top:6px">
+          Multiple sites are supported. Edge Public Browsing is the recommended classroom mode: it keeps multi-tab browsing while URL policies restrict navigation to the allowlist.
+        </div>
+      </div>
+      <div id="applicationLockFields" style="display:none;margin-top:10px">
+        <label>Application executable/path
+          <input id="appLockExe" placeholder="notepad.exe or C:\\Program Files\\App\\App.exe" style="width:100%;margin-top:6px">
+        </label>
+        <div class="muted" style="margin-top:6px">
+          Application Lock keeps the selected application topmost, hides the Windows taskbar, suppresses common task-switch shortcuts, and repeatedly restores focus if another window is activated.
+        </div>
+        <label style="display:block;margin-top:10px">Arguments (optional)
+          <input id="appLockArgs" style="width:100%;margin-top:6px">
+        </label>
+      </div>
+      <label style="display:block;margin-top:10px">Unlock Passcode
+        <input id="appLockPasscode" type="password" inputmode="numeric" maxlength="12" placeholder="e.g. 2468" style="width:100%;margin-top:6px">
+      </label>
+      <label style="display:block;margin-top:10px">Auto-release after
+        <select id="appLockMinutes">
+          <option value="10">10 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="30" selected>30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">60 minutes</option>
+          <option value="120">2 hours</option>
+          <option value="240">4 hours</option>
+        </select>
+      </label>
+      <div class="toolbar" style="margin-top:12px">
+        <button class="primary" onclick="applyAppLock()">Apply to Selected Computers</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="commandResultDialog">
+    <div class="top">
+      <div><h2 id="commandResultTitle">Command Result</h2><div id="commandResultMeta" class="muted"></div></div>
+      <button onclick="commandResultDialog.close()">Close</button>
+    </div>
+    <div class="panel">
+      <pre id="commandResultBody" style="white-space:pre-wrap;word-break:break-word;margin:0;max-height:65vh;overflow:auto"></pre>
+    </div>
+  </dialog>
+
+  <dialog id="historyDialog">
+    <div class="top">
+      <div><h2 id="historyTitle">Browser History</h2><div id="historyMeta" class="muted"></div></div>
+      <div class="toolbar">
+        <button onclick="exportHistory('csv')">Export CSV</button>
+        <button onclick="exportHistory('json')">Export JSON</button>
+        <button onclick="historyDialog.close()">Close</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin:8px 0">
+      <div class="toolbar">
+        <label>Live Window
+          <select id="historyHours" onchange="applyHistoryFilters()">
+            <option value="">All retained</option>
+            <option value="1">Last 1 hour</option>
+            <option value="2">Last 2 hours</option>
+            <option value="4" selected>Last 4 hours</option>
+            <option value="8">Last 8 hours</option>
+            <option value="12">Last 12 hours</option>
+            <option value="24">Last 24 hours</option>
+            <option value="48">Last 48 hours</option>
+            <option value="168">Last 7 days</option>
+            <option value="720">Last 30 days</option>
+          </select>
+        </label>
+        <label>From <input id="historyFrom" type="datetime-local"></label>
+        <label>To <input id="historyTo" type="datetime-local"></label>
+        <label>User
+          <select id="historyUser" onchange="applyHistoryFilters()">
+            <option value="">All users</option>
+          </select>
+        </label>
+        <label>Search <input id="historySearch" placeholder="URL, title, domain, browser, profile…"></label>
+        <button class="primary" onclick="applyHistoryFilters()">Search</button>
+        <button onclick="clearHistoryFilters()">Clear</button>
+      </div>
+    </div>
+
+    <div id="historyWrap">
+      <table>
+        <thead><tr>
+          <th>Visit Time</th><th>URL</th><th>Title</th><th>Visit Count</th><th>Visited From</th>
+          <th>Visit Type</th><th>Visit Duration</th><th>Web Browser</th><th>User Profile</th>
+          <th>Browser Profile</th><th>URL Length</th><th>Typed Count</th><th>History File</th><th>Record ID</th>
+        </tr></thead>
+        <tbody id="historyRows"></tbody>
+      </table>
+    </div>
+  </dialog>
+</main>
+<script>
+const selected=new Set();let inventory={computers:[],summary:{total:0,online:0,offline:0}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(url,opt){const r=await fetch(url,opt);let j={};try{j=await r.json()}catch{}if(!r.ok)throw Error(j.error||`${r.status} ${r.statusText}`);return j}
+function fmtUptime(s){s=Number(s)||0;const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return d?`${d}d ${h}h`:`${h}h ${m}m`}
+function fmtTime(v){const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString()}
+async function loadAll(){try{inventory=await api('/api/v1/lab/computers');render();refreshAiSummary()}catch(e){computerGrid.innerHTML=`<div class="bad">${esc(e.message)}</div>`}}
+function render(){
+ total.textContent=inventory.summary.total;online.textContent=inventory.summary.online;offline.textContent=inventory.summary.offline;
+ configState.textContent=inventory.configured?'Agent enrollment enabled':'LAB_AGENT_TOKEN NOT SET';configState.className='pill '+(inventory.configured?'good':'bad');
+ const valid=new Set(inventory.computers.map(x=>x.id));for(const id of [...selected])if(!valid.has(id))selected.delete(id);
+ computerGrid.innerHTML=inventory.computers.map(c=>{const site=c.latestWebsite;return `<div class="card ${c.online?'online':'offline'} ${selected.has(c.id)?'selected':''}">
+ <div class="computerHead"><label><input type="checkbox" ${selected.has(c.id)?'checked':''} onchange="toggle('${esc(c.id)}',this.checked)"> <b>${esc(c.name||c.hostname||c.id)}</b></label><span class="pill ${c.online?'good':'bad'}">${c.online?'ONLINE':'OFFLINE'}</span></div>
+ <div class="muted">${esc(c.hostname||c.id)} • ${esc(c.ip||'No IP')}</div>
+ <div class="row"><b>User:</b><span>${esc(c.user||'No interactive user')}</span></div>
+ <div class="row"><b>OS:</b><span class="muted">${esc(c.os||'—')}</span></div>
+ <div class="row"><b>Uptime:</b><span>${fmtUptime(c.uptimeSeconds)}</span></div>
+ <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:8px"><div class="muted">Latest browser activity</div>
+ ${site?`<b>${esc(site.title||site.domain||'Website')}</b><br><span class="url">${esc(site.domain||site.url)}</span><br><span class="muted">${fmtTime(site.visitTime)} • ${esc(site.browser||'Browser')}</span>`:'<span class="muted">No recent history reported.</span>'}</div>
+ <div class="toolbar" style="margin-top:10px"><button onclick="showHistory('${esc(c.id)}')">History</button><button onclick="showScreen('${esc(c.id)}')">Screen</button><button onclick="quickMessage('${esc(c.id)}')">Message</button><button onclick="showLastCommand('${esc(c.id)}')">Last Command</button><button onclick="editComputer('${esc(c.id)}')">Edit</button></div>
+ ${c.lastCommand?`<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><div class="muted">Last command</div><b>${esc(c.lastCommand.action||'')}</b> • <span class="${c.lastCommand.status==='failed'?'bad':(c.lastCommand.status==='completed'?'good':'')}">${esc(c.lastCommand.status||'')}</span>${c.lastCommand.message?`<br><span class="muted">${esc(c.lastCommand.message)}</span>`:''}</div>`:''}
+ </div>`}).join('')||'<div class="muted">No lab agents enrolled yet.</div>';
+}
+function toggle(id,on){if(on)selected.add(id);else selected.delete(id);render()}function selectAll(on){selected.clear();if(on)inventory.computers.forEach(x=>selected.add(x.id));render()}
+function selectOnline(){selected.clear();inventory.computers.filter(x=>x.online).forEach(x=>selected.add(x.id));render()}function targets(){const a=[...selected];if(!a.length)throw Error('Select at least one computer.');return a}
+async function command(action,payload={}){const j=await api('/api/v1/lab/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:targets(),action,payload})});actionResult.textContent=`${action}: ${j.deliveries.filter(x=>x.delivered).length}/${j.deliveries.length} delivered`;setTimeout(loadAll,500);return j}
+async function sendAction(action){if(['restart','shutdown','logoff'].includes(action)&&!confirm(`${action.toUpperCase()} ${selected.size} selected computer(s)?`))return;try{await command(action)}catch(e){alert(e.message)}}
+async function sendMessage(){const text=prompt('Message to selected computers:');if(!text)return;try{await command('message',{title:'Message from Instructor',text})}catch(e){alert(e.message)}}
+async function quickMessage(id){selected.clear();selected.add(id);render();return sendMessage()}
+let currentHistoryComputer=null;
+function historyQuery(){
+  const q=new URLSearchParams();
+  const h=historyHours.value;if(h)q.set('hours',h);
+  if(historyFrom.value)q.set('from',new Date(historyFrom.value).toISOString());
+  if(historyTo.value)q.set('to',new Date(historyTo.value).toISOString());
+  if(historyUser.value)q.set('profile',historyUser.value);
+  if(historySearch.value.trim())q.set('search',historySearch.value.trim());
+  q.set('limit','1000');
+  return q;
+}
+async function showHistory(id){
+  currentHistoryComputer=id;
+  const comp=inventory.computers.find(x=>x.id===id);
+  historyTitle.textContent=`Browser History — ${comp?.name||comp?.hostname||id}`;
+  historyMeta.textContent=`Retention: ${inventory.retentionHours} hour(s) (${Math.round(inventory.retentionHours/24)} days)`;
+  historyDialog.showModal();
+
+  try{
+    const j=await api(`/api/v1/lab/computers/${encodeURIComponent(id)}/history?hours=${inventory.retentionHours}&limit=5000`);
+    const users=[...new Set((j.history||[]).map(x=>String(x.profile||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    historyUser.innerHTML='<option value="">All users</option>'+users.map(u=>`<option value="${esc(u)}">${esc(u)}</option>`).join('');
+  }catch{
+    historyUser.innerHTML='<option value="">All users</option>';
+  }
+
+  await applyHistoryFilters();
+}
+async function applyHistoryFilters(){
+  if(!currentHistoryComputer)return;
+  historyRows.innerHTML='<tr><td colspan="14" class="muted">Loading…</td></tr>';
+  try{
+    const j=await api(`/api/v1/lab/computers/${encodeURIComponent(currentHistoryComputer)}/history?${historyQuery()}`);
+    historyMeta.textContent=`Showing ${j.history.length} of ${j.total} matching record(s) • retention ${Math.round(inventory.retentionHours/24)} days`;
+    historyRows.innerHTML=(j.history||[]).map(x=>`<tr>
+      <td>${fmtTime(x.visitTime)}</td>
+      <td class="url">${esc(x.url||'')}</td>
+      <td>${esc(x.title||'')}</td>
+      <td>${esc(x.visitCount??'')}</td>
+      <td class="url">${esc(x.visitedFrom||'')}</td>
+      <td>${esc(x.visitType||'')}</td>
+      <td>${esc(x.visitDuration||'')}</td>
+      <td>${esc(x.browser||'')}</td>
+      <td>${esc(x.profile||'')}</td>
+      <td>${esc(x.browserProfile||'')}</td>
+      <td>${esc(x.urlLength??'')}</td>
+      <td>${esc(x.typedCount??'')}</td>
+      <td class="url">${esc(x.historyFile||'')}</td>
+      <td>${esc(x.recordId||'')}</td>
+    </tr>`).join('')||'<tr><td colspan="14" class="muted">No history matches these filters.</td></tr>';
+  }catch(e){
+    historyRows.innerHTML=`<tr><td colspan="14" class="bad">${esc(e.message)}</td></tr>`;
+  }
+}
+function clearHistoryFilters(){
+  historyHours.value='';
+  historyFrom.value='';
+  historyTo.value='';
+  historyUser.value='';
+  historySearch.value='';
+  applyHistoryFilters();
+}
+function exportHistory(format){
+  if(!currentHistoryComputer)return;
+  const q=historyQuery();q.set('format',format);q.delete('limit');
+  window.location=`/api/v1/lab/computers/${encodeURIComponent(currentHistoryComputer)}/history/export?${q}`;
+}
+async function editComputer(id){const c=inventory.computers.find(x=>x.id===id);if(!c)return;const name=prompt('Friendly name:',c.name||c.hostname||id);if(name===null)return;const groupsText=prompt('Groups (comma separated):',(c.groups||[]).join(', '));if(groupsText===null)return;const groups=groupsText.split(',').map(x=>x.trim()).filter(Boolean);try{await api(`/api/v1/lab/computers/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,groups})});loadAll()}catch(e){alert(e.message)}}
+
+
+let aiLoadTimer=null;
+function debouncedAiLoad(){clearTimeout(aiLoadTimer);aiLoadTimer=setTimeout(loadAiAlerts,300)}
+async function refreshAiSummary(){
+  try{
+    const j=await api('/api/v1/lab/ai-monitor?hours=24&limit=5');
+    aiMonitorState.textContent=j.enabled?'ENABLED':'DISABLED';
+    aiMonitorState.className='pill '+(j.enabled?'good':'bad');
+    aiNewCount.textContent=j.summary.new;
+    aiTotalCount.textContent=j.summary.total;
+    const a=j.alerts?.[0];
+    aiLatestSummary.textContent=a?`${a.profile||a.windowsUser||'Unknown user'} • ${a.domain} • ${fmtTime(a.createdAt)}`:'No AI alerts.';
+  }catch(e){aiMonitorState.textContent='ERROR';aiMonitorState.className='pill bad'}
+}
+async function openAiAlerts(){aiAlertDialog.showModal();await loadAiAlerts()}
+async function loadAiAlerts(){
+  try{
+    const q=new URLSearchParams();
+    if(aiStatus.value)q.set('status',aiStatus.value);
+    if(aiHours.value)q.set('hours',aiHours.value);
+    if(aiUserSearch.value.trim())q.set('profile',aiUserSearch.value.trim());
+    if(aiTextSearch.value.trim())q.set('search',aiTextSearch.value.trim());
+    q.set('limit','300');
+    const j=await api(`/api/v1/lab/ai-monitor?${q}`);
+    aiAlertMeta.textContent=`${j.alerts.length} alert(s) shown • cooldown ${j.cooldownMinutes} min`;
+    aiAlertList.innerHTML=(j.alerts||[]).map(a=>`<div class="card">
+      <div class="computerHead">
+        <div><b>${esc(a.profile||a.windowsUser||'Unknown user')}</b><div class="muted">${esc(a.computerName||a.hostname||a.agentId)}</div></div>
+        <span class="pill ${a.status==='new'?'bad':(a.status==='acknowledged'?'warn':'')}">${esc(a.status)}</span>
+      </div>
+      ${a.screenshotUrl?`<img src="${a.screenshotUrl}&t=${Date.now()}" alt="Alert screenshot" style="width:100%;max-height:220px;object-fit:cover;border-radius:7px;border:1px solid var(--border);margin-top:8px">`:'<div class="muted" style="margin-top:8px">No screenshot captured for this alert.</div>'}
+      <div style="margin-top:8px"><b>${esc(a.title||a.domain||'AI-related site')}</b></div>
+      <div class="url">${esc(a.url||'')}</div>
+      <div class="muted">${esc(a.domain||'')} • ${esc(a.browser||'')} • ${fmtTime(a.visitTime)}</div>
+      <div class="muted">Matched ${esc(a.ruleKind)} rule: ${esc(a.rule)}</div>
+      <div class="toolbar" style="margin-top:8px">
+        ${a.screenshotUrl?`<button onclick="window.open('${a.screenshotUrl}','_blank')">Open Screenshot</button>`:`<button class="primary" onclick="captureAiAlert('${esc(a.id)}')">Capture Screen Now</button>`}
+        <button onclick="setAiAlertStatus('${esc(a.id)}','acknowledged')">Acknowledge</button>
+        <button onclick="setAiAlertStatus('${esc(a.id)}','dismissed')">Dismiss</button>
+      </div>
+    </div>`).join('')||'<div class="muted">No alerts match these filters.</div>';
+  }catch(e){aiAlertList.innerHTML=`<div class="bad">${esc(e.message)}</div>`}
+}
+
+async function captureAiAlert(id){
+  try{
+    await api(`/api/v1/lab/ai-monitor/${encodeURIComponent(id)}/capture`,{method:'POST'});
+    aiAlertMeta.textContent='Screenshot requested. Refreshing…';
+    setTimeout(loadAiAlerts,1500);
+  }catch(e){alert(e.message)}
+}
+
+async function setAiAlertStatus(id,status){
+  await api(`/api/v1/lab/ai-monitor/${encodeURIComponent(id)}`,{
+    method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})
+  });
+  await loadAiAlerts();await refreshAiSummary();
+}
+
+
+function openInstructorLock(){instructorLockDialog.showModal()}
+async function applyInstructorLock(){
+  try{
+    await command('instructor-lock',{
+      message:lockMessage.value||'LOCKED BY INSTRUCTOR',
+      imageUrl:lockImageUrl.value.trim(),
+      passcode:lockPasscode.value.trim(),
+      minutes:Number(lockMinutes.value||30)
+    });
+    instructorLockDialog.close();
+  }catch(e){alert(e.message)}
+}
+
+function openAppLock(){
+  renderAppLockMode();
+  appLockDialog.showModal();
+}
+function renderAppLockMode(){
+  const browser=appLockType.value==='browser';
+  browserLockFields.style.display=browser?'block':'none';
+  applicationLockFields.style.display=browser?'none':'block';
+}
+async function applyAppLock(){
+  try{
+    const type=appLockType.value;
+    const payload={type,minutes:Number(appLockMinutes.value||30),passcode:appLockPasscode.value.trim()};
+    if(type==='browser'){
+      const url=appLockUrl.value.trim();
+      if(!/^https?:\/\//i.test(url))throw new Error('Enter a full http:// or https:// start page URL.');
+      const allowedSites=appLockAllowedSites.value
+        .split(/\r?\n|,/)
+        .map(x=>x.trim())
+        .filter(Boolean);
+      if(!allowedSites.length){
+        try{allowedSites.push(new URL(url).hostname)}catch{}
+      }
+      payload.browser=appLockBrowser.value;
+      payload.url=url;
+      payload.allowedSites=allowedSites;
+    }else{
+      const exe=appLockExe.value.trim();
+      if(!exe)throw new Error('Enter an application executable or path.');
+      payload.exe=exe;
+      payload.args=appLockArgs.value||'';
+    }
+    await command('app-lock',payload);
+    appLockDialog.close();
+  }catch(e){alert(e.message)}
+}
+
+let currentScreenComputer=null;
+let liveScreenTimer=null;
+let liveScreenBusy=false;
+
+async function captureScreenFrame(id,save=false){
+  if(liveScreenBusy&&!save)return;
+  liveScreenBusy=true;
+  try{
+    await api('/api/v1/lab/command',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        targets:[id],
+        action:'screenshot',
+        payload:{quality:save?85:65,save}
+      })
+    });
+
+    // Give the helper time to capture and Hub time to receive the JPEG.
+    await new Promise(r=>setTimeout(r,1000));
+
+    screenImage.src=`/api/v1/lab/computers/${encodeURIComponent(id)}/screenshot?t=${Date.now()}`;
+    screenMeta.textContent=`Live view updated • ${new Date().toLocaleTimeString()}`;
+
+    if(save)await loadScreenHistory();
+  }finally{
+    liveScreenBusy=false;
+  }
+}
+
+async function saveSelectedScreenshots(){
+  try{
+    await command('screenshot',{quality:85,save:true});
+    actionResult.textContent='Screenshot requested for selected computer(s).';
+    setTimeout(loadAll,1200);
+  }catch(e){alert(e.message)}
+}
+
+async function showScreen(id){
+  closeScreenView(false);
+  currentScreenComputer=id;
+  const comp=inventory.computers.find(x=>x.id===id);
+  screenTitle.textContent=`Live Screen — ${comp?.name||comp?.hostname||id}`;
+  screenDialog.showModal();
+  liveScreenState.textContent='LIVE • 5 sec';
+  liveScreenState.className='pill good';
+
+  await captureScreenFrame(id,false);
+  await loadScreenHistory();
+
+  liveScreenTimer=setInterval(()=>{
+    if(currentScreenComputer&&screenDialog.open)
+      captureScreenFrame(currentScreenComputer,false).catch(()=>{});
+  },5000);
+}
+
+function closeScreenView(closeDialog=true){
+  if(liveScreenTimer){
+    clearInterval(liveScreenTimer);
+    liveScreenTimer=null;
+  }
+  currentScreenComputer=null;
+  liveScreenBusy=false;
+  if(closeDialog&&screenDialog.open)screenDialog.close();
+}
+
+async function refreshCurrentScreen(){
+  if(currentScreenComputer)await captureScreenFrame(currentScreenComputer,false);
+}
+
+async function saveCurrentScreenshot(){
+  if(!currentScreenComputer)return;
+  try{
+    screenMeta.textContent='Saving screenshot…';
+    await captureScreenFrame(currentScreenComputer,true);
+    screenMeta.textContent=`Screenshot saved • ${new Date().toLocaleTimeString()}`;
+    await loadAll();
+  }catch(e){alert(e.message)}
+}
+
+function downloadCurrentScreen(){
+  if(!currentScreenComputer)return;
+  window.location=`/api/v1/lab/computers/${encodeURIComponent(currentScreenComputer)}/screenshot/download`;
+}
+function downloadScreenFor(id){
+  window.location=`/api/v1/lab/computers/${encodeURIComponent(id)}/screenshot/download`;
+}
+function openCurrentScreen(){
+  if(!currentScreenComputer)return;
+  window.open(`/api/v1/lab/computers/${encodeURIComponent(currentScreenComputer)}/screenshot?t=${Date.now()}`,'_blank');
+}
+async function loadScreenHistory(){
+  if(!currentScreenComputer)return;
+  try{
+    const j=await api(`/api/v1/lab/computers/${encodeURIComponent(currentScreenComputer)}/screenshots?limit=50`);
+    screenHistoryMeta.textContent=`${j.screenshots.length} saved screenshot(s) • retained ${j.retentionDays} day(s)`;
+    screenHistory.innerHTML=(j.screenshots||[]).map(x=>`<div class="card">
+      <img src="${x.url}&t=${Date.now()}" alt="Screenshot" style="width:100%;max-height:150px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
+      <div style="margin-top:6px"><b>${fmtTime(x.capturedAt)}</b></div>
+      <div class="muted">${x.bytes?Math.round(x.bytes/1024)+' KB':''}</div>
+      <div class="toolbar" style="margin-top:6px">
+        <button onclick="screenImage.src='${x.url}&t=${Date.now()}'">View</button>
+        <button onclick="window.open('${x.url}','_blank')">Full Size</button>
+        <button onclick="window.location='${x.downloadUrl}'">Download</button>
+      </div>
+    </div>`).join('')||'<div class="muted">No saved screenshots yet.</div>';
+  }catch(e){
+    screenHistory.innerHTML=`<div class="bad">${esc(e.message)}</div>`;
+  }
+}
+
+async function openPresetDialog(){
+  const j=await api('/api/v1/lab/presets');
+  presetList.innerHTML=(j.presets||[]).map(p=>`<div class="card"><b>${esc(p.name)}</b><div class="muted">${esc(p.description)}</div><button style="margin-top:8px" onclick="runPreset('${esc(p.id)}')">Run on Selected</button></div>`).join('');
+  presetDialog.showModal();
+}
+async function runPreset(id){
+  try{await command('run-preset',{preset:id});presetDialog.close()}catch(e){alert(e.message)}
+}
+
+
+function showLastCommand(id){
+  const comp=inventory.computers.find(x=>x.id===id);
+  const cmd=comp?.lastCommand;
+  commandResultTitle.textContent=`Command Result — ${comp?.name||comp?.hostname||id}`;
+  if(!cmd){
+    commandResultMeta.textContent='No command result recorded.';
+    commandResultBody.textContent='';
+  }else{
+    commandResultMeta.textContent=`${cmd.action||''} • ${cmd.status||''} • ${cmd.completedAt?fmtTime(cmd.completedAt):fmtTime(cmd.issuedAt)}`;
+    const parts=[];
+    if(cmd.message)parts.push(cmd.message);
+    if(cmd.result)parts.push(JSON.stringify(cmd.result,null,2));
+    commandResultBody.textContent=parts.join('\n\n')||'No additional output.';
+  }
+  commandResultDialog.showModal();
+}
+loadAll();setInterval(loadAll,5000);
+</script>
+</body></html>
