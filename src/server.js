@@ -4058,6 +4058,7 @@ app.use((req, res, next) => {
 app.use("/media", express.static(MEDIA_DIR));
 app.use("/presentations", express.static(PRESENTATIONS_DIR));
 app.use("/vendor/pdfjs", express.static(path.join(path.resolve(__dirname,".."),"node_modules","pdfjs-dist","build")));
+app.use("/vendor/hls", express.static(path.join(path.resolve(__dirname,".."),"node_modules","hls.js","dist")));
 
 app.use(express.static(path.join(APP_DIR, "public")));
 
@@ -4096,7 +4097,7 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "classroom-hub-backend",
-    version: "1.0.0-alpha.63",
+    version: "1.0.0-alpha.64",
     runtime: publicRuntime()
   });
 });
@@ -4497,7 +4498,7 @@ async function buildDiagnosticsSnapshot(){
     ok:true,
     generatedAt:now.toISOString(),
     system:{
-      version:"1.0.0-alpha.63",
+      version:"1.0.0-alpha.64",
       node:process.version,
       platform:process.platform,
       arch:process.arch,
@@ -4555,7 +4556,7 @@ async function buildDiagnosticsSnapshot(){
 }
 
 
-// v1.0.0-alpha.63 local authentication, users and setup completion.
+// v1.0.0-alpha.64 local authentication, users and setup completion.
 app.get("/api/v1/auth/status",(req,res)=>{
   const user=requestUser(req);res.json({ok:true,authEnabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:user?{id:user.id,username:user.username,displayName:user.displayName,role:user.role}:null,userCount:dbStore.userCount()});
 });
@@ -4588,8 +4589,8 @@ app.delete("/api/v1/admin/sessions/:id",requireAdmin,(req,res)=>{const sess=dbSt
 app.put("/api/v1/admin/auth-policy",requireAdmin,(req,res)=>{try{const policy=dbStore.setAuthPolicy(req.body||{});audit({kind:"admin.auth-policy.update",policy});res.json({ok:true,policy})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.put("/api/v1/admin/setup-state",requireAdmin,(req,res)=>{const completed=dbStore.setSetupCompleted(req.body?.completed!==false);res.json({ok:true,completed})});
 
-// v1.0.0-alpha.63 database-native administration/configuration APIs.
-app.get("/api/v1/admin/health",requireAdmin,(req,res)=>{const u=requestUser(req),db=dbStore.databaseInfo();res.json({ok:true,version:"1.0.0-alpha.63",generatedAt:new Date().toISOString(),auth:{enabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:u?{id:u.id,username:u.username,displayName:u.displayName,role:u.role}:null,policy:dbStore.authPolicy(),activeSessions:dbStore.listAllUserSessions().length},runtime:{room:deviceConfig.room||ROOM_NAME,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError,lastConnectAt:runtime.mqtt.lastConnectAt},websocketClients:runtime.websocketClients,onlineDisplays:Object.values(runtime.displays||{}).filter(x=>x&&x.online).length},database:db});});
+// v1.0.0-alpha.64 database-native administration/configuration APIs.
+app.get("/api/v1/admin/health",requireAdmin,(req,res)=>{const u=requestUser(req),db=dbStore.databaseInfo();res.json({ok:true,version:"1.0.0-alpha.64",generatedAt:new Date().toISOString(),auth:{enabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:u?{id:u.id,username:u.username,displayName:u.displayName,role:u.role}:null,policy:dbStore.authPolicy(),activeSessions:dbStore.listAllUserSessions().length},runtime:{room:deviceConfig.room||ROOM_NAME,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError,lastConnectAt:runtime.mqtt.lastConnectAt},websocketClients:runtime.websocketClients,onlineDisplays:Object.values(runtime.displays||{}).filter(x=>x&&x.online).length},database:db});});
 app.get("/api/v1/admin/summary",requireAdmin,(_req,res)=>{
   const cfg=dbStore.getAdminConfig(),db=dbStore.databaseInfo();
   res.json({ok:true,site:cfg.site,database:db,counts:{
@@ -4897,7 +4898,7 @@ app.post("/api/v1/diagnostics/test",requireControl,async(req,res)=>{
     catch(err){results[name]={ok:false,durationMs:Date.now()-started,error:err.message};diagnosticError(err,{component:"diagnostics.test",operation:name})}
   };
 
-  if(test==="all"||test==="hub")await perform("hub",async()=>({version:"1.0.0-alpha.63",uptime:process.uptime()}));
+  if(test==="all"||test==="hub")await perform("hub",async()=>({version:"1.0.0-alpha.64",uptime:process.uptime()}));
   if(test==="all"||test==="mqtt")await perform("mqtt",async()=>{
     if(!runtime.mqtt.connected)throw new Error("MQTT is not connected");
     return {connected:true,url:MQTT_URL};
@@ -6027,7 +6028,7 @@ wss.on("connection", (ws, req) => {
           wsSend(ws, {
             type: "hello.ack",
             role: "preview",
-            version: "1.0.0-alpha.63",
+            version: "1.0.0-alpha.64",
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
@@ -6058,7 +6059,7 @@ wss.on("connection", (ws, req) => {
           wsSend(ws, {
             type: "hello.ack",
             role: "display",
-            version: "1.0.0-alpha.63",
+            version: "1.0.0-alpha.64",
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
@@ -6079,11 +6080,11 @@ wss.on("connection", (ws, req) => {
           // Hub upgrade automatically refresh legacy/stale kiosk browsers without requiring
           // a manual visit to every TV.
           const clientVersion=String(msg.clientVersion||msg.meta?.build||"");
-          if(clientVersion!=="1.0.0-alpha.63") {
-            audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:"1.0.0-alpha.63"});
+          if(clientVersion!=="1.0.0-alpha.64") {
+            audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:"1.0.0-alpha.64"});
             setTimeout(()=>{
               if(ws.readyState===WebSocket.OPEN){
-                wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:"1.0.0-alpha.63"}}});
+                wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:"1.0.0-alpha.64"}}});
               }
             },700);
           }
@@ -6412,7 +6413,7 @@ try{
 }catch(err){console.warn(`Legacy audit migration skipped: ${err.message}`)}
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Classroom Control Hub Backend v1.0.0-alpha.63 listening on http://0.0.0.0:${PORT}`);
+  console.log(`Classroom Control Hub Backend v1.0.0-alpha.64 listening on http://0.0.0.0:${PORT}`);
   console.log(`Scheduler timezone: ${SCHEDULER_TIMEZONE}; local time: ${schedulerLocalTimestamp()}; catch-up: ${SCHEDULER_CATCHUP_MINUTES} minute(s)`);
   console.log(`Room: ${deviceConfig.room || ROOM_NAME}`);
   console.log(`MQTT: ${MQTT_URL || "disabled"}`);

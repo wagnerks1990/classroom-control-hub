@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0-alpha.64
+
+- Morning Announcements now use a same-origin integrated Ant Media/HLS player on classroom displays.
+- Announcement Mute, 50%, 75%, 100%, slider, Retry/Unmute, and Reload/Unmute controls now act on the real HTML5 media element instead of a cross-origin iframe.
+- Added HLS.js for Chromium-compatible HLS playback while retaining the configured Ant Media `play.html` URL as the source-of-truth.
+- Preserved announcement priority takeover, Background Music pause/resume, and deferred automation behavior.
+
 ## 1.0.0-alpha.63
 
 Initial public GitHub/Docker migration of Classroom Control Hub.
