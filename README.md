@@ -2,7 +2,7 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.65` — initial public GitHub/Docker migration. The project is actively being generalized from a production classroom deployment.
+> **Status:** `1.0.0-alpha.66` — current known-good alpha baseline. The project is actively being generalized from a production classroom deployment.
 
 ## What it does
 
@@ -11,7 +11,7 @@ Classroom Control Hub provides a single web controller for classroom and lab ope
 - browser-based display clients and digital signage
 - scheduled classroom automations
 - priority live/morning announcements
-- background music through Music Assistant
+- Background Music through Music Assistant
 - AV routing and TV control integrations
 - lighting integrations through MQTT
 - class schedules, cycle days, closures, delays, half-days, and remote-day rules
@@ -22,13 +22,32 @@ Classroom Control Hub provides a single web controller for classroom and lab ope
 
 ```text
 Ubuntu host
-├── classroom-control-hub-host-agent.service
+├── /opt/classroom-hub
+├── classroom-hub-host-agent.service
+│   └── /run/classroom-control-hub/host-agent.sock
 └── Docker
     ├── classroom-control-hub
     └── classroom-control-hub-maintenance
 ```
 
-The application and maintenance service run in containers. Host-level operations are delegated to a small systemd host agent instead of giving the main application broad host privileges.
+The application and maintenance service run in containers. Host-level operations are delegated to a narrow systemd host agent instead of giving the main application broad host privileges.
+
+## Production updates
+
+The standard production checkout is `/opt/classroom-hub`. Production updates are Git-first:
+
+```bash
+cd /opt/classroom-hub
+git fetch origin
+git pull --ff-only origin main
+cat VERSION
+docker compose build --no-cache
+docker compose up -d
+docker compose ps
+curl -fsS http://localhost:3000/health
+```
+
+Back up production state before upgrades and never overwrite the local `.env`, database, data, uploads, backups, or secrets with repository examples.
 
 ## Quick start for development
 
@@ -65,7 +84,24 @@ Important optional settings include:
 - `SCHOOL_CALENDAR_ANCHOR_DATE`
 - `SCHOOL_CALENDAR_ANCHOR_CYCLE_DAY`
 
-See `.env.example` and `INSTALL.md`.
+See `.env.example`, `INSTALL.md`, and `docs/CONFIGURATION.md`.
+
+## Documentation
+
+Start with:
+
+- [`INSTALL.md`](INSTALL.md) — install/migration quick guide
+- [`GITHUB-MIGRATION.md`](GITHUB-MIGRATION.md) — Git migration and update workflow
+- [`docs/README.md`](docs/README.md) — documentation index
+- [`docs/AI-CONTEXT.md`](docs/AI-CONTEXT.md) — compact technical context for AI assistants
+- [`AGENTS.md`](AGENTS.md) — authoritative contributor/AI operating contract
+- [`wiki/`](wiki/) — Git-tracked mirror of the GitHub Wiki
+
+## AI-assisted development
+
+AI coding assistants should read `AGENTS.md` first and then `docs/AI-CONTEXT.md`. GitHub Copilot-specific guidance is stored in `.github/copilot-instructions.md`.
+
+Project-critical invariants include Morning Announcements priority/recovery, Bison timer behavior, Background Music recovery, version convergence, independent integration health, and preservation of production runtime state.
 
 ## Container images
 
@@ -80,7 +116,7 @@ The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a fu
 
 ## Project maturity
 
-This repository is currently alpha software. Production deployments should pin a specific version and maintain backups before upgrades.
+This repository is currently alpha software. Production deployments should pin a specific version or known-good commit and maintain backups before upgrades.
 
 ## License
 
