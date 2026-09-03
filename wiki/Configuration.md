@@ -1,85 +1,112 @@
 # Configuration
 
-Classroom Control Hub is designed so public source code stays generic while each installation supplies its own site-specific settings at runtime.
+Classroom Control Hub keeps public source generic while each installation supplies site-specific settings at runtime.
 
 ## Configuration layers
 
-A deployment can use several configuration sources:
+A deployment can use:
 
-- `.env` for environment variables and secrets references
+- `.env` for environment variables and secret references
 - persistent database/runtime settings configured through the controller
 - `config/` JSON files for generic/default device and integration catalogs
 - mounted persistent directories for site-specific state
 
+## Standard production paths
+
+```env
+HOST_CLASSROOM_HUB_DIR=/opt/classroom-hub
+HOST_SERVICES_DIR=/opt/services
+DATABASE_FILE=/app/data/classroom-control-hub.db
+CLASSROOM_HUB_MASTER_KEY_FILE=/etc/classroom-control-hub/master.key
+MASTER_KEY_FILE=/run/secrets/classroom-control-hub-master-key
+```
+
+Native Host Agent socket:
+
+```text
+/run/classroom-control-hub/host-agent.sock
+```
+
+Older migration-era references to `/opt/classroom-control-hub`, `/run/classroom-hub/host-agent.sock`, or `HOST_Classroom_DIR` are legacy rather than preferred new configuration.
+
 ## Never commit production secrets
 
-Do not commit:
+Do not commit passwords, API tokens, MQTT credentials, Music Assistant tokens, Ant Media credentials, SSH/TLS private keys, student/user data, production SQLite databases, `.env`, or backups containing runtime state.
 
-- passwords
-- API tokens
-- MQTT credentials
-- Music Assistant tokens
-- Ant Media credentials
-- SSH keys
-- TLS private keys
-- student/user data
-- production SQLite databases
-- backups containing runtime data
+Use `.env`, mounted secrets, or the encrypted application secret store.
 
-Use `.env`, Docker secrets, or another secrets manager.
-
-## Common environment categories
+## Common environment settings
 
 ### Application
 
 ```env
-CLASSROOM_HUB_TIMEZONE=America/New_York
-CLASSROOM_HUB_PORT=3000
+ROOM_NAME=Classroom
+TZ=America/New_York
+SCHEDULER_TIMEZONE=America/New_York
+HUB_PORT=3000
 ```
+
+### MQTT / Govee
+
+```env
+MQTT_URL=mqtt://host.docker.internal:1883
+MQTT_USERNAME=
+MQTT_PASSWORD=
+```
+
+### Pluto Mark I
+
+```env
+PLUTO_URL=
+PLUTO_TIMEOUT_MS=4000
+PLUTO_READ_RETRIES=4
+```
+
+The public default intentionally leaves `PLUTO_URL` empty. Production supplies the local endpoint through runtime configuration. An unconfigured Pluto should be shown as `NOT CONFIGURED`, not continuously probed with an empty URL.
 
 ### Music Assistant
 
 ```env
-MUSIC_ASSISTANT_URL=
-MUSIC_ASSISTANT_TOKEN=
+MUSIC_ASSISTANT_URL=http://host.docker.internal:8095
 ```
 
-### MQTT / device integrations
+### Veyon
 
 ```env
-MQTT_HOST=
-MQTT_USERNAME=
-MQTT_PASSWORD=
+VEYON_WEBAPI_URL=http://host.docker.internal:11080
+VEYON_KEY_NAME=ClassroomControlHub
+VEYON_SCAN_SUBNET=
 ```
 
 ### Morning Announcements
 
 ```env
-MORNING_ANNOUNCEMENT_URL=
+MORNING_ANNOUNCEMENTS_URL=
 ```
 
-Production stream URLs should remain outside the public source repository.
+Production stream URLs and stream IDs remain outside the public repository.
+
+## Independent integration health
+
+Each integration reports its own state. A Pluto failure must not make MQTT/Govee appear offline. Slow optional integration checks must not block initial Overview rendering.
+
+Where practical, distinguish:
+
+- configured
+- connected/reachable
+- current state
+- last success
+- last error
 
 ## Persistent configuration
 
-The controller persists operational settings such as:
+The controller persists operational settings such as displays, class schedules, automations, cycle/school calendar rules, Morning Announcements settings, announcement volume, Background Music settings, and integration/runtime settings.
 
-- displays and targets
-- class schedules
-- automations
-- cycle-day and school-calendar rules
-- Morning Announcements Live Watch settings
-- announcement volume
-- Background Music schedule and player selection
-- integration settings
-
-These values should live in persistent storage mounted into the container.
+These values live in persistent storage mounted into the container.
 
 ## Calendar and schedule rules
 
-The scheduling engine supports normal weekdays, cycle days, no-school dates, remote days, half days, delayed starts, transition periods, and class-specific continuation rules.
-
-The expected precedence for school-day exceptions is:
+Expected precedence:
 
 ```text
 No-School
@@ -90,45 +117,30 @@ No-School
   > Normal Schedule
 ```
 
-Deployment-specific dates and class mappings should be configured through runtime state rather than hard-coded into the public repository.
+Deployment-specific dates and class mappings belong in runtime state rather than public source constants.
 
 ## Display configuration
 
-Displays use stable IDs. A display should reconnect and recover current server state after browser, network, or service restarts.
-
-When changing display-related code, ensure backend and renderer versions remain synchronized.
+Displays use stable IDs and should recover current server state after browser, network, or service restarts. Backend/controller/display versions must remain synchronized during releases.
 
 ## Morning Announcements
 
-Morning Announcements have their own settings for:
+Morning Announcements configuration includes enabled state, stream/player URL, Live Watch window, target displays, saved volume, and live-detection diagnostics.
 
-- enabled state
-- stream URL
-- watch start/end window
-- target displays
-- default volume
-- stream detection/retry behavior
-
-Manual playback and automatic Live Watch use the same priority state and volume configuration.
+For Ant Media player URLs, HLS is the preferred live-state/playback transport when available. Manual and automatic playback share the same highest-priority state.
 
 ## Background Music
 
-Background Music remains independent of normal visual automations. Configuration includes:
-
-- Music Assistant player/group
-- source/favorite
-- start and end times
-- weekdays/school-day rules
-- start volume
-- pause/resume behavior for priority audio
+Background Music remains independent of normal visual automation. It yields to priority audio and resumes only after priority release/reconciliation completes.
 
 ## Configuration validation
 
 Before production deployment, verify:
 
-1. no secret values are present in tracked files;
-2. all required persistent directories are mounted;
+1. no secrets are present in tracked files;
+2. persistent directories and secret files are mounted;
 3. timezone is correct;
 4. display IDs and targets are correct;
 5. class/calendar rules resolve the expected current day;
-6. integration endpoints are reachable from the appropriate container or host service.
+6. integration endpoints are reachable from the correct host/container;
+7. Host Agent service and maintenance container both see `/run/classroom-control-hub/host-agent.sock`.
