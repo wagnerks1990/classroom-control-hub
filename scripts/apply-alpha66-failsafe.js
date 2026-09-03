@@ -132,7 +132,7 @@ s=s.slice(0,start)+replacement+s.slice(end);
 fs.writeFileSync(serverPath,s);
 
 const textFiles=[
-  "VERSION","package.json","public/display/index.html","public/controller/index.html","public/controller/display.html",
+  serverPath,"VERSION","package.json","public/display/index.html","public/controller/index.html","public/controller/display.html",
   "maintenance-agent/package.json","maintenance-agent/server.js","host-agent/server.py"
 ];
 for(const file of textFiles){
