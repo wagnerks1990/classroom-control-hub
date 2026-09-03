@@ -72,14 +72,14 @@ services:
       MAINTENANCE_ALLOW_SHELL: ${MAINTENANCE_ALLOW_SHELL:-false}
       MANAGED_HUB_ROOT: /managed/classroom-hub
       MANAGED_Classroom_ROOT: /managed/services
-      HOST_HUB_PATH: ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-control-hub}
+      HOST_HUB_PATH: ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}
       HOST_AGENT_SOCKET: /run/classroom-control-hub/host-agent.sock
       MASTER_KEY_FILE: /run/secrets/classroom-control-hub-master-key
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /run/classroom-control-hub:/run/classroom-control-hub
-      - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-control-hub}:/managed/classroom-hub
-      - ${HOST_Classroom_DIR:-/opt/services}:/managed/services
-      - /opt/classroom-control-hub-backups:/host-backups:ro
+      - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}:/managed/classroom-hub
+      - ${HOST_SERVICES_DIR:-/opt/services}:/managed/services
+      - /opt/classroom-hub-backups:/host-backups:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     # Deliberately not published to the host. Access is proxied by Classroom Control Hub.
