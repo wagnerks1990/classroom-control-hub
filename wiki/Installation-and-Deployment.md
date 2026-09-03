@@ -2,15 +2,17 @@
 
 ## Recommended production layout
 
-Classroom Control Hub is intended to run primarily through Docker Compose, with the host agent installed separately on the Ubuntu host when host-level functions are required.
-
 ```text
 Ubuntu host
-├── classroom-control-hub-host-agent.service
+├── /opt/classroom-hub
+├── classroom-hub-host-agent.service
+│   └── /run/classroom-control-hub/host-agent.sock
 └── Docker
     ├── classroom-control-hub
     └── classroom-control-hub-maintenance
 ```
+
+The standard production checkout is `/opt/classroom-hub`. Older references to `/opt/classroom-control-hub` are migration-era defaults unless a deployment intentionally chose a custom path.
 
 ## Prerequisites
 
@@ -22,76 +24,85 @@ Recommended baseline:
 - persistent storage for application data and backups
 - a reverse proxy if the controller is exposed outside the local management network
 
-## Clone-based development installation
+## Production installation
+
+```bash
+sudo git clone https://github.com/wagnerks1990/classroom-control-hub.git /opt/classroom-hub
+cd /opt/classroom-hub
+sudo cp .env.example .env
+```
+
+Edit `.env` before starting the application. Never commit the populated `.env` file.
+
+Then run:
+
+```bash
+sudo bash install.sh
+```
+
+The installer preserves runtime state during upgrades, installs/reconciles the native Host Agent, verifies the Unix socket, builds the containers, and checks component version convergence.
+
+## Normal Git update cycle
+
+```bash
+cd /opt/classroom-hub
+sudo git fetch origin
+sudo git pull --ff-only origin main
+cat VERSION
+sudo docker compose build --no-cache
+sudo docker compose up -d
+sudo docker compose ps
+curl -fsS http://localhost:3000/health
+```
+
+Take a backup before upgrading.
+
+## Development installation
 
 ```bash
 git clone https://github.com/wagnerks1990/classroom-control-hub.git
 cd classroom-control-hub
 cp .env.example .env
-```
-
-Edit `.env` before starting the application. Never commit the populated `.env` file.
-
-For source builds:
-
-```bash
 docker compose build
 docker compose up -d
 ```
 
-Verify:
-
-```bash
-docker compose ps
-curl -s http://localhost:3000/health
-```
-
-## Container-image deployment
-
-The long-term deployment model is GitHub Container Registry (GHCR). Once alpha images are published, Compose should reference versioned or channel tags instead of requiring a local build.
-
-Example update cycle:
-
-```bash
-cd /opt/classroom-control-hub
-docker compose pull
-docker compose up -d
-```
-
-Persistent data must live in mounted volumes/directories so replacing the container does not erase the database, configuration, media, or backups.
-
 ## Existing installation migration
 
-Do not replace a working `/opt/classroom-hub` installation until the GitHub/Docker build has been validated against a copy of the existing persistent data.
+Before converting an existing installation to Git:
 
-Recommended migration process:
+1. Back up the current application tree and database.
+2. Preserve `.env`, persistent data, media/uploads, backups, keys, and site configuration.
+3. Clone the repository into the standard production path.
+4. Restore only runtime state; do not copy legacy tracked source over the Git checkout.
+5. Verify the Host Agent service uses `/opt/classroom-hub` and `/run/classroom-control-hub/host-agent.sock`.
+6. Recreate the maintenance container and confirm it can see the Host Agent socket.
+7. Validate controller, displays, automations, Morning Announcements, Background Music, class schedule rules, and integrations.
+8. Retain a known-good rollback snapshot until the new deployment is verified.
 
-1. Back up the existing installation and SQLite database.
-2. Deploy the GitHub version into a separate directory.
-3. Copy only approved runtime configuration and persistent data into the new layout.
-4. Start the new deployment on alternate ports.
-5. Validate controller, displays, automations, Morning Announcements, Background Music, class schedule rules, and integrations.
-6. Cut over the reverse proxy only after validation.
-7. Retain the previous installation until rollback is no longer required.
+## Host Agent verification
 
-## Host agent
+```bash
+sudo systemctl status classroom-hub-host-agent.service --no-pager -l
+sudo test -S /run/classroom-control-hub/host-agent.sock && echo "Host Agent socket OK"
+sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control-hub/
+```
 
-Host-level operations should run through the host agent rather than granting the main container unrestricted Docker socket or host filesystem access.
+## Integration configuration
 
-See the repository's `docs/HOST-AGENT.md` for the current host-agent documentation.
+The public repository intentionally contains generic defaults. After migration, restore local values such as MQTT, Pluto, Music Assistant, Veyon, stream URLs, device mappings, and school calendar configuration through `.env` or persistent runtime configuration.
 
-## Reverse proxy
-
-The controller should normally remain behind an authenticated reverse proxy or trusted management network. WebSocket support must be enabled because display clients and other real-time functions rely on persistent connections.
+Optional or slow integration probes must not delay the initial controller Overview screen, and one integration failure must not falsely mark another integration offline.
 
 ## Backups before upgrades
 
-Before any production upgrade, preserve at minimum:
+Preserve at minimum:
 
 - SQLite database/runtime data
 - `.env` and site configuration
 - uploaded media/assets
 - integration configuration
-- backups that have not yet been copied off-host
+- master/private keys required for recovery
+- off-host copies of important backups
 
-Container images and source code are replaceable. Runtime state is not.
+Container images and tracked source are replaceable. Runtime state is not.
