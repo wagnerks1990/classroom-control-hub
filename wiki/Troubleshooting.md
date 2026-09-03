@@ -2,65 +2,111 @@
 
 ## Controller does not load
 
-1. Check `docker compose ps`.
-2. Check `curl -s http://localhost:3000/health`.
-3. Review `docker compose logs --tail=200`.
-4. Verify reverse-proxy host, port, TLS, and WebSocket forwarding.
-5. Confirm persistent storage is writable by the container.
+```bash
+cd /opt/classroom-hub
+docker compose ps
+curl -fsS http://localhost:3000/health
+docker compose logs --tail=200
+```
 
-## Displays repeatedly reload or flash
+If local health works, check reverse proxy, TLS, firewall, and WebSocket forwarding.
 
-A common cause is version mismatch between the backend and display renderer. Verify every embedded version identifier was updated together in the release. A stale renderer can reconnect, be told to reload, reconnect with the same old version, and enter a permanent loop.
+## Host health unavailable / host-agent socket missing
 
-## Display is online but does not update
+Expected socket:
 
-Verify the display ID, selected target, WebSocket connection, current priority lock, and whether the display is rendering a higher-priority announcement.
-
-## Morning Announcements manual playback works but automatic Live Watch does not
-
-Separate playback from detection. If the embedded Ant Media player works but Live Watch reports offline, inspect the live probe diagnostics. Depending on deployment, REST/HLS status endpoints may be unavailable while WebRTC signaling is usable.
+```text
+/run/classroom-control-hub/host-agent.sock
+```
 
 Check:
 
-- configured stream/application ID;
-- reverse-proxy WebSocket support;
-- Ant Media `/websocket` signaling reachability;
-- REST/HLS probe status;
-- Live Watch time window and school-day rules.
+```bash
+sudo systemctl status classroom-hub-host-agent.service --no-pager -l
+sudo journalctl -u classroom-hub-host-agent.service -n 100 --no-pager
+sudo test -S /run/classroom-control-hub/host-agent.sock
+sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control-hub/
+```
+
+The current standard install path is `/opt/classroom-hub`. Older service units pointing at `/opt/classroom-control-hub` or `/run/classroom-hub/host-agent.sock` are stale migration configuration.
+
+## Displays repeatedly reload or flash
+
+A common cause is version mismatch between the backend and display renderer. Verify every embedded version identifier was updated together. Backend, controller, display, maintenance, and host-agent versions must converge.
+
+## Morning Announcements manual playback works but Live Watch does not
+
+Current Ant Media detection uses HLS as the authoritative signal when the HLS URL can be derived from the player URL:
+
+- 200 + valid `#EXTM3U` playlist = LIVE
+- 404 = OFFLINE
+- network/timeout/5xx = UNKNOWN/error
+- blocked REST diagnostics such as 403 must not override HLS
+
+Two confirmed OFFLINE checks are required before ending an active announcement automatically.
+
+## Morning Announcements end but automation does not return
+
+The current release performs a failsafe scheduler resync. After releasing the announcement priority lock it should re-evaluate the current date/class/time, select the newest currently applicable display automation per target, re-run those winners, and only then reconcile Background Music.
+
+Do not restore stale display snapshots or replay all earlier events blindly.
 
 ## Announcements can be overwritten by automation
 
-Manual and automatic announcements must share the same announcement priority state. While active, target displays should be locked against conflicting scheduled and manual automations, and Background Music should remain paused.
+Manual and automatic announcements must share the same priority state. While active, target displays are protected from conflicting scheduled/manual automations and Background Music remains paused.
+
+## Announcement audio controls do not work
+
+Announcement playback should use the locally controlled HLS/HTML5 media element rather than relying on a cross-origin player iframe. Saved volume/mute state should apply directly to the media element.
 
 ## Background Music does not resume
 
-Check the actual Music Assistant player/group state. The scheduler should reconcile against the real player state rather than trusting only cached `playing` state. Confirm no announcement or priority audio lock remains active.
+Check the actual Music Assistant player/group state and confirm no priority-audio lock remains active. Background Music should resume only after post-announcement display resync is complete.
 
 ## Timer shows 00:00 during manual test
 
-For linked class timers, verify the manual run resolves the currently active selected class occurrence instead of falling back to the first configured class. Testing a transition or class-end timer outside its active occurrence may legitimately show an expired value.
+For linked class timers, verify the manual run resolves the currently active selected class occurrence instead of falling back to the first configured class.
 
 ## Wrong Bison continuation is chained
 
 Continuation identity is based on the same underlying base period/class. A short time gap alone is not enough. Adjacent regular classes or Bison blocks mapped to different periods must not chain.
 
-## Docker update loses configuration
+## MQTT / Govee says OFFLINE but MQTT is connected
 
-Runtime data should never live only inside the container writable layer. Verify SQLite, uploads, backups, and configuration are mounted from persistent host directories or named volumes.
+Integration health must be independent. A failed Pluto request must not cause MQTT/Govee to be shown as offline. Check MQTT runtime status directly.
 
-## Useful commands
+## Overview is slow to load
+
+Slow optional hardware probes must not block the initial Overview. The page should render lightweight application/device/schedule state first and load detailed hardware state asynchronously.
+
+## Pluto is not configured after migration
+
+Check the running container:
 
 ```bash
-cd /opt/classroom-control-hub
+sudo docker exec classroom-control-hub printenv PLUTO_URL
+curl -s http://localhost:3000/health | jq '.runtime.hardware.pluto'
+```
+
+The public repository intentionally leaves site-specific Pluto URL values out of tracked defaults.
+
+## Pluto API returns "Authentication required"
+
+`/api/v1/pluto/status` is itself an authenticated Classroom Control Hub endpoint. An unauthenticated CLI `curl` can be rejected by the Hub before any Pluto hardware request occurs. That response alone does not prove Pluto hardware authentication is required.
+
+## Docker/Git update appears to do nothing
+
+```bash
+cd /opt/classroom-hub
+git status --short
+git log -1 --oneline
+cat VERSION
 docker compose ps
-docker compose logs --tail=200
-curl -s http://localhost:3000/health
-docker inspect classroom-control-hub
+curl -fsS http://localhost:3000/health
 ```
 
-For host-agent issues:
+Confirm the Git checkout advanced and the containers were rebuilt/recreated.
 
-```bash
-systemctl status classroom-control-hub-host-agent
-journalctl -u classroom-control-hub-host-agent -n 200 --no-pager
-```
+## Before sharing diagnostics publicly
+
+Redact credentials, tokens, student/user data, private URLs, certificates/private keys, and any diagnostic payload containing secrets. Rotate secrets that were accidentally pasted into a public/shared transcript.
