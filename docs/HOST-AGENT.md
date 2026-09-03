@@ -1,9 +1,57 @@
 # Classroom Control Hub Native Host Agent
 
-Classroom Control Hub 1.0.0-alpha.33 introduces a native host-management agent so the Docker maintenance container does not require host PID namespaces or privileged mode.
+The native Host Agent exists so the Docker maintenance container does not require host PID namespaces or privileged mode.
 
-The service runs as `classroom-control-hub-host-agent.service` and listens only on the Unix socket `/run/classroom-control-hub/host-agent.sock`. The socket is bind-mounted into the maintenance container. No TCP port is opened.
+## Standard paths
 
-The Host Agent provides allowlisted host inventory and lifecycle functions for systemd services, journal logs, host health, and cleanup discovery. Protected services such as Docker, containerd, SSH, networking, DNS, time synchronization, and the Host Agent itself cannot be stopped or disabled through Classroom Control Hub.
+The standard production application path is:
+
+```text
+/opt/classroom-hub
+```
+
+The service is:
+
+```text
+classroom-hub-host-agent.service
+```
+
+The Host Agent listens only on the Unix socket:
+
+```text
+/run/classroom-control-hub/host-agent.sock
+```
+
+The socket is bind-mounted into the maintenance container. No Host Agent TCP port is opened.
+
+## Responsibilities
+
+The Host Agent provides allowlisted host inventory and lifecycle functions for systemd services, journal logs, host health, update/recovery helpers, and cleanup discovery. Protected services such as Docker, containerd, SSH, networking, DNS, time synchronization, and the Host Agent itself cannot be stopped or disabled through Classroom Control Hub.
 
 All browser requests still pass through the authenticated Classroom Control Hub backend and Maintenance Agent before reaching the Host Agent.
+
+## Migration verification
+
+A stale systemd unit from an older installation may point at `/opt/classroom-control-hub` or the old `/run/classroom-hub/host-agent.sock`. The current standard is `/opt/classroom-hub` plus `/run/classroom-control-hub/host-agent.sock`.
+
+Verify after every migration or host-agent update:
+
+```bash
+sudo systemctl status classroom-hub-host-agent.service --no-pager -l
+sudo journalctl -u classroom-hub-host-agent.service -n 100 --no-pager
+sudo test -S /run/classroom-control-hub/host-agent.sock && echo "Host Agent socket OK"
+sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control-hub/
+```
+
+Expected conditions:
+
+- systemd reports the Host Agent active/running;
+- the process runs `host-agent/server.py` from the intended application checkout;
+- `/run/classroom-control-hub/host-agent.sock` exists on the host;
+- the same socket is visible inside `classroom-control-hub-maintenance`.
+
+If the socket is missing, correct/reinstall the service unit, run `systemctl daemon-reload`, restart the Host Agent, and then recreate/restart the maintenance container so its bind mount sees the live socket.
+
+## Security boundary
+
+The Unix socket directory should remain root-owned and not be exposed through a public network share or reverse proxy. Do not replace this boundary by granting the main application container unrestricted host privileges.
