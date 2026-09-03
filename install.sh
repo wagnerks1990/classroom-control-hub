@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-control-hub}"
-Classroom="${CLASSROOM_HUB_Classroom_DIR:-/opt/services}"
+TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
+SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"
 SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-BACKUP_ROOT="${CLASSROOM_HUB_BACKUP_DIR:-/opt/classroom-control-hub-backups}"
+BACKUP_ROOT="${CLASSROOM_HUB_BACKUP_DIR:-/opt/classroom-hub-backups}"
 BACKUP="$BACKUP_ROOT/migration-$STAMP"
 
 if [[ $EUID -ne 0 ]]; then echo "Run this installer as root (sudo)." >&2; exit 1; fi
@@ -21,7 +21,7 @@ if [[ -d "$TARGET" ]]; then
   mkdir -p "$BACKUP"
   echo "Creating pre-migration backup at $BACKUP ..."
   rsync -a "$TARGET/" "$BACKUP/classroom-hub/"
-  if [[ -d "$Classroom" ]]; then rsync -a "$Classroom/" "$BACKUP/services/"; fi
+  if [[ -d "$SERVICES" ]]; then rsync -a "$SERVICES/" "$BACKUP/services/"; fi
   docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' > "$BACKUP/docker-containers.txt" || true
   docker image ls > "$BACKUP/docker-images.txt" || true
 fi
@@ -50,7 +50,7 @@ if ! grep -q '^MAINTENANCE_TOKEN=' "$TARGET/.env" || [[ -z "$(grep '^MAINTENANCE
   if grep -q '^MAINTENANCE_TOKEN=' "$TARGET/.env"; then sed -i "s/^MAINTENANCE_TOKEN=.*/MAINTENANCE_TOKEN=$TOKEN/" "$TARGET/.env"; else echo "MAINTENANCE_TOKEN=$TOKEN" >> "$TARGET/.env"; fi
 fi
 if ! grep -q '^HOST_CLASSROOM_HUB_DIR=' "$TARGET/.env"; then echo "HOST_CLASSROOM_HUB_DIR=$TARGET" >> "$TARGET/.env"; fi
-if ! grep -q '^HOST_Classroom_DIR=' "$TARGET/.env"; then echo "HOST_Classroom_DIR=$Classroom" >> "$TARGET/.env"; fi
+if ! grep -q '^HOST_SERVICES_DIR=' "$TARGET/.env"; then echo "HOST_SERVICES_DIR=$SERVICES" >> "$TARGET/.env"; fi
 chmod 600 "$TARGET/.env"
 
 # Master encryption key stays outside the application/database. It encrypts private
@@ -67,24 +67,27 @@ if ! grep -q '^DATABASE_FILE=' "$TARGET/.env"; then echo 'DATABASE_FILE=/app/dat
 # journal and host filesystem inventory do not require privileged containers or
 # namespace entry. Communication is local-only over /run/classroom-control-hub.
 command -v python3 >/dev/null 2>&1 || { apt-get update && apt-get install -y python3; }
-install -D -m 0644 "$TARGET/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-control-hub-host-agent.service
+install -D -m 0644 "$TARGET/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-hub-host-agent.service
+if [[ "$TARGET" != "/opt/classroom-hub" ]]; then
+  sed -i "s#/opt/classroom-hub#$TARGET#g" /etc/systemd/system/classroom-hub-host-agent.service
+fi
 python3 -m py_compile "$TARGET/host-agent/server.py"
 # Keep the runtime directory inode stable because it is bind-mounted into the
 # maintenance container. The Host Agent recreates only the socket file.
 install -d -m 0750 /run/classroom-control-hub
 chmod 0755 "$TARGET/host-agent/update-runner.sh"
-cat >/etc/systemd/system/classroom-hub-update.service <<'UNIT'
+cat >/etc/systemd/system/classroom-hub-update.service <<UNIT
 [Unit]
 Description=Classroom Control Hub Native Host Update Runner
 After=network-online.target docker.service classroom-control-hub-host-agent.service
 Wants=network-online.target
-ConditionPathExists=/opt/classroom-control-hub/host-agent/update-runner.sh
+ConditionPathExists=$TARGET/host-agent/update-runner.sh
 
 [Service]
 Type=oneshot
 User=root
 Group=root
-ExecStart=/opt/classroom-control-hub/host-agent/update-runner.sh
+ExecStart=$TARGET/host-agent/update-runner.sh
 TimeoutStartSec=0
 Nice=10
 IOSchedulingClass=best-effort
@@ -94,10 +97,10 @@ IOSchedulingPriority=6
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
-systemctl enable classroom-control-hub-host-agent.service >/dev/null
-systemctl restart classroom-control-hub-host-agent.service
+systemctl enable classroom-hub-host-agent.service >/dev/null
+systemctl restart classroom-hub-host-agent.service
 for _ in $(seq 1 30); do [[ -S /run/classroom-control-hub/host-agent.sock ]] && break; sleep 0.5; done
-[[ -S /run/classroom-control-hub/host-agent.sock ]] || { echo "Classroom Control Hub Host Agent socket was not created." >&2; systemctl status classroom-control-hub-host-agent.service --no-pager || true; exit 1; }
+[[ -S /run/classroom-control-hub/host-agent.sock ]] || { echo "Classroom Control Hub Host Agent socket was not created." >&2; systemctl status classroom-hub-host-agent.service --no-pager || true; exit 1; }
 
 cd "$TARGET"
 EXPECTED_VERSION="$(tr -d '\r\n' < VERSION)"
