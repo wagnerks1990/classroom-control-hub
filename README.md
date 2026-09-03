@@ -2,7 +2,7 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.64` — initial public GitHub/Docker migration. The project is actively being generalized from a production classroom deployment.
+> **Status:** `1.0.0-alpha.65` — initial public GitHub/Docker migration. The project is actively being generalized from a production classroom deployment.
 
 ## What it does
 

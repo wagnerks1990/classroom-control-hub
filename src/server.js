@@ -625,43 +625,38 @@ async function fetchWithDeadline(url,options={},timeoutMs=3500){
 }
 async function probeMorningAnnouncementsLive(){
   const c=announcementsCoordinates();
-  if(!c)return {live:false,probe:"invalid-url",status:"invalid-url",error:"Invalid stream URL",durationMs:0,attempts:[]};
-  const started=Date.now(),stamp=started;
-  const attempts=[];
-  const restUrl=`${c.origin}/${c.app}/rest/v2/broadcasts/${encodeURIComponent(c.id)}?_=${stamp}`;
-  const hlsUrls=[`${c.origin}/${c.app}/streams/${encodeURIComponent(c.id)}.m3u8?_=${stamp}`,`${c.origin}/${c.app}/streams/${encodeURIComponent(c.id)}_adaptive.m3u8?_=${stamp}`];
-  const restPromise=(async()=>{
-    try{
-      const r=await fetchWithDeadline(restUrl,{},3500);
-      if(!r.ok){attempts.push({probe:"rest",httpStatus:r.status,ok:false,url:restUrl});return null}
-      const j=await r.json();
-      const status=String(j?.status||j?.broadcastStatus||"").toLowerCase();
-      attempts.push({probe:"rest",httpStatus:r.status,ok:true,status:status||null,url:restUrl});
-      if(status)return {live:["broadcasting","live","streaming"].includes(status),probe:"rest",status};
-    }catch(err){attempts.push({probe:"rest",ok:false,url:restUrl,error:err?.name==='AbortError'?'timeout':String(err?.message||err)})}
-    return null;
-  })();
-  const hlsPromises=hlsUrls.map((url,index)=>(async()=>{
+  if(!c)return {live:false,probe:"hls",status:"invalid-url",error:"Invalid stream URL",durationMs:0,attempts:[]};
+  const started=Date.now(),stamp=started,attempts=[];
+  const primary=`${c.origin}/${c.app}/streams/${encodeURIComponent(c.id)}.m3u8?_=${stamp}`;
+  const adaptive=`${c.origin}/${c.app}/streams/${encodeURIComponent(c.id)}_adaptive.m3u8?_=${stamp}`;
+  for(const [index,url] of [primary,adaptive].entries()){
     try{
       const r=await fetchWithDeadline(url,{},3500);
-      if(!r.ok){attempts.push({probe:`hls-${index+1}`,httpStatus:r.status,ok:false,url});return null}
+      if(r.status===404){
+        attempts.push({probe:index===0?"hls":"hls-adaptive",httpStatus:404,ok:false,url,status:"not-found"});
+        // This Ant Media deployment creates the primary manifest while a publisher
+        // is live and removes it when publishing stops. Primary 404 is authoritative OFFLINE.
+        if(index===0)return {live:false,probe:"hls",status:"404-offline",httpStatus:404,url,durationMs:Date.now()-started,attempts};
+        continue;
+      }
+      if(!r.ok){
+        attempts.push({probe:index===0?"hls":"hls-adaptive",httpStatus:r.status,ok:false,url,status:`http-${r.status}`});
+        continue;
+      }
       const text=await r.text();
-      const playlist=text.includes("#EXTM3U");
-      attempts.push({probe:`hls-${index+1}`,httpStatus:r.status,ok:playlist,url});
-      return playlist?{live:true,probe:"hls",status:"playlist"}:null;
-    }catch(err){attempts.push({probe:`hls-${index+1}`,ok:false,url,error:err?.name==='AbortError'?'timeout':String(err?.message||err)});return null}
-  })());
-  const webrtcPromise=probeMorningAnnouncementsWebRtc(c,3500);
-  const results=await Promise.all([restPromise,...hlsPromises,webrtcPromise]);
-  const webRtcResult=results[results.length-1];
-  if(Array.isArray(webRtcResult?.attempts))attempts.push(...webRtcResult.attempts.map(x=>({probe:x.probe,status:x.status,url:x.url,error:x.error,live:x.live})));
-  const liveResult=results.find(x=>x?.live===true);
-  if(liveResult)return {...liveResult,durationMs:Date.now()-started,attempts};
-  // Prefer a definitive WebRTC "not streaming" answer over an ambiguous timeout/blocked REST path.
-  if(webRtcResult?.live===false)return {...webRtcResult,durationMs:Date.now()-started,attempts};
-  const restResult=results[0];
-  if(restResult)return {...restResult,durationMs:Date.now()-started,attempts};
-  return {live:false,probe:"none",status:"offline",durationMs:Date.now()-started,attempts};
+      const valid=text.startsWith("#EXTM3U")&&(text.includes("#EXTINF")||text.includes("#EXT-X-STREAM-INF"));
+      attempts.push({probe:index===0?"hls":"hls-adaptive",httpStatus:r.status,ok:valid,url,status:valid?"playlist":"invalid-playlist"});
+      if(valid){
+        const seq=(text.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/)||[])[1]||null;
+        return {live:true,probe:"hls",status:"playlist",httpStatus:r.status,url,mediaSequence:seq,durationMs:Date.now()-started,attempts};
+      }
+    }catch(err){
+      attempts.push({probe:index===0?"hls":"hls-adaptive",ok:false,url,error:err?.name==='AbortError'?"timeout":String(err?.message||err)});
+    }
+  }
+  // Network/proxy failures are UNKNOWN, not OFFLINE, so they do not consume
+  // the two-confirmation stream-ended guard.
+  return {live:null,probe:"hls",status:"unavailable",error:"HLS probe unavailable",durationMs:Date.now()-started,attempts};
 }
 
 function localMinutesNow(date=new Date()){return date.getHours()*60+date.getMinutes()}
@@ -763,12 +758,14 @@ async function morningAnnouncementsTick(){
     }
     const probe=await probeMorningAnnouncementsLive();
     morningAnnouncementsRuntime.lastCheck=new Date().toISOString();morningAnnouncementsRuntime.probe=probe.probe;morningAnnouncementsRuntime.probeStatus=probe.status||null;morningAnnouncementsRuntime.probeDurationMs=probe.durationMs??null;morningAnnouncementsRuntime.lastError=probe.error||null;
-    if(probe.live){
+    if(probe.live===true){
       morningAnnouncementsRuntime.live=true;morningAnnouncementsRuntime.offlineCount=0;
       if(!morningAnnouncementsRuntime.active||Date.now()-morningAnnouncementsRuntime.lastAssertAt>30000)await assertMorningAnnouncements({mode:"automatic"});
-    }else{
+    }else if(probe.live===false){
       morningAnnouncementsRuntime.live=false;morningAnnouncementsRuntime.offlineCount++;
       if(morningAnnouncementsRuntime.active&&morningAnnouncementsRuntime.offlineCount>=morningAnnouncements.offlineConfirmations)await releaseMorningAnnouncements("stream-ended");
+    }else{
+      morningAnnouncementsRuntime.lastError=probe.error||"HLS probe unavailable";
     }
   }catch(err){morningAnnouncementsRuntime.lastError=err.message;diagnosticError?.(err,{component:"automation",operation:"morning-announcements-watch"})}
   finally{morningAnnouncementsTickBusy=false}
@@ -4097,7 +4094,7 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "classroom-hub-backend",
-    version: "1.0.0-alpha.64",
+    version: "1.0.0-alpha.65",
     runtime: publicRuntime()
   });
 });
@@ -4265,14 +4262,14 @@ app.post("/api/v1/automations/morning-announcements/check",requireControl,async(
     morningAnnouncementsRuntime.probeStatus=probe.status||null;
     morningAnnouncementsRuntime.probeDurationMs=probe.durationMs??null;
     morningAnnouncementsRuntime.lastError=probe.error||null;
-    morningAnnouncementsRuntime.live=!!probe.live;
-    if(probe.live){
+    if(probe.live===true){
+      morningAnnouncementsRuntime.live=true;
       morningAnnouncementsRuntime.offlineCount=0;
       morningAnnouncementsRuntime.lastLiveAt=morningAnnouncementsRuntime.lastCheck;
-    }else if(morningAnnouncementsRuntime.active){
-      morningAnnouncementsRuntime.offlineCount++;
-    }else{
-      morningAnnouncementsRuntime.offlineCount=0;
+    }else if(probe.live===false){
+      morningAnnouncementsRuntime.live=false;
+      if(morningAnnouncementsRuntime.active)morningAnnouncementsRuntime.offlineCount++;
+      else morningAnnouncementsRuntime.offlineCount=0;
     }
     res.json({ok:true,...probe,config:morningAnnouncements,runtime:morningAnnouncementsRuntime});
   }catch(err){
@@ -4498,7 +4495,7 @@ async function buildDiagnosticsSnapshot(){
     ok:true,
     generatedAt:now.toISOString(),
     system:{
-      version:"1.0.0-alpha.64",
+      version:"1.0.0-alpha.65",
       node:process.version,
       platform:process.platform,
       arch:process.arch,
@@ -4556,7 +4553,7 @@ async function buildDiagnosticsSnapshot(){
 }
 
 
-// v1.0.0-alpha.64 local authentication, users and setup completion.
+// v1.0.0-alpha.65 local authentication, users and setup completion.
 app.get("/api/v1/auth/status",(req,res)=>{
   const user=requestUser(req);res.json({ok:true,authEnabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:user?{id:user.id,username:user.username,displayName:user.displayName,role:user.role}:null,userCount:dbStore.userCount()});
 });
@@ -4589,8 +4586,8 @@ app.delete("/api/v1/admin/sessions/:id",requireAdmin,(req,res)=>{const sess=dbSt
 app.put("/api/v1/admin/auth-policy",requireAdmin,(req,res)=>{try{const policy=dbStore.setAuthPolicy(req.body||{});audit({kind:"admin.auth-policy.update",policy});res.json({ok:true,policy})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.put("/api/v1/admin/setup-state",requireAdmin,(req,res)=>{const completed=dbStore.setSetupCompleted(req.body?.completed!==false);res.json({ok:true,completed})});
 
-// v1.0.0-alpha.64 database-native administration/configuration APIs.
-app.get("/api/v1/admin/health",requireAdmin,(req,res)=>{const u=requestUser(req),db=dbStore.databaseInfo();res.json({ok:true,version:"1.0.0-alpha.64",generatedAt:new Date().toISOString(),auth:{enabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:u?{id:u.id,username:u.username,displayName:u.displayName,role:u.role}:null,policy:dbStore.authPolicy(),activeSessions:dbStore.listAllUserSessions().length},runtime:{room:deviceConfig.room||ROOM_NAME,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError,lastConnectAt:runtime.mqtt.lastConnectAt},websocketClients:runtime.websocketClients,onlineDisplays:Object.values(runtime.displays||{}).filter(x=>x&&x.online).length},database:db});});
+// v1.0.0-alpha.65 database-native administration/configuration APIs.
+app.get("/api/v1/admin/health",requireAdmin,(req,res)=>{const u=requestUser(req),db=dbStore.databaseInfo();res.json({ok:true,version:"1.0.0-alpha.65",generatedAt:new Date().toISOString(),auth:{enabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:u?{id:u.id,username:u.username,displayName:u.displayName,role:u.role}:null,policy:dbStore.authPolicy(),activeSessions:dbStore.listAllUserSessions().length},runtime:{room:deviceConfig.room||ROOM_NAME,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError,lastConnectAt:runtime.mqtt.lastConnectAt},websocketClients:runtime.websocketClients,onlineDisplays:Object.values(runtime.displays||{}).filter(x=>x&&x.online).length},database:db});});
 app.get("/api/v1/admin/summary",requireAdmin,(_req,res)=>{
   const cfg=dbStore.getAdminConfig(),db=dbStore.databaseInfo();
   res.json({ok:true,site:cfg.site,database:db,counts:{
@@ -4898,7 +4895,7 @@ app.post("/api/v1/diagnostics/test",requireControl,async(req,res)=>{
     catch(err){results[name]={ok:false,durationMs:Date.now()-started,error:err.message};diagnosticError(err,{component:"diagnostics.test",operation:name})}
   };
 
-  if(test==="all"||test==="hub")await perform("hub",async()=>({version:"1.0.0-alpha.64",uptime:process.uptime()}));
+  if(test==="all"||test==="hub")await perform("hub",async()=>({version:"1.0.0-alpha.65",uptime:process.uptime()}));
   if(test==="all"||test==="mqtt")await perform("mqtt",async()=>{
     if(!runtime.mqtt.connected)throw new Error("MQTT is not connected");
     return {connected:true,url:MQTT_URL};
@@ -6028,7 +6025,7 @@ wss.on("connection", (ws, req) => {
           wsSend(ws, {
             type: "hello.ack",
             role: "preview",
-            version: "1.0.0-alpha.64",
+            version: "1.0.0-alpha.65",
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
@@ -6059,7 +6056,7 @@ wss.on("connection", (ws, req) => {
           wsSend(ws, {
             type: "hello.ack",
             role: "display",
-            version: "1.0.0-alpha.64",
+            version: "1.0.0-alpha.65",
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
@@ -6080,11 +6077,11 @@ wss.on("connection", (ws, req) => {
           // Hub upgrade automatically refresh legacy/stale kiosk browsers without requiring
           // a manual visit to every TV.
           const clientVersion=String(msg.clientVersion||msg.meta?.build||"");
-          if(clientVersion!=="1.0.0-alpha.64") {
-            audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:"1.0.0-alpha.64"});
+          if(clientVersion!=="1.0.0-alpha.65") {
+            audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:"1.0.0-alpha.65"});
             setTimeout(()=>{
               if(ws.readyState===WebSocket.OPEN){
-                wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:"1.0.0-alpha.64"}}});
+                wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:"1.0.0-alpha.65"}}});
               }
             },700);
           }
@@ -6413,7 +6410,7 @@ try{
 }catch(err){console.warn(`Legacy audit migration skipped: ${err.message}`)}
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Classroom Control Hub Backend v1.0.0-alpha.64 listening on http://0.0.0.0:${PORT}`);
+  console.log(`Classroom Control Hub Backend v1.0.0-alpha.65 listening on http://0.0.0.0:${PORT}`);
   console.log(`Scheduler timezone: ${SCHEDULER_TIMEZONE}; local time: ${schedulerLocalTimestamp()}; catch-up: ${SCHEDULER_CATCHUP_MINUTES} minute(s)`);
   console.log(`Room: ${deviceConfig.room || ROOM_NAME}`);
   console.log(`MQTT: ${MQTT_URL || "disabled"}`);

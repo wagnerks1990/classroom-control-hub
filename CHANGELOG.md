@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-alpha.65
+
+- Make Ant Media HLS the authoritative Morning Announcements live/offline probe.
+- Treat primary HLS HTTP 200 plus a valid playlist as LIVE and HTTP 404 as OFFLINE.
+- Stop treating blocked REST/WebRTC probes as stream-state evidence.
+- Treat network/proxy failures as UNKNOWN so transient failures do not consume offline confirmations.
+- Preserve two confirmed OFFLINE checks before automatic release.
+- Report HLS media sequence when available for diagnostics.
+
 ## 1.0.0-alpha.64
 
 - Morning Announcements now use a same-origin integrated Ant Media/HLS player on classroom displays.
