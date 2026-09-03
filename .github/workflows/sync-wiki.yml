@@ -1,0 +1,54 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wiki/**'
+      - 'docs/WIKI-SYNC.md'
+      - 'scripts/sync-wiki.sh'
+      - '.github/workflows/sync-wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure Git identity
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Clone Wiki
+        env:
+          GH_TOKEN: ${{ secrets.WIKI_PUSH_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" /tmp/wiki
+
+      - name: Synchronize Wiki mirror
+        run: |
+          set -euo pipefail
+          find /tmp/wiki -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a wiki/. /tmp/wiki/
+          cd /tmp/wiki
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Wiki already synchronized.'
+            exit 0
+          fi
+          git commit -m "Sync Wiki from ${GITHUB_SHA}"
+
+      - name: Push Wiki
+        env:
+          GH_TOKEN: ${{ secrets.WIKI_PUSH_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          cd /tmp/wiki
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git"
+          git push origin HEAD:master
