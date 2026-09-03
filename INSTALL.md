@@ -1,30 +1,94 @@
 # Installation and Migration
 
+## Standard production path
+
+The standard production checkout is:
+
+```text
+/opt/classroom-hub
+```
+
+The standard backup root is:
+
+```text
+/opt/classroom-hub-backups
+```
+
+The native Host Agent listens on:
+
+```text
+/run/classroom-control-hub/host-agent.sock
+```
+
 ## Existing Classroom Control Hub deployment
 
-Extract the release on the Classroom Control Hub server and run:
+From a checked-out release or staging clone, run:
 
 ```bash
-sudo bash classroom-hub/install.sh
+sudo bash install.sh
 ```
 
 The installer:
 
-1. Detects `/opt/classroom-control-hub` and the configured services-stack directory (legacy Classroom installs default to `/opt/services`).
-2. Creates `/opt/classroom-control-hub-backups/migration-<timestamp>/`.
-3. Preserves the existing Classroom Control Hub `data/`, `.env`, `config/devices.json`, and `config/hardware.json`.
+1. Uses `/opt/classroom-hub` by default, or `CLASSROOM_HUB_DIR` when explicitly overridden.
+2. Creates `/opt/classroom-hub-backups/migration-<timestamp>/` by default.
+3. Preserves the existing `.env`, `data/`, `config/devices.json`, and `config/hardware.json`.
 4. Leaves the existing services-stack runtime data in place.
-5. Merges the 1.0 application and maintenance agent.
-6. Generates `MAINTENANCE_TOKEN` if needed.
-7. Builds and starts the Classroom Control Hub and maintenance-agent containers.
-8. Validates `/health` before reporting success.
+5. Installs/reloads the native Host Agent and verifies `/run/classroom-control-hub/host-agent.sock`.
+6. Builds and starts the Classroom Control Hub and maintenance-agent containers.
+7. Validates component version convergence and `/health` before reporting success.
 
-Existing Mosquitto, Govee2MQTT, Node-RED and other containers are not deleted. They can be adopted into management from **System Management → Managed Integrations**.
+Existing Mosquitto, Govee2MQTT, Node-RED, Music Assistant, Veyon, and other external services are not deleted by the installer.
 
-## New deployment
+## Git-first production deployment
 
-The same installer can deploy to an empty `/opt/classroom-control-hub`. Copy `.env.example` values are created automatically. Site configuration can then be managed through the web controller.
+For the current production model, clone directly into the standard path:
+
+```bash
+sudo git clone https://github.com/wagnerks1990/classroom-control-hub.git /opt/classroom-hub
+cd /opt/classroom-hub
+sudo cp .env.example .env
+```
+
+Edit `.env` for the local site before starting the stack. Keep the production `.env` local and never commit it.
+
+Then install/start:
+
+```bash
+sudo bash install.sh
+```
+
+## Normal production updates
+
+After the initial migration, use Git rather than replacing the application tree with ZIP contents:
+
+```bash
+cd /opt/classroom-hub
+sudo git fetch origin
+sudo git pull --ff-only origin main
+cat VERSION
+sudo docker compose build --no-cache
+sudo docker compose up -d
+sudo docker compose ps
+curl -fsS http://localhost:3000/health
+```
+
+Take a backup first. Do not overwrite local `.env`, databases, data, uploads, backups, private keys, or master-key material.
+
+## Host Agent verification
+
+After installation or migration:
+
+```bash
+sudo systemctl status classroom-hub-host-agent.service --no-pager -l
+sudo test -S /run/classroom-control-hub/host-agent.sock && echo "Host Agent socket OK"
+sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control-hub/
+```
+
+The host and maintenance container must both see `host-agent.sock`.
 
 ## Rollback
 
-The installer prints the pre-migration backup directory. If a migration fails, stop the new stack, restore the saved Classroom Control Hub directory, and start the prior Compose configuration.
+The installer prints the pre-migration backup directory. If a migration fails, stop the new stack, restore the matching application/runtime snapshot, restore any database backup required by that version, and start the previous Compose configuration.
+
+See `GITHUB-MIGRATION.md` and `docs/DEPLOYMENT.md` for the full production workflow.
