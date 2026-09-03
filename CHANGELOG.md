@@ -1,3 +1,13 @@
+## 1.0.0-alpha.66 - 2026-09-03
+
+### Fixed
+- Morning Announcements now perform a failsafe scheduler resync when the stream ends instead of restoring a snapshot or guessing one historical event.
+- The newest currently applicable display automation is selected independently per display target.
+- Class-linked automations are only eligible while their linked class occurrence is currently active.
+- Deferred automations are consumed by the resync so they cannot double-fire after release.
+- Winning automations are re-run oldest-to-newest so newer overlapping automation remains authoritative.
+- Background Music resumes only after display automation reconciliation completes.
+
 # Changelog
 
 ## 1.0.0-alpha.65

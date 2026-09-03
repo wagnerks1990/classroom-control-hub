@@ -700,38 +700,109 @@ function queueAutomationDuringAnnouncements(storedEvent,event,dateKey,scheduledM
   storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:`${dateKey} ${event.time}`,resolvedClassId:event.classId||null,ok:true,deferred:true,message:"Deferred while Morning Announcements have priority"};
   return key;
 }
-async function replayDeferredAnnouncementAutomations(){
-  const queued=[...deferredAnnouncementAutomations.values()].sort((a,b)=>String(a.scheduledMinuteKey).localeCompare(String(b.scheduledMinuteKey)));
-  deferredAnnouncementAutomations.clear();
-  const replayed=new Set();
-  for(const item of queued){
-    const storedEvent=classroomAutomations.events.find(x=>x.id===item.storedEventId);if(!storedEvent)continue;
-    try{
-      const result=await runClassroomAutomation(item.event,{manual:false,bypassAnnouncementPriority:true});
-      storedEvent.lastExecByClass=storedEvent.lastExecByClass||{};storedEvent.lastExecByClass[item.occurrenceKey]=item.scheduledMinuteKey;storedEvent.lastExec=item.scheduledMinuteKey;
-      storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:`${item.dateKey} ${item.event.time}`,resolvedClassId:item.event.classId||null,ok:result.ok!==false,deferredReplay:true,message:"Applied after Morning Announcements ended"};
-      storedEvent.updatedAt=new Date().toISOString();replayed.add(`${storedEvent.id}:${item.occurrenceKey}:${item.scheduledMinuteKey}`);
-    }catch(err){diagnosticError(err,{component:"automation",operation:"announcement-deferred-replay",data:{automationId:item.storedEventId}})}
+function automationDeferredDisplayTargets(event){
+  const out=new Set();
+  const collect=(action,targets)=>{
+    const a=String(action||"").toLowerCase();
+    if(!a.startsWith("display."))return;
+    for(const id of automationDisplayTargets(targets||[]))out.add(id);
+  };
+  collect(event.action,event.targets);
+  for(const step of Array.isArray(event.actions)?event.actions:[]){
+    const action=step?.action||event.action;
+    const stepDomain=automationTargetDomain(action),eventDomain=automationTargetDomain(event.action);
+    let targets;
+    if(step?.useEventTargets!==false&&stepDomain===eventDomain)targets=event.targets;
+    else if(Array.isArray(step?.targets)&&step.targets.length)targets=step.targets;
+    else if(stepDomain==="display")targets=["all"];
+    else targets=[];
+    collect(action,targets);
   }
-  if(queued.length)persistAutomations();
-  return replayed;
+  const timer=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
+  if(timer?.enabled){
+    const targets=timer.useEventTargets!==false?event.targets:(Array.isArray(timer.targets)&&timer.targets.length?timer.targets:event.targets);
+    for(const id of automationDisplayTargets(targets||[]))out.add(id);
+  }
+  return out;
 }
-async function restoreLatestDisplayAutomationAfterAnnouncements(replayed=new Set(),now=new Date()){
-  const dateKey=localDateKey(now),nowMinutes=localMinutesNow(now);let best=null;
+function automationOccurrenceScheduledMinutes(event){
+  const [h,m]=String(event?.time||"00:00").split(":").map(Number);
+  return (Number.isFinite(h)?h:0)*60+(Number.isFinite(m)?m:0);
+}
+function automationOccurrenceIsCurrentlyApplicable(event,now=new Date()){
+  if(!event||!automationMatchesDate(event,now).match)return false;
+  const scheduled=automationOccurrenceScheduledMinutes(event),current=localMinutesNow(now);
+  if(scheduled>current)return false;
+  if(event._class){
+    const start=Number(event._classStartAt),end=Number(event._classEndAt),stamp=now.getTime();
+    if(Number.isFinite(start)&&stamp<start)return false;
+    if(Number.isFinite(end)&&stamp>=end)return false;
+  }
+  return automationDeferredDisplayTargets(event).size>0;
+}
+function currentAutomationDisplayWinners(now=new Date()){
+  const candidates=[];
   for(const storedEvent of classroomAutomations.events){
-    if(!storedEvent?.enabled||automationTargetDomain(storedEvent.action)!=="display")continue;
+    if(!storedEvent?.enabled)continue;
     for(const event of resolveAutomationOccurrences(storedEvent,now)){
-      if(!automationMatchesDate(event,now).match)continue;
-      const [h,m]=String(event.time||"00:00").split(":").map(Number),mins=h*60+m;if(mins>nowMinutes)continue;
-      const key=`${storedEvent.id}:${event.classId||"manual"}:${dateKey} ${event.time}`;
-      if(replayed.has(key))continue;
-      if(!best||mins>best.mins)best={storedEvent,event,mins,key};
+      if(!automationOccurrenceIsCurrentlyApplicable(event,now))continue;
+      const targets=[...automationDeferredDisplayTargets(event)];
+      if(!targets.length)continue;
+      candidates.push({storedEvent,event,targets,scheduledMinutes:automationOccurrenceScheduledMinutes(event)});
     }
   }
-  if(best){
-    try{await runClassroomAutomation(best.event,{manual:false,bypassAnnouncementPriority:true});best.storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:`${dateKey} ${best.event.time}`,resolvedClassId:best.event.classId||null,ok:true,announcementRestore:true,message:"Restored after Morning Announcements"};best.storedEvent.updatedAt=new Date().toISOString();persistAutomations()}
-    catch(err){diagnosticError(err,{component:"automation",operation:"announcement-restore-current",data:{automationId:best.storedEvent.id}})}
+  const winnersByTarget=new Map();
+  for(const candidate of candidates){
+    for(const id of candidate.targets){
+      const prior=winnersByTarget.get(id);
+      if(!prior||candidate.scheduledMinutes>prior.scheduledMinutes||
+        (candidate.scheduledMinutes===prior.scheduledMinutes&&String(candidate.storedEvent.updatedAt||"")>String(prior.storedEvent.updatedAt||""))){
+        winnersByTarget.set(id,candidate);
+      }
+    }
   }
+  const unique=new Map();
+  for(const candidate of winnersByTarget.values()){
+    const key=`${candidate.storedEvent.id}:${candidate.event.classId||"manual"}:${candidate.event.time}`;
+    if(!unique.has(key))unique.set(key,candidate);
+  }
+  return [...unique.values()].sort((a,b)=>a.scheduledMinutes-b.scheduledMinutes||String(a.storedEvent.id).localeCompare(String(b.storedEvent.id)));
+}
+function consumeDeferredAnnouncementAutomations(){
+  const queued=[...deferredAnnouncementAutomations.values()];
+  deferredAnnouncementAutomations.clear();
+  for(const item of queued){
+    const storedEvent=classroomAutomations.events.find(x=>x.id===item.storedEventId);if(!storedEvent)continue;
+    storedEvent.lastExecByClass=storedEvent.lastExecByClass||{};
+    storedEvent.lastExecByClass[item.occurrenceKey]=item.scheduledMinuteKey;
+    storedEvent.lastExec=item.scheduledMinuteKey;
+    storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:`${item.dateKey} ${item.event.time}`,resolvedClassId:item.event.classId||null,ok:true,deferred:true,resynced:true,message:"Consumed by post-announcement scheduler resync"};
+    storedEvent.updatedAt=new Date().toISOString();
+  }
+  if(queued.length)persistAutomations();
+  return queued.length;
+}
+async function resyncCurrentDisplayAutomationsAfterAnnouncements(reason="stream-ended"){
+  const now=new Date(),winners=currentAutomationDisplayWinners(now),results=[];
+  for(const candidate of winners){
+    const occurrenceKey=candidate.event.classId||"manual";
+    const scheduledMinuteKey=`${localDateKey(now)} ${candidate.event.time}`;
+    try{
+      const result=await runClassroomAutomation(candidate.event,{manual:false,bypassAnnouncementPriority:true});
+      candidate.storedEvent.lastExecByClass=candidate.storedEvent.lastExecByClass||{};
+      candidate.storedEvent.lastExecByClass[occurrenceKey]=scheduledMinuteKey;
+      candidate.storedEvent.lastExec=scheduledMinuteKey;
+      candidate.storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:scheduledMinuteKey,resolvedClassId:candidate.event.classId||null,ok:result.ok!==false,resync:true,message:"Re-applied after Morning Announcements ended"};
+      candidate.storedEvent.updatedAt=new Date().toISOString();
+      results.push({automationId:candidate.storedEvent.id,name:candidate.storedEvent.name,classId:candidate.event.classId||null,time:candidate.event.time,targets:candidate.targets,ok:result.ok!==false});
+    }catch(err){
+      results.push({automationId:candidate.storedEvent.id,name:candidate.storedEvent.name,classId:candidate.event.classId||null,time:candidate.event.time,targets:candidate.targets,ok:false,error:err.message});
+      diagnosticError(err,{component:"automation",operation:"announcement-post-resync",data:{automationId:candidate.storedEvent.id,reason}});
+    }
+  }
+  if(winners.length)persistAutomations();
+  audit({kind:"automation.morning-announcements.resync",reason,at:now.toISOString(),winnerCount:winners.length,results});
+  return {winnerCount:winners.length,results};
 }
 async function releaseMorningAnnouncements(reason="stream-ended"){
   if(!morningAnnouncementsRuntime.active)return;
@@ -739,10 +810,10 @@ async function releaseMorningAnnouncements(reason="stream-ended"){
   if(targets.length)await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-release"}},"automation");
   setMorningAnnouncementPriorityTargets(targets,false);
   morningAnnouncementsRuntime.active=false;morningAnnouncementsRuntime.mode=null;morningAnnouncementsRuntime.targets=[];morningAnnouncementsRuntime.lastEndedAt=new Date().toISOString();morningAnnouncementsRuntime.lastAssertAt=0;
-  const replayed=await replayDeferredAnnouncementAutomations();
-  await restoreLatestDisplayAutomationAfterAnnouncements(replayed,new Date());
+  const deferredConsumed=consumeDeferredAnnouncementAutomations();
+  const resync=await resyncCurrentDisplayAutomationsAfterAnnouncements(reason);
   backgroundMusicTick().catch(()=>{});
-  audit({kind:"automation.morning-announcements.stop",reason,targets,deferredReplayed:replayed.size});
+  audit({kind:"automation.morning-announcements.stop",reason,targets,deferredConsumed,resyncWinnerCount:resync.winnerCount,resyncResults:resync.results});
 }
 let morningAnnouncementsTickBusy=false;
 async function morningAnnouncementsTick(){
@@ -4094,7 +4165,7 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "classroom-hub-backend",
-    version: "1.0.0-alpha.65",
+    version: "1.0.0-alpha.66",
     runtime: publicRuntime()
   });
 });
@@ -4495,7 +4566,7 @@ async function buildDiagnosticsSnapshot(){
     ok:true,
     generatedAt:now.toISOString(),
     system:{
-      version:"1.0.0-alpha.65",
+      version:"1.0.0-alpha.66",
       node:process.version,
       platform:process.platform,
       arch:process.arch,
@@ -4553,7 +4624,7 @@ async function buildDiagnosticsSnapshot(){
 }
 
 
-// v1.0.0-alpha.65 local authentication, users and setup completion.
+// v1.0.0-alpha.66 local authentication, users and setup completion.
 app.get("/api/v1/auth/status",(req,res)=>{
   const user=requestUser(req);res.json({ok:true,authEnabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:user?{id:user.id,username:user.username,displayName:user.displayName,role:user.role}:null,userCount:dbStore.userCount()});
 });
@@ -4586,8 +4657,8 @@ app.delete("/api/v1/admin/sessions/:id",requireAdmin,(req,res)=>{const sess=dbSt
 app.put("/api/v1/admin/auth-policy",requireAdmin,(req,res)=>{try{const policy=dbStore.setAuthPolicy(req.body||{});audit({kind:"admin.auth-policy.update",policy});res.json({ok:true,policy})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.put("/api/v1/admin/setup-state",requireAdmin,(req,res)=>{const completed=dbStore.setSetupCompleted(req.body?.completed!==false);res.json({ok:true,completed})});
 
-// v1.0.0-alpha.65 database-native administration/configuration APIs.
-app.get("/api/v1/admin/health",requireAdmin,(req,res)=>{const u=requestUser(req),db=dbStore.databaseInfo();res.json({ok:true,version:"1.0.0-alpha.65",generatedAt:new Date().toISOString(),auth:{enabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:u?{id:u.id,username:u.username,displayName:u.displayName,role:u.role}:null,policy:dbStore.authPolicy(),activeSessions:dbStore.listAllUserSessions().length},runtime:{room:deviceConfig.room||ROOM_NAME,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError,lastConnectAt:runtime.mqtt.lastConnectAt},websocketClients:runtime.websocketClients,onlineDisplays:Object.values(runtime.displays||{}).filter(x=>x&&x.online).length},database:db});});
+// v1.0.0-alpha.66 database-native administration/configuration APIs.
+app.get("/api/v1/admin/health",requireAdmin,(req,res)=>{const u=requestUser(req),db=dbStore.databaseInfo();res.json({ok:true,version:"1.0.0-alpha.66",generatedAt:new Date().toISOString(),auth:{enabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:u?{id:u.id,username:u.username,displayName:u.displayName,role:u.role}:null,policy:dbStore.authPolicy(),activeSessions:dbStore.listAllUserSessions().length},runtime:{room:deviceConfig.room||ROOM_NAME,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError,lastConnectAt:runtime.mqtt.lastConnectAt},websocketClients:runtime.websocketClients,onlineDisplays:Object.values(runtime.displays||{}).filter(x=>x&&x.online).length},database:db});});
 app.get("/api/v1/admin/summary",requireAdmin,(_req,res)=>{
   const cfg=dbStore.getAdminConfig(),db=dbStore.databaseInfo();
   res.json({ok:true,site:cfg.site,database:db,counts:{
@@ -4895,7 +4966,7 @@ app.post("/api/v1/diagnostics/test",requireControl,async(req,res)=>{
     catch(err){results[name]={ok:false,durationMs:Date.now()-started,error:err.message};diagnosticError(err,{component:"diagnostics.test",operation:name})}
   };
 
-  if(test==="all"||test==="hub")await perform("hub",async()=>({version:"1.0.0-alpha.65",uptime:process.uptime()}));
+  if(test==="all"||test==="hub")await perform("hub",async()=>({version:"1.0.0-alpha.66",uptime:process.uptime()}));
   if(test==="all"||test==="mqtt")await perform("mqtt",async()=>{
     if(!runtime.mqtt.connected)throw new Error("MQTT is not connected");
     return {connected:true,url:MQTT_URL};
@@ -6025,7 +6096,7 @@ wss.on("connection", (ws, req) => {
           wsSend(ws, {
             type: "hello.ack",
             role: "preview",
-            version: "1.0.0-alpha.65",
+            version: "1.0.0-alpha.66",
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
@@ -6056,7 +6127,7 @@ wss.on("connection", (ws, req) => {
           wsSend(ws, {
             type: "hello.ack",
             role: "display",
-            version: "1.0.0-alpha.65",
+            version: "1.0.0-alpha.66",
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
@@ -6077,11 +6148,11 @@ wss.on("connection", (ws, req) => {
           // Hub upgrade automatically refresh legacy/stale kiosk browsers without requiring
           // a manual visit to every TV.
           const clientVersion=String(msg.clientVersion||msg.meta?.build||"");
-          if(clientVersion!=="1.0.0-alpha.65") {
-            audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:"1.0.0-alpha.65"});
+          if(clientVersion!=="1.0.0-alpha.66") {
+            audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:"1.0.0-alpha.66"});
             setTimeout(()=>{
               if(ws.readyState===WebSocket.OPEN){
-                wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:"1.0.0-alpha.65"}}});
+                wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:"1.0.0-alpha.66"}}});
               }
             },700);
           }
@@ -6410,7 +6481,7 @@ try{
 }catch(err){console.warn(`Legacy audit migration skipped: ${err.message}`)}
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Classroom Control Hub Backend v1.0.0-alpha.65 listening on http://0.0.0.0:${PORT}`);
+  console.log(`Classroom Control Hub Backend v1.0.0-alpha.66 listening on http://0.0.0.0:${PORT}`);
   console.log(`Scheduler timezone: ${SCHEDULER_TIMEZONE}; local time: ${schedulerLocalTimestamp()}; catch-up: ${SCHEDULER_CATCHUP_MINUTES} minute(s)`);
   console.log(`Room: ${deviceConfig.room || ROOM_NAME}`);
   console.log(`MQTT: ${MQTT_URL || "disabled"}`);

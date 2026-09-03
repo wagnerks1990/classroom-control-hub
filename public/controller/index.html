@@ -260,7 +260,7 @@ nav button{min-width:135px}
       </div>
       <div>
         <div class="brand" id="brandProductName">Classroom <span class="green">Hub</span></div>
-        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.65</span></div>
+        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.66</span></div>
         <div class="brandStatus">
           <div id="brandDateTime">Loading date/time…</div>
           <div id="brandCycle">Loading school cycle…</div>
@@ -1100,7 +1100,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 </section>
 <div class="footerBrand">
-  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.65</span>
+  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.66</span>
   <span class="herd">HERD STRONG</span>
   <span>Classroom Control Hub</span>
 </div>
@@ -1116,7 +1116,7 @@ async function api(url,opt={}){const r=await fetch(url,{cache:'no-store',credent
 function jpost(url,obj){return api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)})}
 let toastTimer=null;function notify(message,type='info'){const el=document.getElementById('hubToast');if(!el)return;el.textContent=String(message||'');el.style.display='block';el.style.borderColor=type==='error'?'#9b3a3a':type==='success'?'#2d8a57':'#3a4a5a';clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display='none',4500)}
 
-const CLASSROOM_HUB_VERSION='v1.0.0-alpha.65';
+const CLASSROOM_HUB_VERSION='v1.0.0-alpha.66';
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&loginOverlay?.style.display==='flex'&&document.activeElement===loginPassword)performLogin()});
 let brandCycleState=null;
 

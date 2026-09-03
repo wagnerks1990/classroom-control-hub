@@ -39,7 +39,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#000;dis
 <script type="module">
 import {wsUrl,getDisplayId} from '/shared/common.js';
 import {SendspinPlayer} from '/display/sendspin.bundle.js';
-const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,MIN_FONT=12,DISPLAY_BUILD='1.0.0-alpha.65';
+const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,MIN_FONT=12,DISPLAY_BUILD='1.0.0-alpha.66';
 const id=getDisplayId(),preview=new URLSearchParams(location.search).get('preview')==='1';
 const stage=document.getElementById('stage'),media=document.getElementById('media'),titleRegion=document.getElementById('titleRegion'),subtitleRegion=document.getElementById('subtitleRegion'),textLayer=document.getElementById('textLayer'),text=document.getElementById('text'),title=document.getElementById('title'),subtitle=document.getElementById('subtitle'),presentationBlack=document.getElementById('presentationBlack'),identify=document.getElementById('identify'),badge=document.getElementById('badge'),timerOverlay=document.getElementById('timerOverlay'),timerLabel=document.getElementById('timerLabel'),timerValue=document.getElementById('timerValue');
 let ws,timerState={visible:false,running:false,mode:'countdown',durationSeconds:300,remainingSeconds:300},timerTick=null,lastViewportSignature='';
