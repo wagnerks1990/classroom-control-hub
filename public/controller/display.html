@@ -1,0 +1,988 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Classroom Control Hub Controller</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#17202a;background:#edf1f5}
+*{box-sizing:border-box}
+body{margin:0}
+.wrap{max-width:1900px;margin:auto;padding:12px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+h1{margin:0;font-size:22px}
+h2{font-size:15px;margin:0 0 8px}
+h3{font-size:13px;margin:0 0 7px}
+.muted{color:#68727c;font-size:11px}
+.shell{display:grid;grid-template-columns:330px 1fr;gap:12px}
+.left{min-width:0}
+.main{min-width:0}
+.panel{background:#fff;border:1px solid #d7dde3;border-radius:12px;padding:12px;margin-bottom:10px;box-shadow:0 1px 2px #0000000d}
+button,input,textarea,select{font:inherit}
+button{border:1px solid #bcc5cd;background:#f7f9fa;border-radius:8px;padding:7px 10px;cursor:pointer}
+button:hover{filter:brightness(.98)}
+button.primary{background:#1769e0;border-color:#1769e0;color:#fff;font-weight:700}
+button.danger{background:#fff1f0;border-color:#dfa9a4;color:#9b2019}
+button.active{background:#dceaff;border-color:#7aa7e8}
+textarea,input[type=text],input[type=url],input[type=number],select{
+  width:100%;border:1px solid #c9d0d7;border-radius:8px;padding:7px;background:#fbfcfd
+}
+textarea{min-height:90px;resize:vertical}
+input[type=color]{width:100%;height:36px;border:1px solid #c9d0d7;border-radius:8px;padding:2px;background:#fff}
+label{display:block;font-size:11px;font-weight:700;color:#5e6872;margin:7px 0 3px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.targets{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.target{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:6px;border:1px solid #d9dfe5;border-radius:8px;padding:7px}
+.dot{width:9px;height:9px;border-radius:50%;background:#a33}
+.dot.ok{background:#238636}
+.targetName{font-size:11px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.targetMeta{font-size:9px;color:#7a838d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sceneList{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sceneBtn{text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.nav button.active{background:#1769e0;color:#fff;border-color:#1769e0}
+.workspace{display:none}
+.workspace.active{display:block}
+.previewPanel{position:relative}
+.previewHead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+iframe{border:1px solid #cfd6dd;border-radius:10px;background:#000;display:block}
+.previewViewport{
+  position:relative;
+  width:100%;
+  aspect-ratio:16/9;
+  margin:0 auto;
+  overflow:hidden;
+  background:#000;
+  border:1px solid #cfd6dd;
+  border-radius:10px;
+}
+.previewViewport iframe{
+  position:absolute;
+  left:0;
+  top:0;
+  width:1920px;
+  height:1080px;
+  max-width:none;
+  border:0;
+  border-radius:0;
+  transform-origin:0 0;
+  background:#000;
+}
+.previewResolution{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:10px;
+  color:#68727c;
+  white-space:nowrap;
+}
+.mediaGrid{display:grid;grid-template-columns:repeat(3,minmax(160px,1fr));gap:10px}
+.mediaCard{border:1px solid #d8dee5;border-radius:10px;overflow:hidden;background:#fafbfc}
+.mediaThumb{aspect-ratio:16/9;background:#14181d;display:flex;align-items:center;justify-content:center;color:#fff;overflow:hidden}
+.mediaThumb img,.mediaThumb video{width:100%;height:100%;object-fit:cover}
+.mediaBody{padding:7px}
+.mediaName{font-size:11px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mediaMeta{font-size:9px;color:#6f7881;margin-top:2px}
+.drop{border:2px dashed #bcc5cd;border-radius:10px;padding:16px;text-align:center;background:#fafbfc}
+.drop.drag{border-color:#1769e0;background:#edf5ff}
+.resultSummary{font-size:12px;padding:8px;border-radius:8px;background:#f6f8fa}
+.resultSummary.ok{background:#eef8f0;border:1px solid #bedac4}
+.resultSummary.err{background:#fff1f0;border:1px solid #e1b2ae}
+pre{white-space:pre-wrap;word-break:break-word;font-size:10px;max-height:260px;overflow:auto;background:#111820;color:#d9e2ec;padding:8px;border-radius:8px}
+.hidden{display:none}
+hr{border:0;border-top:1px solid #e4e8ec;margin:12px 0}
+.statGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{border:1px solid #d9dfe5;border-radius:9px;padding:10px;text-align:center}
+.stat b{display:block;font-size:20px}
+@media(max-width:1150px){.shell{grid-template-columns:1fr}}
+@media(max-width:800px){.mediaGrid{grid-template-columns:1fr 1fr}.statGrid{grid-template-columns:1fr 1fr}}
+</style>
+
+<style id="live-announcements-controller-theme">
+:root{
+  --herd-green:#2aa866;
+  --herd-green2:#1b7a49;
+  --herd-border:rgba(255,255,255,.10);
+  --herd-border2:rgba(255,255,255,.16);
+  --herd-text:rgba(255,255,255,.92);
+  --herd-muted:rgba(255,255,255,.64);
+  color-scheme:dark;
+}
+html,body{
+  color:var(--herd-text)!important;
+  background:
+    radial-gradient(1100px 700px at 70% -20%,rgba(42,168,102,.22),transparent 55%),
+    radial-gradient(800px 620px at -10% 10%,rgba(27,122,73,.20),transparent 50%),
+    linear-gradient(180deg,#040705,#020403 35%,#040705)!important;
+}
+.panel,.previewPanel,.workspace,.stat,.target{
+  border-color:var(--herd-border)!important;
+  background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02))!important;
+  color:var(--herd-text)!important;
+}
+.panel,.previewPanel{border-radius:18px!important;box-shadow:0 14px 50px rgba(0,0,0,.32)!important}
+button,input,select,textarea{
+  color:var(--herd-text)!important;background:rgba(0,0,0,.28)!important;
+  border-color:var(--herd-border)!important;border-radius:12px!important;
+}
+button:hover{border-color:var(--herd-border2)!important;background:rgba(255,255,255,.07)!important}
+button.active,.nav button.active,.primary{
+  border-color:rgba(42,168,102,.52)!important;
+  background:linear-gradient(180deg,rgba(42,168,102,.25),rgba(27,122,73,.12))!important;
+}
+.dot.ok{background:var(--herd-green)!important;box-shadow:0 0 12px rgba(42,168,102,.55)!important}
+.targetMeta,.muted{color:var(--herd-muted)!important}
+.previewPanel iframe,.previewViewport{background:#020403!important;border-color:var(--herd-border)!important}
+input[type=range],input[type=checkbox]{accent-color:var(--herd-green)!important}
+pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:var(--herd-border)!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Classroom Control Hub Controller</h1>
+      <div class="muted">Classroom Control Hub • v1.0.0-alpha.63 • multi-display controller</div>
+    </div>
+    <div id="conn" class="muted">Connecting…</div>
+  </div>
+
+  <div class="shell">
+    <aside class="left">
+      <div class="panel">
+        <h2>Targets</h2>
+        <div class="toolbar">
+          <button onclick="selectGroup('all')">All</button>
+          <button onclick="selectGroup('front')">Front</button>
+          <button onclick="selectGroup('rear')">Rear</button>
+          <button onclick="selectGroup('hallway')">Hallway</button>
+          <button onclick="clearTargets()">Deselect All</button>
+          <button class="danger" onclick="clearSelectedDisplays()">Clear Selected Screens</button>
+        </div>
+        <div id="targets" class="targets" style="margin-top:8px"></div><div id="targetSelectionSummary" class="muted" style="margin-top:8px">Selected: TV 1</div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+          <h2 style="margin:0">Quick Scenes</h2>
+          <button onclick="showWorkspace('scenes')">Manage</button>
+        </div>
+        <div id="quickScenes" class="sceneList" style="margin-top:8px"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Classroom Session</h2>
+        <div class="toolbar">
+          <button class="danger" style="font-weight:800" onclick="clearClassroom()">CLEAR CLASSROOM</button>
+          <button onclick="resumeClassroom()">Resume Sessions</button>
+        </div>
+        <div class="muted" style="margin-top:7px">Clear Classroom stops lesson queues, pauses spotlight rotation, and blanks every enabled Classroom Control Hub display immediately.</div>
+      </div>
+
+      <div class="panel">
+        <h2>Activity</h2>
+        <div id="resultSummary" class="resultSummary">Ready.</div>
+        <div class="toolbar"><button onclick="toggleRaw()">Advanced / JSON</button></div>
+        <pre id="rawResult" class="hidden">No result yet.</pre>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="panel previewPanel">
+        <div class="previewHead">
+          <div>
+            <h2 style="margin:0">Live Preview</h2>
+            <div class="muted">Exact 16:9 TV render. The receiver runs at its full logical resolution and is only scaled visually inside the dashboard.</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <select id="previewSelect" style="max-width:260px"></select>
+            <span class="previewResolution">
+              Reference
+              <select id="previewResolution" onchange="setPreviewResolution(this.value)" style="width:auto">
+                <option value="1920x1080">1920×1080</option>
+                <option value="3840x2160">3840×2160</option>
+                <option value="1280x720">1280×720</option>
+              </select>
+            </span>
+            <button onclick="setPreviewSize('small')">Small</button>
+            <button onclick="setPreviewSize('medium')">Medium</button>
+            <button onclick="setPreviewSize('large')">Large</button>
+          </div>
+        </div>
+        <div id="previewViewport" class="previewViewport">
+          <iframe id="previewFrame" title="Exact TV live preview"></iframe>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="nav">
+          <button class="active" data-work="display" onclick="showWorkspace('display')">Display</button>
+          <button data-work="timer" onclick="showWorkspace('timer')">Timer</button>
+          <button data-work="media" onclick="showWorkspace('media')">Media</button>
+          <button data-work="lighting" onclick="showWorkspace('lighting')">Lighting</button>
+          <button data-work="av" onclick="showWorkspace('av')">AV</button>
+          <button data-work="scenes" onclick="showWorkspace('scenes')">Scenes</button>
+          <button data-work="settings" onclick="showWorkspace('settings')">Settings</button>
+          <button data-work="diagnostics" onclick="showWorkspace('diagnostics')">Diagnostics</button>
+        </div>
+
+        <section id="display" class="workspace active">
+          <h2>Display Layers</h2>
+          <div class="grid2">
+            <div>
+              <label>Title</label>
+              <input id="titleText" type="text" placeholder="Optional title">
+            </div>
+            <div>
+              <label>Subtitle</label>
+              <input id="subtitleText" type="text" placeholder="Optional subtitle">
+            </div>
+            <div><label>Title color</label><input id="titleColor" type="color" value="#ffffff"></div>
+            <div><label>Subtitle color</label><input id="subtitleColor" type="color" value="#ffffff"></div>
+            <div><label>Title size</label><input id="titleSize" type="number" min="18" max="220" value="92"></div>
+            <div><label>Subtitle size</label><input id="subtitleSize" type="number" min="14" max="180" value="44"></div>
+          </div>
+          <div class="toolbar">
+            <button onclick="sendTitle()">Send Title</button>
+            <button onclick="sendSubtitle()">Send Subtitle</button>
+          </div>
+
+          <hr>
+
+          <label>Body Message</label>
+          <textarea id="text">Classroom Control Hub Online</textarea>
+          <div class="grid2">
+            <div><label>Text color</label><input id="textColor" type="color" value="#ffffff"></div>
+            <div><label>Screen background</label><input id="bgColor" type="color" value="#101318"></div>
+            <div><label>Text box color</label><input id="textBg" type="color" value="#000000"></div>
+            <div><label>Text box opacity</label><input id="textBgOpacity" type="number" min="0" max="1" step=".05" value="0"></div>
+            <div><label>Font size</label><input id="fontSize" type="number" min="12" max="220" value="64"></div>
+            <div><label>Position</label><select id="position"><option>top</option><option selected>center</option><option>bottom</option></select></div>
+          </div>
+          <div class="toolbar">
+            <button class="primary" onclick="sendText()">Send Body</button>
+            <button onclick="sendBackground()">Background</button>
+            <button onclick="identifySelected()">Identify</button>
+            <button class="danger" onclick="clearSelectedDisplays()">Clear Selected</button>
+            <button onclick="cmd('display.reload',targetArg(),{})">Reload</button>
+          </div>
+        </section>
+
+        <section id="timer" class="workspace">
+          <h2>Screen Timer Overlay</h2>
+          <div class="muted" style="margin-bottom:12px">
+            Overlay a countdown or count-up timer over any TV content. Default: white text, white border, bottom-center.
+          </div>
+
+          <div class="grid2">
+            <div>
+              <label>Mode</label>
+              <select id="timerMode">
+                <option value="countdown" selected>Countdown</option>
+                <option value="countup">Count Up / Stopwatch</option>
+              </select>
+            </div>
+            <div><label>Countdown Source</label><select id="timerSource" onchange="timerSourceChanged()"><option value="duration" selected>Manual Duration</option><option value="class-end">Class End Time</option></select></div>
+            <div id="timerClassWrap" style="display:none"><label>Class</label><select id="timerClassSelect" onchange="refreshClassTimerPreview()"></select></div>
+            <div id="timerClassStatusWrap" style="display:none"><label>Class Status</label><div id="timerClassStatus" class="muted" style="padding:10px 0">Loading…</div></div>
+            <div>
+              <label>Label (optional)</label>
+              <input id="timerLabelInput" type="text" placeholder="DO NOW • Time Remaining">
+            </div>
+            <div>
+              <label>Minutes</label>
+              <input id="timerMinutes" type="number" min="0" max="999" value="5">
+            </div>
+            <div>
+              <label>Seconds</label>
+              <input id="timerSeconds" type="number" min="0" max="59" value="0">
+            </div>
+            <div>
+              <label>Position</label>
+              <select id="timerPosition">
+                <option value="top">Top</option>
+                <option value="center">Center</option>
+                <option value="bottom" selected>Bottom</option>
+              </select>
+            </div>
+            <div>
+              <label>Font size</label>
+              <input id="timerFontSize" type="number" min="20" max="220" value="64">
+            </div>
+            <div>
+              <label>Text color</label>
+              <input id="timerTextColor" type="color" value="#ffffff">
+            </div>
+            <div>
+              <label>Border color</label>
+              <input id="timerBorderColor" type="color" value="#ffffff">
+            </div>
+            <div>
+              <label>Border width</label>
+              <input id="timerBorderWidth" type="number" min="0" max="20" value="4">
+            </div>
+            <div>
+              <label>Border radius</label>
+              <input id="timerBorderRadius" type="number" min="0" max="80" value="18">
+            </div>
+            <div>
+              <label>Background color</label>
+              <input id="timerBgColor" type="color" value="#000000">
+            </div>
+            <div>
+              <label>Background opacity</label>
+              <input id="timerBgOpacity" type="number" min="0" max="1" step=".05" value=".35">
+            </div>
+          </div>
+
+          <div style="margin:14px 0;padding:18px;border:1px solid var(--herd-border);border-radius:16px;text-align:center;background:rgba(0,0,0,.25)">
+            <div id="timerControllerLabel" class="muted">Preview</div>
+            <div id="timerControllerPreview" style="display:inline-block;margin-top:8px;padding:10px 22px;border:4px solid #fff;border-radius:18px;color:#fff;background:rgba(0,0,0,.35);font-size:44px;font-weight:800;font-variant-numeric:tabular-nums">05:00</div>
+          </div>
+
+          <div class="toolbar">
+            <button class="primary" onclick="startScreenTimer()">Start</button>
+            <button onclick="useCurrentClassTimer()">Current Class → End</button>
+            <button onclick="pauseScreenTimer()">Pause</button>
+            <button onclick="resetScreenTimer()">Reset</button>
+            <button onclick="updateScreenTimerStyle()">Apply Style</button>
+            <button class="danger" onclick="hideScreenTimer()">Hide Timer</button>
+          </div>
+          <div class="muted" style="margin-top:8px">Timer is sent to the currently selected display targets and remains over images, video, web content, and presentations.</div>
+        </section>
+
+        <section id="media" class="workspace">
+          <div class="panel" style="margin:0 0 14px;border-color:rgba(42,168,102,.48);background:linear-gradient(180deg,rgba(42,168,102,.13),rgba(0,0,0,.12))">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+              <div>
+                <h2 style="margin:0">Morning Announcements</h2>
+                <div class="muted" style="margin-top:4px">Live Announcements • Ant Media Server • autoplay + audio-on redundancy</div>
+              </div>
+              <span style="font-size:11px;border:1px solid rgba(42,168,102,.52);border-radius:999px;padding:5px 9px;color:#a9f0c7">AUDIO ON</span>
+            </div>
+            <label style="margin-top:10px">Stream URL</label>
+            <input id="announcementsUrl" type="url" value="">
+            <div class="toolbar" style="margin-top:10px;align-items:center">
+              <label style="margin:0;min-width:160px">Announcement Volume</label>
+              <input id="announcementsVolume" type="range" min="0" max="100" value="100" style="flex:1;min-width:220px" oninput="announcementsVolumeValue.textContent=this.value+'%'" onchange="setMorningAnnouncementsVolume(this.value,true)">
+              <span id="announcementsVolumeValue" class="pill">100%</span>
+              <button onclick="setMorningAnnouncementsVolume(0,true)">Mute</button>
+              <button onclick="setMorningAnnouncementsVolume(50,true)">50%</button>
+              <button onclick="setMorningAnnouncementsVolume(75,true)">75%</button>
+              <button onclick="setMorningAnnouncementsVolume(100,true)">100%</button>
+            </div>
+            <div class="toolbar" style="margin-top:10px">
+              <button class="primary" onclick="startMorningAnnouncements()">Play Announcements • Audio On</button>
+              <button onclick="retryMorningAnnouncementsAudio(false)">Retry / Unmute Audio</button>
+              <button onclick="retryMorningAnnouncementsAudio(true)">Reload + Unmute</button>
+              <button class="danger" onclick="stopMorningAnnouncements()">Stop / Clear</button>
+            </div>
+            <div class="muted" style="margin-top:8px">Classroom Control Hub forces <code>autoplay=true</code> and <code>mute=false</code>, grants the embedded player autoplay permission, then retries unmute/play at multiple intervals. Browser/kiosk autoplay policy can still override audible autoplay.</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div><h2 style="margin:0">Media Library</h2><div class="muted">Local files stored on the Classroom Control Hub.</div></div>
+            <button onclick="loadMedia()">Refresh</button>
+          </div>
+          <div id="dropZone" class="drop" style="margin-top:10px">Drop image/video/PDF here</div>
+          <input id="upload" type="file" accept="image/*,video/*,application/pdf" style="margin-top:8px">
+          <div class="toolbar"><button onclick="uploadMedia()">Upload</button></div>
+          <div id="uploadStatus" class="muted" style="margin-top:6px"></div>
+          <div id="mediaGrid" class="mediaGrid" style="margin-top:12px"></div>
+
+          <hr>
+
+          <h3>Manual / Selected Media</h3>
+          <label>URL</label><input id="mediaUrl" type="url" placeholder="http://... or /media/...">
+          <label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px">
+            <input id="mediaLocalDirect" type="checkbox" checked style="margin-top:3px">
+            <span><strong>Load URL directly from this TV/browser</strong><br>
+            <span class="muted">Useful when the TV network can reach a site that the Classroom Control Hub server cannot.</span></span>
+          </label>
+          <div class="grid2">
+            <div><label>Fit</label><select id="mediaFit"><option>contain</option><option>cover</option><option>fill</option></select></div>
+            <div><label>Opacity</label><input id="mediaOpacity" type="number" min="0" max="1" step=".05" value="1"></div>
+          </div>
+          <label><input id="videoAutoplay" type="checkbox" checked> Autoplay</label>
+          <label><input id="videoLoop" type="checkbox"> Loop</label>
+          <label><input id="videoMuted" type="checkbox"> Muted</label>
+          <div class="toolbar">
+            <button onclick="sendMedia('display.image')">Show Image</button>
+            <button onclick="sendMedia('display.video')">Play Video</button>
+            <button onclick="sendMedia('display.web')">Show Web</button>
+          </div>
+        </section>
+
+        <section id="lighting" class="workspace">
+          <h2>Govee Lighting</h2>
+          <div class="grid2">
+            <div>
+              <label>Target</label>
+              <select id="lightTarget">
+                <option>tvs</option><option>all</option><option>hallway</option><option>strip</option>
+                <option>tv1</option><option>tv2</option><option>tv3</option><option>tv4</option><option>tv5</option><option>tv6</option>
+              </select>
+            </div>
+            <div>
+              <label>Brightness</label>
+              <input id="brightness" type="number" min="1" max="100" value="50">
+            </div>
+            <div><label>Color</label><input id="lightColor" type="color" value="#ffffff"></div>
+            <div><label>Scene</label><select id="scene"><option value="">Load scenes…</option></select></div>
+          </div>
+          <div class="toolbar">
+            <button onclick="lighting('lighting.on')">On</button>
+            <button class="danger" onclick="lighting('lighting.off')">Off</button>
+            <button onclick="lighting('lighting.color',{color:el('lightColor').value})">Apply Color</button>
+            <button onclick="lighting('lighting.brightness',{level:Number(el('brightness').value)})">Apply Brightness</button>
+            <button onclick="loadGoveeScenes()">Load Scenes</button>
+            <button onclick="lighting('lighting.scene',{scene:el('scene').value})">Apply Scene</button>
+          </div>
+        </section>
+
+        <section id="av" class="workspace">
+          <h2>Pluto AV Routing</h2>
+          <div class="grid2">
+            <div>
+              <label>Input</label>
+              <select id="avInput">
+                <option value="1">Input 1</option><option value="2">Input 2</option><option value="3">Input 3</option><option value="4">Input 4</option>
+                <option value="5">Input 5</option><option value="6">Input 6</option><option value="7">Input 7</option><option value="8">Input 8</option>
+              </select>
+            </div>
+            <div>
+              <label>Current Routes</label>
+              <input id="plutoStatus" type="text" readonly value="Not loaded">
+            </div>
+          </div>
+          <div class="toolbar">
+            <button class="primary" onclick="routeSelected()">Route Selected TVs</button>
+            <button onclick="loadPlutoStatus()">Refresh Status</button>
+          </div>
+        </section>
+
+        <section id="scenes" class="workspace">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div><h2 style="margin:0">Scenes</h2><div class="muted">Save and replay complete classroom display states.</div></div>
+            <button onclick="loadScenes()">Refresh</button>
+          </div>
+          <div id="sceneManager" class="sceneList" style="margin-top:10px"></div>
+          <hr>
+          <div class="toolbar">
+            <button class="primary" onclick="saveCurrentScene()">Save Current Scene</button>
+          </div>
+        </section>
+
+        <section id="settings" class="workspace">
+          <h2>Display Configuration</h2>
+          <label>Display</label><select id="configDevice"></select>
+          <label>Name</label><input id="configName" type="text">
+          <div class="grid2">
+            <div><label>Pluto output</label><input id="configAv" type="number" min="1" max="8"></div>
+            <div><label>Lighting alias</label><input id="configLight" type="text"></div>
+          </div>
+          <label>Tags</label><input id="configTags" type="text" placeholder="classroom,hallway">
+          <label><input id="configEnabled" type="checkbox" checked> Enabled</label>
+          <div class="toolbar"><button class="primary" onclick="saveDeviceConfig()">Save Display</button></div>
+
+          <hr>
+
+          <h2>Group Editor</h2>
+          <label>Group name</label><input id="groupName" type="text" placeholder="left-wall">
+          <div id="groupMembers" class="targets" style="margin-top:8px"></div>
+          <div class="toolbar"><button onclick="saveGroup()">Save Group</button></div>
+        </section>
+
+        <section id="diagnostics" class="workspace">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <h2 style="margin:0">Diagnostics</h2>
+            <button onclick="loadDiagnostics()">Refresh</button>
+          </div>
+          <div id="diagStats" class="statGrid" style="margin-top:10px"></div>
+          <pre id="diagRaw" style="margin-top:10px">Not loaded.</pre>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script type="module">
+import {wsUrl,api} from '/shared/common.js';
+window.el=id=>document.getElementById(id);
+
+let ws,devices={},groups={},selected=new Set(['tv1']),lastRaw=null;
+window._status={};
+
+function ageText(iso){
+  if(!iso)return 'never';
+  const ms=Date.now()-Date.parse(iso),s=Math.floor(ms/1000);
+  if(s<5)return 'now';
+  if(s<60)return `${s}s ago`;
+  const m=Math.floor(s/60);if(m<60)return `${m}m ago`;
+  const h=Math.floor(m/60);if(h<24)return `${h}h ago`;
+  return `${Math.floor(h/24)}d ago`;
+}
+
+function setResultSummary(text,ok=true,raw=null){
+  const e=el('resultSummary');e.textContent=text;e.className='resultSummary '+(ok?'ok':'err');
+  if(raw!==null){lastRaw=raw;el('rawResult').textContent=JSON.stringify(raw,null,2)}
+}
+window.toggleRaw=()=>el('rawResult').classList.toggle('hidden');
+
+function targetArg(){const a=[...selected];if(!a.length)throw new Error('Select at least one display target.');return a.length===1?a[0]:a}
+function updateTargetSelectionSummary(){const e=el('targetSelectionSummary');if(!e)return;const a=[...selected];e.textContent=a.length?`Selected (${a.length}): ${a.map(id=>devices[id]?.name||id.toUpperCase()).join(', ')}`:'Selected: none'}
+
+function renderTargets(status={}){
+  const w=el('targets');w.innerHTML='';
+  for(const [id,d] of Object.entries(devices)){
+    const raw=status[id]||{};
+    const seen=raw.lastSeen?Date.parse(raw.lastSeen):0;
+    const computedOnline=raw.online!==undefined?!!raw.online:!!(seen && Date.now()-seen<=45000);
+    const st={...raw,online:computedOnline},lab=document.createElement('label');lab.className='target';
+    const cb=document.createElement('input');cb.type='checkbox';cb.checked=selected.has(id);cb.onchange=()=>{cb.checked?selected.add(id):selected.delete(id);updateTargetSelectionSummary()};
+    const dot=document.createElement('span');dot.className='dot'+(st.online?' ok':'');
+    const main=document.createElement('span');
+    const n=document.createElement('div');n.className='targetName';n.textContent=d.name||id.toUpperCase();
+    const m=document.createElement('div');m.className='targetMeta';m.textContent=st.online?`Online • ${ageText(st.lastSeen)}`:`Offline • ${ageText(st.lastSeen)}`;
+    main.append(n,m);lab.append(cb,dot,main);w.appendChild(lab);
+  }
+  updateTargetSelectionSummary();
+}
+window.selectGroup=n=>{selected=new Set(groups[n]||[]);renderTargets(window._status)};
+window.clearTargets=()=>{selected.clear();renderTargets(window._status)};
+window.clearSelectedDisplays=async()=>{
+  const targets=[...selected];
+  if(!targets.length){setResultSummary('Select at least one display to clear.',false);return}
+  try{
+    const target=targets.length===1?targets[0]:targets;
+    const j=await cmd('display.clear',target,{});
+    setResultSummary(`✓ Cleared ${targets.map(x=>(devices[x]?.name||x.toUpperCase())).join(', ')}`,true,j);
+    return j;
+  }catch(e){setResultSummary('✕ Clear selected failed: '+e.message,false,{error:e.message})}
+};
+
+let previewLogicalWidth=1920,previewLogicalHeight=1080;
+function setupPreview(){
+  const s=el('previewSelect'),cur=s.value;s.innerHTML='';
+  for(const [id,d] of Object.entries(devices)){const o=document.createElement('option');o.value=id;o.textContent=`${id.toUpperCase()} · ${d.name}`;s.appendChild(o)}
+  s.value=cur&&devices[cur]?cur:'tv1';s.onchange=loadPreview;
+  const savedResolution=localStorage.getItem('classroom-preview-resolution')||'1920x1080';
+  el('previewResolution').value=savedResolution;
+  setPreviewResolution(savedResolution,false);
+  loadPreview();
+}
+function scalePreview(){
+  const viewport=el('previewViewport'),frame=el('previewFrame');
+  if(!viewport||!frame)return;
+  const w=viewport.clientWidth,h=viewport.clientHeight;
+  if(!w||!h)return;
+  const scale=Math.min(w/previewLogicalWidth,h/previewLogicalHeight);
+  const scaledW=previewLogicalWidth*scale,scaledH=previewLogicalHeight*scale;
+  frame.style.width=previewLogicalWidth+'px';
+  frame.style.height=previewLogicalHeight+'px';
+  frame.style.transform=`translate(${Math.max(0,(w-scaledW)/2)}px,${Math.max(0,(h-scaledH)/2)}px) scale(${scale})`;
+}
+window.setPreviewResolution=(value,persist=true)=>{
+  const m=String(value||'1920x1080').match(/^(\d+)x(\d+)$/);
+  previewLogicalWidth=m?Number(m[1]):1920;
+  previewLogicalHeight=m?Number(m[2]):1080;
+  const viewport=el('previewViewport');
+  viewport.style.aspectRatio=`${previewLogicalWidth}/${previewLogicalHeight}`;
+  if(persist)localStorage.setItem('classroom-preview-resolution',`${previewLogicalWidth}x${previewLogicalHeight}`);
+  requestAnimationFrame(scalePreview);
+};
+window.setPreviewSize=size=>{
+  const viewport=el('previewViewport');
+  if(size==='small')viewport.style.maxWidth='760px';
+  else if(size==='large')viewport.style.maxWidth='none';
+  else viewport.style.maxWidth='1080px';
+  localStorage.setItem('classroom-preview-size',size);
+  requestAnimationFrame(scalePreview);
+};
+function loadPreview(){
+  const frame=el('previewFrame');
+  frame.src=`/display/${encodeURIComponent(el('previewSelect').value||'tv1')}?preview=1`;
+  frame.onload=()=>requestAnimationFrame(scalePreview);
+}
+new ResizeObserver(()=>scalePreview()).observe(el('previewViewport'));
+window.addEventListener('resize',scalePreview);
+
+
+window.clearClassroom=async()=>{
+  if(!confirm("Clear ALL enabled classroom displays and stop all classroom lesson/session queues?")) return;
+  try{
+    const j=await api('/api/v1/classroom/clear-all',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:'{}'
+    });
+    setResultSummary(`✓ Classroom cleared • queues paused • ${(j.targets||[]).length} display(s) blank`,true,j);
+  }catch(e){
+    setResultSummary('✕ Clear Classroom failed: '+e.message,false,{error:e.message});
+  }
+};
+
+window.resumeClassroom=async()=>{
+  try{
+    const j=await api('/api/v1/classroom/resume-sessions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:'{}'
+    });
+    setResultSummary('✓ Classroom sessions resumed',true,j);
+  }catch(e){
+    setResultSummary('✕ Resume failed: '+e.message,false,{error:e.message});
+  }
+};
+
+window.showWorkspace=id=>{
+  document.querySelectorAll('.workspace').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.work===id));
+  el(id).classList.add('active');
+  if(id==='diagnostics')loadDiagnostics();
+};
+
+async function cmd(type,target,payload={}){
+  try{
+    const j=await api('/api/v1/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,target,payload})});
+    const physical=j.deliveries?.websocket||[],warnings=j.warnings||[];
+    const requested=Array.isArray(target)?target:[target];
+    const ok=physical.length===requested.length;
+    const detail=`requested ${requested.join(', ')} • physical ${physical.length?physical.join(', '):'NONE'}`+(warnings.length?` • ${warnings.join(' | ')}`:'');
+    setResultSummary(`${ok?'✓':'⚠'} ${type} • ${detail}`,ok,j);
+    return j;
+  }catch(e){setResultSummary('✕ '+e.message,false,{error:e.message});throw e}
+}
+window.sendTitle=()=>cmd('display.title',targetArg(),{text:el('titleText').value,color:el('titleColor').value,size:Number(el('titleSize').value)});
+window.sendSubtitle=()=>cmd('display.subtitle',targetArg(),{text:el('subtitleText').value,color:el('subtitleColor').value,size:Number(el('subtitleSize').value)});
+window.sendText=()=>cmd('display.text',targetArg(),{text:el('text').value,color:el('textColor').value,size:Number(el('fontSize').value),position:el('position').value,background:rgba(el('textBg').value,Number(el('textBgOpacity').value))});
+window.sendBackground=()=>cmd('display.background',targetArg(),{color:el('bgColor').value});
+
+let timerClasses=[],timerClassStatusData=null;
+async function loadTimerClasses(){try{const x=await api('/api/v1/class-schedules');timerClasses=x.classes||[];timerClassStatusData={activeClass:x.activeClass,nextClass:x.nextClass};const sel=el('timerClassSelect'),old=sel.value;sel.innerHTML=timerClasses.map(c=>`<option value="${c.id}">${c.name} • ${c.startTime}–${c.endTime}</option>`).join('');if(x.activeClass)sel.value=x.activeClass.id;else if(x.nextClass)sel.value=x.nextClass.id;else if(old)sel.value=old;refreshClassTimerPreview()}catch(e){el('timerClassStatus').textContent=e.message}}
+function timerSourceChanged(){const on=el('timerSource').value==='class-end';el('timerClassWrap').style.display=on?'block':'none';el('timerClassStatusWrap').style.display=on?'block':'none';el('timerMinutes').disabled=on;el('timerSeconds').disabled=on;if(on)loadTimerClasses();else paintControllerTimer()}
+function selectedTimerClass(){return timerClasses.find(c=>c.id===el('timerClassSelect').value)||null}
+function selectedClassEndAt(){const c=selectedTimerClass();if(!c)return null;const [h,m]=c.endTime.split(':').map(Number),x=new Date();x.setHours(h,m,0,0);return x}
+function refreshClassTimerPreview(){const c=selectedTimerClass();if(!c)return;const end=selectedClassEndAt(),rem=end?Math.max(0,(end-Date.now())/1000):0;el('timerClassStatus').textContent=`${c.name} • ends ${c.endTime} • ${fmtControllerTimer(rem)} remaining`;if(el('timerSource').value==='class-end'){localTimerState={...localTimerState,mode:'countdown',remainingSeconds:rem,endAt:end?.getTime()||null};paintControllerTimer()}}
+window.useCurrentClassTimer=async()=>{if(!timerClasses.length)await loadTimerClasses();const a=timerClassStatusData?.activeClass;if(!a){setResultSummary('✕ No class is currently active',false,{});return}el('timerSource').value='class-end';timerSourceChanged();el('timerClassSelect').value=a.id;refreshClassTimerPreview();if(!el('timerLabelInput').value)el('timerLabelInput').value=`${a.shortName||a.name} • Class Ends`;await startScreenTimer()};
+let localTimerState={running:false,mode:'countdown',remainingSeconds:300,elapsedSeconds:0,startedAt:null,endAt:null};
+let localTimerTick=null;
+function timerStylePayload(){
+  const bg=rgba(el('timerBgColor').value,Number(el('timerBgOpacity').value));
+  return {
+    label:el('timerLabelInput').value,
+    position:el('timerPosition').value,
+    fontSize:Number(el('timerFontSize').value||64),
+    textColor:el('timerTextColor').value,
+    borderColor:el('timerBorderColor').value,
+    borderWidth:Number(el('timerBorderWidth').value||4),
+    borderRadius:Number(el('timerBorderRadius').value||18),
+    background:bg
+  };
+}
+function timerInputSeconds(){
+  if(el('timerSource')?.value==='class-end'){const end=selectedClassEndAt();return end?Math.max(0,(end-Date.now())/1000):0}
+  return Math.max(0,Number(el('timerMinutes').value||0)*60+Number(el('timerSeconds').value||0));
+}
+function fmtControllerTimer(total){
+  total=Math.max(0,Math.floor(Number(total)||0));
+  const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),s=total%60;
+  return h?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function currentLocalTimerSeconds(){
+  if(localTimerState.mode==='countup'){
+    return localTimerState.running&&localTimerState.startedAt
+      ? Number(localTimerState.elapsedSeconds||0)+(Date.now()-localTimerState.startedAt)/1000
+      : Number(localTimerState.elapsedSeconds||0);
+  }
+  return localTimerState.running&&localTimerState.endAt
+    ? Math.max(0,(localTimerState.endAt-Date.now())/1000)
+    : Number(localTimerState.remainingSeconds||0);
+}
+function paintControllerTimer(){
+  const style=timerStylePayload();
+  el('timerControllerLabel').textContent=style.label||'Preview';
+  const p=el('timerControllerPreview');
+  {
+    const current=currentLocalTimerSeconds();
+    // Zero is a valid terminal countdown value. Do not treat it as "empty"
+    // and fall back to the configured timer duration.
+    const shown=(localTimerState.mode==='countdown'&&localTimerState.remainingSeconds===0&&!localTimerState.running)
+      ? 0
+      : current;
+    p.textContent=fmtControllerTimer(shown);
+  }
+  p.style.color=style.textColor;
+  p.style.borderColor=style.borderColor;
+  p.style.borderWidth=`${style.borderWidth}px`;
+  p.style.borderRadius=`${style.borderRadius}px`;
+  p.style.background=style.background;
+}
+function startLocalTimerTick(){
+  if(localTimerTick)clearInterval(localTimerTick);
+  localTimerTick=setInterval(()=>{
+    paintControllerTimer();
+    if(localTimerState.mode==='countdown'&&localTimerState.running&&currentLocalTimerSeconds()<=0){
+      localTimerState.running=false;
+      localTimerState.remainingSeconds=0;
+      localTimerState.endAt=null;
+      paintControllerTimer();
+      clearInterval(localTimerTick);localTimerTick=null;
+    }
+  },250);
+}
+window.startScreenTimer=async()=>{
+  const mode=el('timerMode').value;
+  const now=Date.now();
+  const configured=timerInputSeconds();
+  localTimerState.mode=mode;
+  if(mode==='countdown'){
+    const classEndMode=el('timerSource')?.value==='class-end',exactEnd=classEndMode?selectedClassEndAt():null;
+    const remaining=classEndMode?configured:((localTimerState.remainingSeconds>0&&localTimerState.remainingSeconds!==300&&configured===300)?localTimerState.remainingSeconds:configured);
+    if(classEndMode&&(!exactEnd||remaining<=0))throw new Error('Selected class has already ended or has no valid end time today');
+    localTimerState={...localTimerState,running:true,mode,remainingSeconds:remaining,endAt:classEndMode?exactEnd.getTime():now+remaining*1000,startedAt:null};
+  }else{
+    localTimerState={...localTimerState,running:true,mode,startedAt:now,endAt:null};
+  }
+  await cmd('display.timer',targetArg(),{
+    visible:true,running:true,mode,
+    durationSeconds:configured,
+    remainingSeconds:mode==='countdown'?localTimerState.remainingSeconds:undefined,
+    elapsedSeconds:mode==='countup'?Number(localTimerState.elapsedSeconds||0):undefined,
+    startedAt:mode==='countup'?localTimerState.startedAt:null,
+    endAt:mode==='countdown'?localTimerState.endAt:null,
+    ...timerStylePayload()
+  });
+  startLocalTimerTick();
+};
+window.pauseScreenTimer=async()=>{
+  const seconds=currentLocalTimerSeconds();
+  localTimerState.running=false;
+  if(localTimerState.mode==='countdown')localTimerState.remainingSeconds=seconds;
+  else localTimerState.elapsedSeconds=seconds;
+  localTimerState.startedAt=null;localTimerState.endAt=null;
+  if(localTimerTick){clearInterval(localTimerTick);localTimerTick=null}
+  await cmd('display.timer',targetArg(),{
+    visible:true,running:false,mode:localTimerState.mode,
+    remainingSeconds:localTimerState.mode==='countdown'?seconds:undefined,
+    elapsedSeconds:localTimerState.mode==='countup'?seconds:undefined,
+    ...timerStylePayload()
+  });
+  paintControllerTimer();
+};
+window.resetScreenTimer=async()=>{
+  const configured=timerInputSeconds(),mode=el('timerMode').value;
+  localTimerState={running:false,mode,remainingSeconds:configured,elapsedSeconds:0,startedAt:null,endAt:null};
+  if(localTimerTick){clearInterval(localTimerTick);localTimerTick=null}
+  await cmd('display.timer',targetArg(),{
+    visible:true,running:false,mode,durationSeconds:configured,
+    remainingSeconds:mode==='countdown'?configured:undefined,
+    elapsedSeconds:mode==='countup'?0:undefined,
+    ...timerStylePayload()
+  });
+  paintControllerTimer();
+};
+window.updateScreenTimerStyle=()=>cmd('display.timer',targetArg(),{
+  visible:true,running:localTimerState.running,mode:localTimerState.mode,
+  remainingSeconds:localTimerState.mode==='countdown'?currentLocalTimerSeconds():undefined,
+  elapsedSeconds:localTimerState.mode==='countup'?currentLocalTimerSeconds():undefined,
+  endAt:localTimerState.mode==='countdown'&&localTimerState.running?localTimerState.endAt:null,
+  startedAt:localTimerState.mode==='countup'&&localTimerState.running?localTimerState.startedAt:null,
+  ...timerStylePayload()
+});
+window.hideScreenTimer=async()=>{
+  localTimerState.running=false;
+  if(localTimerTick){clearInterval(localTimerTick);localTimerTick=null}
+  await cmd('display.timer.hide',targetArg(),{});
+};
+setTimeout(()=>{el('timerMode')?.addEventListener('change',()=>{if(el('timerMode').value==='countup'&&el('timerSource').value==='class-end')el('timerSource').value='duration';timerSourceChanged()});loadTimerClasses()},0);
+['timerMinutes','timerSeconds','timerLabelInput','timerTextColor','timerBorderColor','timerBorderWidth','timerBorderRadius','timerBgColor','timerBgOpacity','timerFontSize'].forEach(id=>{
+  setTimeout(()=>el(id)?.addEventListener('input',paintControllerTimer),0);
+});
+setTimeout(paintControllerTimer,0);
+
+window.identifySelected=()=>cmd('display.identify',targetArg(),{durationMs:8000});
+const DEFAULT_ANNOUNCEMENTS_URL='';
+function announcementsUrl(){
+  const raw=(el('announcementsUrl')?.value||DEFAULT_ANNOUNCEMENTS_URL).trim();
+  const u=new URL(raw,location.href);
+  u.searchParams.set('autoplay','true');
+  u.searchParams.set('mute','false');
+  if(!u.searchParams.get('playOrder'))u.searchParams.set('playOrder','webrtc,hls');
+  return u.toString();
+}
+function announcementVolumeFraction(){return Math.max(0,Math.min(1,Number(el('announcementsVolume')?.value??100)/100))}
+window.setMorningAnnouncementsVolume=async(value,apply=false)=>{
+  const v=Math.max(0,Math.min(100,Number(value)||0));
+  if(el('announcementsVolume'))el('announcementsVolume').value=String(v);
+  if(el('announcementsVolumeValue'))el('announcementsVolumeValue').textContent=v+'%';
+  try{await api('/api/v1/automations/morning-announcements',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({volumePercent:v})});}catch{}
+  if(apply){try{await cmd('display.web.audio',targetArg(),{unmute:v>0,volume:v/100,reload:false,contentKind:'morning-announcements'})}catch{}}
+};
+async function loadMorningAnnouncementVolume(){try{const x=await api('/api/v1/automations/morning-announcements'),v=Number.isFinite(Number(x.config?.volumePercent))?Number(x.config.volumePercent):100;setMorningAnnouncementsVolume(v,false)}catch{}}
+setTimeout(loadMorningAnnouncementVolume,0);
+window.startMorningAnnouncements=async()=>{
+  try{
+    const url=announcementsUrl(),target=targetArg();
+    const j=await api('/api/v1/automations/morning-announcements/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:target,url})});
+    el('mediaUrl').value=url;
+    setResultSummary('✓ Morning Announcements priority takeover started • automations locked • Background Music paused',true,j);
+  }catch(e){setResultSummary('✕ Morning Announcements failed: '+e.message,false,{error:e.message})}
+};
+window.stopMorningAnnouncements=async()=>{
+  try{const j=await api('/api/v1/automations/morning-announcements/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'manual-stop'})});setResultSummary('✓ Morning Announcements ended • deferred automation restored • Background Music reconciled',true,j)}
+  catch(e){setResultSummary('✕ Unable to stop Morning Announcements: '+e.message,false,{error:e.message})}
+};
+window.retryMorningAnnouncementsAudio=async reload=>{
+  try{
+    const volume=announcementVolumeFraction();
+    const j=await cmd('display.web.audio',targetArg(),{unmute:volume>0,volume,reload:!!reload,contentKind:'morning-announcements'});
+    setResultSummary(`✓ Audio recovery sent${reload?' • player reloaded':''}`,true,j);
+  }catch(e){setResultSummary('✕ Audio recovery failed: '+e.message,false,{error:e.message})}
+};
+window.sendMedia=t=>cmd(t,targetArg(),{url:el('mediaUrl').value,fit:el('mediaFit').value,opacity:Number(el('mediaOpacity').value),autoplay:el('videoAutoplay').checked,loop:el('videoLoop').checked,muted:el('videoMuted').checked});
+window.lighting=(t,p={})=>cmd(t,el('lightTarget').value,p);
+window.routeSelected=async()=>{for(const id of selected)await cmd('av.route',id,{input:Number(el('avInput').value)})};
+
+function rgba(hex,a){const n=parseInt(hex.replace('#',''),16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`}
+
+async function uploadFile(f){
+  const fd=new FormData();fd.append('media',f);el('uploadStatus').textContent='Uploading…';
+  try{const j=await api('/api/v1/media',{method:'POST',body:fd});el('mediaUrl').value=j.url;el('uploadStatus').textContent='Uploaded: '+j.name;await loadMedia();setResultSummary(`✓ Uploaded ${j.name}`,true,j)}
+  catch(e){el('uploadStatus').textContent=e.message;setResultSummary('✕ '+e.message,false,{error:e.message})}
+}
+window.uploadMedia=async()=>{const f=el('upload').files[0];if(f)await uploadFile(f)};
+const dz=el('dropZone');
+dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag')};
+dz.ondragleave=()=>dz.classList.remove('drag');
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');if(e.dataTransfer.files[0])uploadFile(e.dataTransfer.files[0])};
+
+window.loadMedia=async()=>{
+  const j=await api('/api/v1/media'),w=el('mediaGrid');w.innerHTML='';
+  for(const f of j.files||[]){
+    const card=document.createElement('div');card.className='mediaCard';
+    const thumb=document.createElement('div');thumb.className='mediaThumb';
+    if(f.type==='image'){const i=document.createElement('img');i.src=f.url;thumb.appendChild(i)}
+    else if(f.type==='video'){const v=document.createElement('video');v.src=f.url;v.muted=true;thumb.appendChild(v)}
+    else thumb.textContent=f.type.toUpperCase();
+    const body=document.createElement('div');body.className='mediaBody';
+    const n=document.createElement('div');n.className='mediaName';n.textContent=f.name;
+    const m=document.createElement('div');m.className='mediaMeta';m.textContent=`${f.type} • ${(f.size/1024/1024).toFixed(1)} MB`;
+    const tb=document.createElement('div');tb.className='toolbar';
+    const use=document.createElement('button');use.textContent='Select';use.onclick=()=>{el('mediaUrl').value=f.url;setResultSummary(`Selected ${f.name}`,true,f)};
+    const show=document.createElement('button');show.textContent=f.type==='video'?'Play':'Show';show.onclick=()=>{el('mediaUrl').value=f.url;sendMedia(f.type==='video'?'display.video':'display.image')};
+    tb.append(use,show);body.append(n,m,tb);card.append(thumb,body);w.appendChild(card);
+  }
+};
+
+window.loadScenes=async()=>{
+  const j=await api('/api/v1/scenes'),quick=el('quickScenes'),mgr=el('sceneManager');quick.innerHTML='';mgr.innerHTML='';
+  for(const [id,s] of Object.entries(j.scenes||{})){
+    const q=document.createElement('button');q.className='sceneBtn';q.textContent=s.name||id;q.onclick=()=>runScene(id);quick.appendChild(q);
+    const b=document.createElement('button');b.className='sceneBtn';b.textContent=(s.name||id)+'  ▶';b.onclick=()=>runScene(id);mgr.appendChild(b);
+  }
+};
+window.runScene=async id=>{
+  try{const j=await api(`/api/v1/scenes/${encodeURIComponent(id)}/run`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:targetArg()})});
+  setResultSummary(`✓ Scene "${id}" sent to ${Array.isArray(targetArg())?targetArg().join(', '):targetArg()}`,true,j)}
+  catch(e){setResultSummary('✕ '+e.message,false,{error:e.message})}
+};
+window.saveCurrentScene=async()=>{
+  const name=prompt('Scene name?');if(!name)return;
+  const id=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  const actions=[
+    {type:'display.background',payload:{color:el('bgColor').value}},
+    {type:'display.title',payload:{text:el('titleText').value,color:el('titleColor').value,size:Number(el('titleSize').value)}},
+    {type:'display.subtitle',payload:{text:el('subtitleText').value,color:el('subtitleColor').value,size:Number(el('subtitleSize').value)}},
+    {type:'display.text',payload:{text:el('text').value,color:el('textColor').value,size:Number(el('fontSize').value),position:el('position').value,background:rgba(el('textBg').value,Number(el('textBgOpacity').value))}}
+  ];
+  if(el('mediaUrl').value)actions.push({type:'display.image',payload:{url:el('mediaUrl').value,fit:el('mediaFit').value,opacity:Number(el('mediaOpacity').value)}});
+  const j=await api(`/api/v1/scenes/${encodeURIComponent(id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,actions})});
+  setResultSummary(`✓ Saved scene "${name}"`,true,j);await loadScenes();
+};
+
+window.loadGoveeScenes=async()=>{
+  const target=el('lightTarget').value;
+  if(['all','tvs','hallway','strip'].includes(target)){setResultSummary('Choose an individual Govee device to load device scenes.',false);return}
+  try{const j=await api(`/api/v1/integrations/govee/${encodeURIComponent(target)}/scenes`),s=el('scene');s.innerHTML='';
+  for(const x of j.scenes||[]){const o=document.createElement('option');o.value=x;o.textContent=x;s.appendChild(o)}
+  setResultSummary(`✓ Loaded ${(j.scenes||[]).length} scenes for ${target}`,true,j)}
+  catch(e){setResultSummary('✕ '+e.message,false,{error:e.message})}
+};
+window.loadPlutoStatus=async()=>{
+  try{const j=await api('/api/v1/integrations/pluto/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'videoStatus'})});
+  const routes=j.data?.allsource||[];el('plutoStatus').value=routes.map((x,i)=>`O${i+1}→I${x}`).join('  ');
+  setResultSummary('✓ Pluto routing status refreshed',true,j)}
+  catch(e){setResultSummary('✕ '+e.message,false,{error:e.message})}
+};
+
+function setupSettings(){
+  const s=el('configDevice'),cur=s.value;s.innerHTML='';
+  for(const [id,d] of Object.entries(devices)){const o=document.createElement('option');o.value=id;o.textContent=`${id.toUpperCase()} · ${d.name}`;s.appendChild(o)}
+  s.value=cur&&devices[cur]?cur:'tv1';s.onchange=loadDeviceConfig;loadDeviceConfig();
+  const gm=el('groupMembers');gm.innerHTML='';
+  for(const [id,d] of Object.entries(devices)){
+    const lab=document.createElement('label');lab.className='target';
+    const cb=document.createElement('input');cb.type='checkbox';cb.dataset.device=id;
+    const dot=document.createElement('span');dot.className='dot';
+    const tx=document.createElement('span');tx.textContent=d.name;
+    lab.append(cb,dot,tx);gm.appendChild(lab);
+  }
+}
+function loadDeviceConfig(){
+  const id=el('configDevice').value,d=devices[id];if(!d)return;
+  el('configName').value=d.name||'';el('configAv').value=d.avOutput||'';el('configLight').value=d.lightingAlias||'';
+  el('configTags').value=(d.tags||[]).join(',');el('configEnabled').checked=d.enabled!==false;
+}
+window.saveDeviceConfig=async()=>{
+  const id=el('configDevice').value,body={name:el('configName').value,avOutput:Number(el('configAv').value),lightingAlias:el('configLight').value||null,tags:el('configTags').value.split(',').map(x=>x.trim()).filter(Boolean),enabled:el('configEnabled').checked};
+  const j=await api(`/api/v1/config/devices/${encodeURIComponent(id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  devices[id]=j.device;renderTargets(window._status);setupPreview();setupSettings();setResultSummary(`✓ Updated ${id}`,true,j);
+};
+window.saveGroup=async()=>{
+  const id=el('groupName').value.trim();if(!id)return;
+  const members=[...el('groupMembers').querySelectorAll('input[type=checkbox]:checked')].map(x=>x.dataset.device);
+  const j=await api(`/api/v1/config/groups/${encodeURIComponent(id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({members})});
+  groups[id]=j.members;setResultSummary(`✓ Saved group "${id}"`,true,j);
+};
+
+window.loadDiagnostics=async()=>{
+  const j=await api('/api/v1/diagnostics'),w=el('diagStats');w.innerHTML='';
+  const stats=[
+    ['Online TVs',j.counts?.onlineDisplays??0],
+    ['Configured TVs',j.counts?.configuredDisplays??0],
+    ['WebSockets',j.counts?.websocketClients??0],
+    ['Scenes',j.counts?.scenes??0]
+  ];
+  for(const [n,v] of stats){const d=document.createElement('div');d.className='stat';d.innerHTML=`<b>${v}</b><span>${n}</span>`;w.appendChild(d)}
+  el('diagRaw').textContent=JSON.stringify(j,null,2);
+};
+
+async function refreshStatus(){
+  try{const j=await api('/api/v1/devices');window._status=j.status||{};renderTargets(window._status)}catch{}
+}
+setInterval(refreshStatus,5000);
+setInterval(()=>renderTargets(window._status),1000);
+
+function connect(){
+  ws=new WebSocket(wsUrl());
+  ws.onopen=()=>{el('conn').textContent='Connected';ws.send(JSON.stringify({type:'hello',role:'controller',token:''}))};
+  ws.onclose=()=>{el('conn').textContent='Disconnected · retrying';setTimeout(connect,1500)};
+  ws.onmessage=e=>{
+    const m=JSON.parse(e.data);
+    if(m.type==='hello.ack'){
+      devices=m.devices||{};groups=m.groups||{};window._status=m.runtime?.displays||{};
+      renderTargets(window._status);setupPreview();setPreviewSize(localStorage.getItem('classroom-preview-size')||'medium');loadMedia();loadScenes();setupSettings();
+    }else if(m.type==='device.status'){
+      window._status[m.deviceId]={
+        ...(window._status[m.deviceId]||{}),
+        ...(m.status||{})
+      };
+      renderTargets(window._status);
+    }
+  };
+}
+connect();
+</script>
+</body>
+</html>

@@ -4,71 +4,83 @@ Centralized classroom control and automation platform for displays, AV routing, 
 
 > **Status:** `1.0.0-alpha.63` — initial public GitHub/Docker migration. The project is actively being generalized from a production classroom deployment.
 
-## Project goals
+## What it does
 
-Classroom Control Hub provides one control plane for a technology classroom or lab while keeping organization-specific configuration outside reusable application source.
+Classroom Control Hub provides a single web controller for classroom and lab operations, including:
 
-Core capabilities include:
+- browser-based display clients and digital signage
+- scheduled classroom automations
+- priority live/morning announcements
+- background music through Music Assistant
+- AV routing and TV control integrations
+- lighting integrations through MQTT
+- class schedules, cycle days, closures, delays, half-days, and remote-day rules
+- lab/client management integrations
+- diagnostics, backup/recovery, and host-management tooling
 
-- classroom display control and digital signage;
-- scheduled classroom automations;
-- priority live/morning announcements;
-- Background Music through Music Assistant;
-- AV routing and television control;
-- lighting integrations;
-- class, cycle-day, delay, half-day, remote-day, and closure scheduling;
-- lab/client management integrations;
-- diagnostics, backup, recovery, and host-management support.
-
-## Documentation
-
-Detailed, version-controlled documentation is maintained in [`/docs`](docs/README.md). Start with:
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Deployment](docs/DEPLOYMENT.md)
-- [Configuration](docs/CONFIGURATION.md)
-- [Operations](docs/OPERATIONS.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Controller](docs/CONTROLLER.md)
-- [Database](docs/DATABASE.md)
-- [Host Agent](docs/HOST-AGENT.md)
-
-The `/docs` tree is intended to serve as the canonical source for a future GitHub Wiki mirror.
-
-## Deployment model
+## Architecture
 
 ```text
 Ubuntu host
-├── Classroom Control Hub Host Agent (systemd)
+├── classroom-control-hub-host-agent.service
 └── Docker
     ├── classroom-control-hub
     └── classroom-control-hub-maintenance
 ```
 
-Persistent runtime data, site configuration, secrets, media, and databases are stored outside replaceable application images.
+The application and maintenance service run in containers. Host-level operations are delegated to a small systemd host agent instead of giving the main application broad host privileges.
 
-## Container registry
+## Quick start for development
 
-GitHub Actions are being prepared to publish versioned images to GitHub Container Registry (GHCR). Alpha images use the `alpha` channel. The `latest` tag is reserved for stable releases.
+```bash
+cp .env.example .env
+docker compose build
+docker compose up -d
+```
 
-## Public repository safety
+Then open:
 
-Do not commit:
+```text
+http://localhost:3000
+```
 
-- `.env`;
-- runtime databases/WAL files;
-- production API tokens or passwords;
-- private keys;
-- backups;
-- student/user data;
-- production diagnostic bundles;
-- site-specific secret configuration.
+## Persistent data
 
-See [SECURITY.md](SECURITY.md) and [Configuration](docs/CONFIGURATION.md).
+Runtime state must remain outside the container image. The default Compose configuration stores persistent application data in `./data` and keeps site-specific secrets in `.env`, mounted secret files, or encrypted application storage.
 
-## Source migration note
+Never commit production `.env` files, databases, API tokens, private keys, backups, or site-specific secrets.
 
-The production prototype is being migrated into this public repository in sanitized stages. Some larger core files are temporarily preserved under `source-archive/` in compressed form while their sanitized direct-source counterparts are finalized. Do not treat the repository as production-deployable until the migration notice is removed and validation workflows pass against the complete direct source tree.
+## Site configuration
+
+The public repository intentionally does **not** include a specific school's internal IP addresses, calendars, credentials, stream URLs, or classroom hardware mappings. Configure those after deployment through environment variables and the controller.
+
+Important optional settings include:
+
+- `MORNING_ANNOUNCEMENTS_URL`
+- `MUSIC_ASSISTANT_URL`
+- `MQTT_URL`
+- `PLUTO_URL`
+- `VEYON_WEBAPI_URL`
+- `VEYON_SCAN_SUBNET`
+- `SCHOOL_CALENDAR_ANCHOR_DATE`
+- `SCHOOL_CALENDAR_ANCHOR_CYCLE_DAY`
+
+See `.env.example` and `INSTALL.md`.
+
+## Container images
+
+GitHub Actions is configured to publish alpha container builds to GitHub Container Registry (GHCR):
+
+```text
+ghcr.io/wagnerks1990/classroom-control-hub
+ghcr.io/wagnerks1990/classroom-control-hub-maintenance
+```
+
+The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a future stable release.
+
+## Project maturity
+
+This repository is currently alpha software. Production deployments should pin a specific version and maintain backups before upgrades.
 
 ## License
 
