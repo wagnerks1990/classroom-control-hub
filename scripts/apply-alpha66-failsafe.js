@@ -138,8 +138,7 @@ const textFiles=[
 for(const file of textFiles){
   if(!fs.existsSync(file))continue;
   let t=fs.readFileSync(file,"utf8");
-  t=t.replaceAll("1.0.0-alpha.65","1.0.0-alpha.66");
-  t=t.replaceAll("v1.0.0-alpha.65","v1.0.0-alpha.66");
+  t=t.replace(/v?1\.0\.0-alpha\.(64|65)/g,m=>m.startsWith("v")?"v1.0.0-alpha.66":"1.0.0-alpha.66");
   fs.writeFileSync(file,t);
 }
 fs.writeFileSync("VERSION","1.0.0-alpha.66\n");
