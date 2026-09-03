@@ -1,3 +1,14 @@
+# Changelog
+
+## Unreleased
+
+### Documentation / migration hygiene
+- Standardized the documented/default production checkout on `/opt/classroom-hub`.
+- Corrected Host Agent service/install defaults to use `/opt/classroom-hub` and `/run/classroom-control-hub/host-agent.sock`.
+- Added `AGENTS.md`, `docs/AI-CONTEXT.md`, and GitHub Copilot instructions so AI-assisted changes use the current architecture, production layout, release rules, and behavioral invariants.
+- Updated the Git-tracked Wiki mirror and documentation indexes.
+- Removed the completed `source-archive` migration payload and one-off alpha.65/alpha.66 materialization/release scaffolding now that direct source files are canonical.
+
 ## 1.0.0-alpha.66 - 2026-09-03
 
 ### Fixed
@@ -7,8 +18,6 @@
 - Deferred automations are consumed by the resync so they cannot double-fire after release.
 - Winning automations are re-run oldest-to-newest so newer overlapping automation remains authoritative.
 - Background Music resumes only after display automation reconciliation completes.
-
-# Changelog
 
 ## 1.0.0-alpha.65
 
