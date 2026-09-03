@@ -8,12 +8,13 @@ This directory is the canonical technical documentation set for Classroom Contro
 - [Architecture](ARCHITECTURE.md) — system components, process boundaries, persistence, scheduling, priority arbitration, and service relationships.
 - [Deployment](DEPLOYMENT.md) — Docker Compose deployment, persistent storage, host-agent placement, Git updates, backups, and rollback.
 - [Configuration](CONFIGURATION.md) — environment variables, site-specific settings, secrets, displays, integrations, and safe public-repository practices.
-- [Operations](OPERATIONS.md) — normal classroom operation, automations, announcements, background music, display recovery, and maintenance.
+- [Operations](OPERATIONS.md) — normal classroom operation, automations, announcements, Background Music, display recovery, and maintenance.
 - [Troubleshooting](TROUBLESHOOTING.md) — diagnostic workflow and common failure modes.
 - [Development](DEVELOPMENT.md) — source layout, local validation, release workflow, version convergence, and contribution practices.
 - [Controller](CONTROLLER.md) — controller-specific information.
 - [Database](DATABASE.md) — SQLite storage and migration notes.
 - [Host Agent](HOST-AGENT.md) — host-level service responsibilities, migration verification, and security boundary.
+- [Wiki Synchronization](WIKI-SYNC.md) — how the Git-tracked `wiki/` mirror is published to the actual GitHub Wiki.
 
 ## AI and contributor instructions
 
@@ -35,7 +36,14 @@ Before changing behavior, an AI assistant should read:
 4. **Version-aware.** Behavioral changes should be reflected in `CHANGELOG.md` and relevant documentation at the same time as code changes.
 5. **Preserve persistent data.** Upgrade instructions must treat databases, uploaded media, secrets, and site configuration as persistent state outside replaceable application images/source.
 6. **Keep AI context current.** Architecture, installation-path, integration-health, scheduler, or priority changes must be reflected in `AGENTS.md`/`AI-CONTEXT.md` when they materially change how future work should be performed.
+7. **Keep the Wiki mirror current.** Changes that affect user/admin documentation should update both the relevant `docs/` page and the corresponding `wiki/` page.
 
 ## GitHub Wiki
 
-Corrections should be made in `/docs` and the relevant `wiki/` mirror page as part of the same change. The `wiki/` directory is version-controlled with the application and should be synchronized to the actual GitHub Wiki after changes.
+The `wiki/` directory is version-controlled with the application and is the repository-side Wiki source/mirror. Publish it to the actual GitHub Wiki from an authenticated clone with:
+
+```bash
+bash scripts/sync-wiki.sh
+```
+
+See [WIKI-SYNC.md](WIKI-SYNC.md) for details.
