@@ -27,9 +27,32 @@ Typical categories include:
 - persistent data locations;
 - Music Assistant connection information;
 - MQTT connection information;
+- Pluto connection information;
 - announcement/stream defaults;
 - host/maintenance-agent connection settings;
 - authentication/security options.
+
+## Standard host-path variables
+
+The standard production checkout is `/opt/classroom-hub`.
+
+Current public defaults include:
+
+```text
+HOST_CLASSROOM_HUB_DIR=/opt/classroom-hub
+HOST_SERVICES_DIR=/opt/services
+DATABASE_FILE=/app/data/classroom-control-hub.db
+CLASSROOM_HUB_MASTER_KEY_FILE=/etc/classroom-control-hub/master.key
+MASTER_KEY_FILE=/run/secrets/classroom-control-hub-master-key
+```
+
+The native Host Agent uses:
+
+```text
+/run/classroom-control-hub/host-agent.sock
+```
+
+Older migration-era references to `/opt/classroom-control-hub`, `/run/classroom-hub/host-agent.sock`, or `HOST_Classroom_DIR` should be treated as legacy compatibility details rather than preferred new configuration.
 
 ## Secrets
 
@@ -55,7 +78,7 @@ The following should normally be runtime configuration rather than source consta
 - classroom names;
 - display IDs/names;
 - private/internal IP addresses;
-- AV matrix addresses;
+- AV matrix addresses and Pluto URL;
 - lighting device IDs;
 - Music Assistant player IDs;
 - stream/application IDs and URLs;
@@ -63,6 +86,31 @@ The following should normally be runtime configuration rather than source consta
 - school calendar exceptions;
 - delay/half-day mappings;
 - classroom automation targets.
+
+## Integration health
+
+Each integration must report its own health independently.
+
+Examples:
+
+- MQTT/Govee status must come from MQTT/Govee runtime state, not from whether Pluto is reachable.
+- A missing or unreachable Pluto endpoint should affect Pluto status only.
+- Slow optional hardware probes should not delay rendering the controller Overview screen.
+- `configured`, `connected/reachable`, and `lastError` are separate concepts and should be represented separately when possible.
+
+## Pluto
+
+Pluto configuration is normally supplied through:
+
+```text
+PLUTO_URL=
+PLUTO_TIMEOUT_MS=4000
+PLUTO_READ_RETRIES=4
+```
+
+The public default leaves `PLUTO_URL` empty. Production must supply the local endpoint in `.env` or other supported runtime configuration.
+
+Do not probe an empty URL. An unconfigured Pluto should be represented as `NOT CONFIGURED` rather than repeatedly producing network/URL errors.
 
 ## Displays
 
@@ -119,7 +167,7 @@ Morning Announcements configuration includes:
 - saved announcement volume;
 - live-detection method/runtime diagnostics.
 
-The manual and automatic announcement paths should enter the same priority state.
+The manual and automatic announcement paths should enter the same priority state. For Ant Media player URLs, HLS is the preferred live-state and playback transport when available.
 
 ## Background Music
 
