@@ -76,6 +76,7 @@ python3 -m py_compile "$TARGET/host-agent/server.py"
 # maintenance container. The Host Agent recreates only the socket file.
 install -d -m 0750 /run/classroom-control-hub
 chmod 0755 "$TARGET/host-agent/update-runner.sh"
+chmod 0755 "$TARGET/host-agent/app-update-runner.sh"
 cat >/etc/systemd/system/classroom-hub-update.service <<UNIT
 [Unit]
 Description=Classroom Control Hub Native Host Update Runner
@@ -88,6 +89,27 @@ Type=oneshot
 User=root
 Group=root
 ExecStart=$TARGET/host-agent/update-runner.sh
+TimeoutStartSec=0
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat >/etc/systemd/system/classroom-hub-app-update.service <<UNIT
+[Unit]
+Description=Classroom Control Hub Verified Application Update Runner
+After=network-online.target docker.service classroom-control-hub-host-agent.service
+Wants=network-online.target
+ConditionPathExists=$TARGET/host-agent/app-update-runner.sh
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=CLASSROOM_HUB_DIR=$TARGET
+ExecStart=$TARGET/host-agent/app-update-runner.sh
 TimeoutStartSec=0
 Nice=10
 IOSchedulingClass=best-effort

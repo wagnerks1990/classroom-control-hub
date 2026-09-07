@@ -145,6 +145,27 @@ A rollback should replace application source/images while preserving the matchin
 
 Keep at least one known-good production snapshot until the new release has been verified in the classroom.
 
+## Web-managed release updates
+
+Infrastructure & Recovery can check a configurable GitHub `owner/repository` for
+semantic-version releases. Alpha, beta, and stable channels are separated;
+draft releases are never eligible. Private repositories require a read-only
+GitHub token, which is encrypted in the application database and never returned
+to the browser.
+
+Manual installation and optional automatic installation use the native
+`classroom-hub-app-update.service`. The native job survives container
+replacement and performs `git fetch`, resolves the selected release tag to an
+immutable commit, rebuilds the application services, and requires `/health` to
+report the release's expected version. A failure restores the previous commit
+and the matching pre-update operational backup. The Revert Last Upgrade action
+performs the same process deliberately and first backs up the current state.
+
+Automatic installation is disabled by default. When enabled, checks and
+installation occur only inside the configured maintenance window. The first
+deployment that introduces this feature must run `sudo ./install.sh` once to
+install the native application-update systemd unit.
+
 ## Backup policy
 
 Back up at minimum:

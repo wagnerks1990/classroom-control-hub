@@ -44,6 +44,13 @@ The installer preserves runtime state during upgrades, installs/reconciles the n
 
 ## Normal Git update cycle
 
+The web controller can also perform release-tag updates after `sudo ./install.sh`
+has installed `classroom-hub-app-update.service`. Its GitHub repository, release
+channel, automatic-update choice, check interval, and maintenance window are
+stored in the application database. Each update creates a recovery backup and
+automatically returns to the previous commit and database/configuration state if
+the new release does not pass health verification.
+
 ```bash
 cd /opt/classroom-hub
 sudo git fetch origin
