@@ -3258,6 +3258,12 @@ function requireAuthenticated(req,res,next){
   const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Authentication required",authRequired:true});return next();
 }
 
+function requireMaintenanceAgent(req,res,next){
+  if(!MAINTENANCE_TOKEN)return res.status(503).json({ok:false,error:"Maintenance agent is not configured"});
+  if(!secureTokenEqual(req.get("x-maintenance-token")||"",MAINTENANCE_TOKEN))return res.status(401).json({ok:false,error:"Unauthorized maintenance agent"});
+  next();
+}
+
 function resolveDisplayTargets(target) {
   if (Array.isArray(target)) {
     return [...new Set(target.flatMap(resolveDisplayTargets))];
@@ -4106,6 +4112,56 @@ app.use((req,res,next)=>{
 // Classroom Control Hub 1.0 maintenance proxy. The browser never talks to the
 // privileged maintenance agent directly; all requests remain behind the
 // existing Classroom Control Hub control authorization boundary.
+//
+// These internal endpoints run in the opposite direction. They keep the main
+// application as the only process that owns and writes the SQLite database.
+// They are deliberately limited to agent health, audit retention and managed
+// integration deployment state.
+function integrationSecretSetting(key){return /password|token|secret|api.?key|credential/i.test(String(key||""))}
+function integrationSecretName(id,key){return `integration.${id}.${key}`}
+function managedIntegrationsView({resolved=false}={}){
+  const value=dbStore.getManagedIntegrations();
+  for(const [id,cfg] of Object.entries(value.modules||{}))for(const key of Object.keys(cfg||{})){
+    if(!integrationSecretSetting(key))continue;
+    const present=dbStore.hasSecret(integrationSecretName(id,key));
+    cfg[key]=resolved?(present?(dbStore.getSecret(integrationSecretName(id,key))||""):""):(present?"••••••••":"");
+  }
+  return value;
+}
+app.get("/api/v1/internal/maintenance/status",requireMaintenanceAgent,(_req,res)=>{
+  const total=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;
+  const first=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at ASC LIMIT 1").get()?.at||null;
+  const last=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at DESC LIMIT 1").get()?.at||null;
+  res.json({ok:true,database:dbStore.databaseInfo(),audit:{total,first,last}});
+});
+app.post("/api/v1/internal/maintenance/audit/prune",requireMaintenanceAgent,(req,res)=>{
+  if(req.body?.confirm!==true)return res.status(400).json({ok:false,error:"Confirmation required"});
+  const days=Math.max(7,Math.min(3650,Number(req.body?.days||180))),cutoff=new Date(Date.now()-days*86400000).toISOString();
+  const before=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;
+  const info=dbStore.db.prepare("DELETE FROM audit_events WHERE at < ?").run(cutoff);
+  dbStore.db.exec("PRAGMA wal_checkpoint(PASSIVE)");
+  const after=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;
+  audit({kind:"audit.retention.prune",days,cutoff,removed:info.changes});
+  res.json({ok:true,days,cutoff,removed:info.changes,before,after});
+});
+app.get("/api/v1/internal/maintenance/integrations",requireMaintenanceAgent,(req,res)=>{
+  res.json({ok:true,integrations:managedIntegrationsView({resolved:String(req.query.resolved||"")==="1"})});
+});
+app.put("/api/v1/internal/maintenance/integrations/:id",requireMaintenanceAgent,(req,res)=>{
+  try{
+    const id=String(req.params.id||"").trim();if(!/^[a-z0-9_-]{1,80}$/i.test(id))throw Error("Invalid integration id");
+    const value=dbStore.getManagedIntegrations(),prior={...(value.modules?.[id]||{})};
+    for(const [key,input] of Object.entries(req.body?.settings||{})){
+      if(!/^[A-Za-z0-9_.-]{1,100}$/.test(key)||input==="••••••••")continue;
+      if(integrationSecretSetting(key)){
+        if(input!==undefined&&input!==null&&String(input)!==""){dbStore.putSecret(integrationSecretName(id,key),String(input),{type:"integration-setting",integration:id,key});prior[key]="__encrypted__"}
+      }else prior[key]=input;
+    }
+    value.modules=value.modules||{};value.modules[id]=prior;dbStore.putManagedIntegrations(value);
+    audit({kind:"admin.integration.configure",integration:id,keys:Object.keys(req.body?.settings||{}).filter(key=>!integrationSecretSetting(key))});
+    res.json({ok:true,id,config:managedIntegrationsView().modules[id]||{},resolved:managedIntegrationsView({resolved:true}).modules[id]||{}});
+  }catch(err){res.status(400).json({ok:false,error:err.message})}
+});
 app.use("/api/v1/maintenance", requireAdmin, (req,res)=>{
   if(!MAINTENANCE_PROXY_ENABLED)return res.status(503).json({ok:false,error:"Privileged maintenance proxy is disabled during stabilization"});
   if(!MAINTENANCE_TOKEN)return res.status(503).json({ok:false,error:"Maintenance agent is not configured"});

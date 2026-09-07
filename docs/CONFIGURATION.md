@@ -215,6 +215,25 @@ Background Music is independent from normal automation scheduling. Configuration
 - initial/saved volume;
 - priority-audio pause behavior.
 
+## Recovery controls
+
+The maintenance agent does not open the application SQLite database. Database
+status, audit retention, and managed-integration settings use a token-bound
+internal API so the main application remains the only database writer.
+
+- `MANAGED_APP_CONTAINER` selects the application container restarted during
+  recovery (default `classroom-control-hub`).
+- `RESTORE_HEALTH_TIMEOUT_MS` sets the time allowed for the application and
+  restored database to become healthy (default `60000`).
+- `RESTORE_MAX_EXPANDED_MB` limits the expanded size of an accepted recovery
+  archive (default `4096`).
+
+Every restore first creates a `pre-restore` operational backup. The selected
+archive is validated before data changes, its SQLite snapshot must pass
+`PRAGMA quick_check`, and the application must become healthy after restart.
+If verification fails, the agent automatically restores the pre-restore backup
+and reports whether rollback completed successfully.
+
 ## Public-repository checklist
 
 Before committing configuration-related changes, search for:

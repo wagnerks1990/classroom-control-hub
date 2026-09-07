@@ -15,7 +15,6 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 COPY server.js ./
-COPY storage.js ./
 RUN mkdir -p /work/uploads
 ENV PORT=3010
 EXPOSE 3010

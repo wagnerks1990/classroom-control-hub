@@ -133,6 +133,21 @@ For Ant Media player URLs, HLS is the preferred live-state/playback transport wh
 
 Background Music remains independent of normal visual automation. It yields to priority audio and resumes only after priority release/reconciliation completes.
 
+## Recovery controls
+
+The main application is the only SQLite owner. The maintenance agent reaches
+database status, audit retention, and managed-integration settings through its
+token-bound internal API.
+
+- `MANAGED_APP_CONTAINER` defaults to `classroom-control-hub`.
+- `RESTORE_HEALTH_TIMEOUT_MS` defaults to `60000`.
+- `RESTORE_MAX_EXPANDED_MB` defaults to `4096`.
+
+Every restore creates a pre-restore operational backup, validates archive paths
+and expanded size, verifies the SQLite snapshot with `PRAGMA quick_check`, and
+waits for application health after restart. Failed verification automatically
+restores the safety backup and reports the rollback outcome.
+
 ## Configuration validation
 
 Before production deployment, verify:

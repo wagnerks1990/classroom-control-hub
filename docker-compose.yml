@@ -78,6 +78,10 @@ services:
       MAINTENANCE_ALLOW_UNSAFE_SOURCE_UPDATES: ${MAINTENANCE_ALLOW_UNSAFE_SOURCE_UPDATES:-false}
       MANAGED_HUB_ROOT: /managed/classroom-hub
       MANAGED_Classroom_ROOT: /managed/services
+      MAIN_APP_URL: http://classroom-hub:3000
+      MANAGED_APP_CONTAINER: ${MANAGED_APP_CONTAINER:-classroom-control-hub}
+      RESTORE_HEALTH_TIMEOUT_MS: ${RESTORE_HEALTH_TIMEOUT_MS:-60000}
+      RESTORE_MAX_EXPANDED_MB: ${RESTORE_MAX_EXPANDED_MB:-4096}
       HOST_HUB_PATH: ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}
       HOST_AGENT_SOCKET: /run/classroom-control-hub/host-agent.sock
       MASTER_KEY_FILE: /run/secrets/classroom-control-hub-master-key

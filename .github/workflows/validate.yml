@@ -21,7 +21,6 @@ jobs:
           test -f src/server.js
           test -f src/storage.js
           test -f maintenance-agent/server.js
-          test -f maintenance-agent/storage.js
           test -f public/controller/index.html
           test -f public/display/index.html
           test -f AGENTS.md
@@ -43,7 +42,6 @@ jobs:
       - name: Validate maintenance syntax
         run: |
           node --check maintenance-agent/server.js
-          node --check maintenance-agent/storage.js
 
       - name: Validate controller JavaScript
         run: node tools/validate-controller.js

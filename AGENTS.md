@@ -122,7 +122,6 @@ At minimum run the validations represented by `.github/workflows/validate.yml`:
 node --check src/server.js
 node --check src/storage.js
 node --check maintenance-agent/server.js
-node --check maintenance-agent/storage.js
 node tools/validate-controller.js
 python -m py_compile host-agent/server.py
 docker compose config

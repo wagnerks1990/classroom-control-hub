@@ -6,7 +6,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check src/storage.js && node --check maintenance-agent/server.js && node --check maintenance-agent/storage.js && node tools/validate-controller.js",
+    "check": "node --check src/server.js && node --check src/storage.js && node --check maintenance-agent/server.js && node tools/validate-controller.js",
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "dependencies": {
