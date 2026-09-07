@@ -1,6 +1,6 @@
 # Classroom Control Hub Controller
 
-Alpha.5 begins the public-facing controller cleanup. Normal configuration is now structured and validated; advanced raw configuration remains available only where an integration has settings not yet represented by a form.
+Normal configuration is structured and validated; advanced raw configuration remains available only where an integration has settings not yet represented by a form.
 
 ## Design rules
 - Classroom operations stay separate from infrastructure administration.
@@ -16,6 +16,12 @@ Alpha.5 begins the public-facing controller cleanup. Normal configuration is now
 - Administrator (`admin`): full configuration, users, secrets, database, maintenance and recovery.
 
 Administrator troubleshooting endpoint: `GET /api/v1/admin/health`.
+
+## Integration connection settings
+
+Administrators configure MQTT/Govee, Pluto AV matrix, and Veyon classroom-computer connections under **Settings → Integrations & Hardware**. Saving validates URL schemes and numeric bounds, stores non-secret values in SQLite, encrypts MQTT passwords and Veyon private keys, and applies the settings without an application restart. Secret fields are write-only: the controller reports whether a value exists but never receives it back.
+
+Environment values remain first-start and migration fallbacks. Once the form is saved, its database record is authoritative. Host/container boundary settings and bootstrap credentials remain outside this screen because they are required before the application can safely open its database and serve the controller.
 
 ## Cross-domain scheduled actions (alpha.17)
 

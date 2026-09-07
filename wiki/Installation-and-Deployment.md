@@ -110,7 +110,7 @@ sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control
 
 ## Integration configuration
 
-The public repository intentionally contains generic defaults. After migration, restore local values such as MQTT, Pluto, Music Assistant, Veyon, stream URLs, device mappings, and school calendar configuration through `.env` or persistent runtime configuration.
+The public repository intentionally contains generic defaults. After migration, configure MQTT/Govee, Pluto, Veyon, Music Assistant, stream URLs, device mappings, and school calendar rules through the controller. Existing `.env` integration values remain first-start/migration fallbacks; database values become authoritative after the corresponding GUI settings are saved.
 
 Optional or slow integration probes must not delay the initial controller Overview screen, and one integration failure must not falsely mark another integration offline.
 

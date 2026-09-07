@@ -6,10 +6,13 @@ Classroom Control Hub keeps public source generic while each installation suppli
 
 A deployment can use:
 
-- `.env` for environment variables and secret references
 - persistent database/runtime settings configured through the controller
-- `config/` JSON files for generic/default device and integration catalogs
+- the encrypted database secret store for credentials and private keys
+- `.env` for bootstrap, host/container boundary, and migration fallback values
+- `config/` JSON files for generic defaults, schemas, and migration compatibility
 - mounted persistent directories for site-specific state
+
+Normal classroom configuration should be completed in the GUI. MQTT/Govee, Pluto, Veyon, Music Assistant, and update settings become database-authoritative after they are saved. `.env` remains necessary for the database/master-key paths, first-use and internal service credentials, port mapping, and reverse-proxy security boundaries.
 
 ## Standard production paths
 
@@ -35,7 +38,7 @@ Do not commit passwords, API tokens, MQTT credentials, Music Assistant tokens, A
 
 Use `.env`, mounted secrets, or the encrypted application secret store.
 
-## Common environment settings
+## Common bootstrap and migration fallback settings
 
 ### Application
 
@@ -48,6 +51,8 @@ HUB_PORT=3000
 
 ### MQTT / Govee
 
+Configure this under **Settings → Integrations & Hardware**. The GUI stores the password in the encrypted secret store and never returns it to the browser. These environment variables remain supported as first-start fallbacks:
+
 ```env
 MQTT_URL=mqtt://host.docker.internal:1883
 MQTT_USERNAME=
@@ -55,6 +60,8 @@ MQTT_PASSWORD=
 ```
 
 ### Pluto Mark I
+
+Configure the endpoint, timeout, and read retries under **Settings → Integrations & Hardware**. Changes are validated, stored in SQLite, and applied live. These environment variables remain supported as first-start fallbacks:
 
 ```env
 PLUTO_URL=
@@ -71,6 +78,8 @@ MUSIC_ASSISTANT_URL=http://host.docker.internal:8095
 ```
 
 ### Veyon
+
+Configure the WebAPI endpoint, authentication key name, discovery subnet/range, pool limits, and encrypted private key under **Settings → Integrations & Hardware**. These environment variables remain supported as first-start fallbacks:
 
 ```env
 VEYON_WEBAPI_URL=http://host.docker.internal:11080

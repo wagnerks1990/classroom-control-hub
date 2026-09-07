@@ -28,19 +28,19 @@ process.env.TZ = SCHEDULER_TIMEZONE;
 const ROOM_NAME = String(process.env.ROOM_NAME || "Classroom");
 const APPLICATION_VERSION = (()=>{try{return fs.readFileSync(path.join(path.resolve(__dirname,".."),"VERSION"),"utf8").trim()}catch{return "unknown"}})();
 
-const MQTT_URL = String(process.env.MQTT_URL || "").trim();
-const MQTT_USERNAME = String(process.env.MQTT_USERNAME || "");
-const MQTT_PASSWORD = String(process.env.MQTT_PASSWORD || "");
-const MQTT_LEGACY_BRIDGE =
+let MQTT_URL = String(process.env.MQTT_URL || "").trim();
+let MQTT_USERNAME = String(process.env.MQTT_USERNAME || "");
+let MQTT_PASSWORD = String(process.env.MQTT_PASSWORD || "");
+let MQTT_LEGACY_BRIDGE =
   String(process.env.MQTT_LEGACY_BRIDGE || "true").toLowerCase() === "true";
-const MQTT_JSON_BRIDGE =
+let MQTT_JSON_BRIDGE =
   String(process.env.MQTT_JSON_BRIDGE || "true").toLowerCase() === "true";
 
 // v0.8 direct hardware integrations. Node-RED is no longer required.
 const HARDWARE_CONFIG_FILE = path.join(path.resolve(__dirname, ".."), "config", "hardware.json");
-const PLUTO_URL = String(process.env.PLUTO_URL || "").trim();
-const PLUTO_TIMEOUT_MS = Number(process.env.PLUTO_TIMEOUT_MS || 4000);
-const PLUTO_READ_RETRIES = Number(process.env.PLUTO_READ_RETRIES || 4);
+let PLUTO_URL = String(process.env.PLUTO_URL || "").trim();
+let PLUTO_TIMEOUT_MS = Number(process.env.PLUTO_TIMEOUT_MS || 4000);
+let PLUTO_READ_RETRIES = Number(process.env.PLUTO_READ_RETRIES || 4);
 
 const CONTROL_TOKEN = String(process.env.CONTROL_TOKEN || "");
 const SETUP_TOKEN = String(process.env.SETUP_TOKEN || "");
@@ -55,15 +55,15 @@ const LOGIN_WINDOW_MS = Math.max(60000, Number(process.env.LOGIN_WINDOW_MS || 15
 const LOGIN_LOCK_MS = Math.max(60000, Number(process.env.LOGIN_LOCK_MS || 15 * 60 * 1000));
 
 // Veyon becomes the lab-computer control plane in v0.20.0.
-const VEYON_WEBAPI_URL = String(process.env.VEYON_WEBAPI_URL || "http://host.docker.internal:11080").replace(/\/$/,"");
-const VEYON_KEY_NAME = String(process.env.VEYON_KEY_NAME || "ClassroomControlHub");
+let VEYON_WEBAPI_URL = String(process.env.VEYON_WEBAPI_URL || "http://host.docker.internal:11080").replace(/\/$/,"");
+let VEYON_KEY_NAME = String(process.env.VEYON_KEY_NAME || "ClassroomControlHub");
 const VEYON_PRIVATE_KEY_FILE = String(process.env.VEYON_PRIVATE_KEY_FILE || "/run/secrets/veyon-private-key");
-const VEYON_SCAN_SUBNET = String(process.env.VEYON_SCAN_SUBNET || "").replace(/\.$/,"");
-const VEYON_SCAN_START = Math.max(1,Math.min(254,Number(process.env.VEYON_SCAN_START||1)));
-const VEYON_SCAN_END = Math.max(VEYON_SCAN_START,Math.min(254,Number(process.env.VEYON_SCAN_END||254)));
-const VEYON_POOL_MAX = Math.max(4,Math.min(128,Number(process.env.VEYON_POOL_MAX||24)));
-const VEYON_AUTH_RETRIES = Math.max(0,Math.min(5,Number(process.env.VEYON_AUTH_RETRIES||2)));
-const VEYON_THUMBNAIL_CONCURRENCY = Math.max(2,Math.min(24,Number(process.env.VEYON_THUMBNAIL_CONCURRENCY||8)));
+let VEYON_SCAN_SUBNET = String(process.env.VEYON_SCAN_SUBNET || "").replace(/\.$/,"");
+let VEYON_SCAN_START = Math.max(1,Math.min(254,Number(process.env.VEYON_SCAN_START||1)));
+let VEYON_SCAN_END = Math.max(VEYON_SCAN_START,Math.min(254,Number(process.env.VEYON_SCAN_END||254)));
+let VEYON_POOL_MAX = Math.max(4,Math.min(128,Number(process.env.VEYON_POOL_MAX||24)));
+let VEYON_AUTH_RETRIES = Math.max(0,Math.min(5,Number(process.env.VEYON_AUTH_RETRIES||2)));
+let VEYON_THUMBNAIL_CONCURRENCY = Math.max(2,Math.min(24,Number(process.env.VEYON_THUMBNAIL_CONCURRENCY||8)));
 const VEYON_AUTHKEYS_UUID = "0c69b301-81b4-42d6-8fae-128cdd113314";
 const VEYON_FEATURES = Object.freeze({
   screenLock:"ccb535a2-1d24-4cc1-a709-8b47d2b2ac79",
@@ -158,6 +158,47 @@ const DATABASE_FILE = String(process.env.DATABASE_FILE || path.join(DATA_DIR,"cl
 const MASTER_KEY_FILE = String(process.env.MASTER_KEY_FILE || "/run/secrets/classroom-control-hub-master-key");
 const LEGACY_JSON_MIRROR = String(process.env.LEGACY_JSON_MIRROR || "false").toLowerCase()==="true";
 const dbStore = new ClassroomHubStorage({dataDir:DATA_DIR,dbFile:DATABASE_FILE,masterKeyFile:MASTER_KEY_FILE,legacyMirror:LEGACY_JSON_MIRROR});
+try{if(MQTT_PASSWORD&&!dbStore.hasSecret("integration.mqtt.password"))dbStore.putSecret("integration.mqtt.password",MQTT_PASSWORD,{type:"integration-password",integration:"mqtt",migratedFrom:"environment"})}catch(err){console.warn(`MQTT password database migration skipped: ${err.message}`)}
+
+function boundedNumber(value,fallback,min,max){const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.trunc(n))):fallback}
+function validHttpEndpoint(value,label,{allowBlank=true}={}){
+  value=String(value||"").trim().replace(/\/$/,"");
+  if(!value&&allowBlank)return "";
+  let url;try{url=new URL(value)}catch{throw Error(`${label} must be a valid HTTP or HTTPS URL`)}
+  if(!["http:","https:"].includes(url.protocol)||url.username||url.password)throw Error(`${label} must be an HTTP(S) URL without embedded credentials`);
+  return value;
+}
+function validMqttEndpoint(value){
+  value=String(value||"").trim();if(!value)return "";
+  let url;try{url=new URL(value)}catch{throw Error("MQTT broker must be a valid mqtt, mqtts, ws, or wss URL")}
+  if(!["mqtt:","mqtts:","ws:","wss:"].includes(url.protocol)||url.username||url.password)throw Error("MQTT broker must use mqtt, mqtts, ws, or wss without embedded credentials");
+  return value;
+}
+function normalizedIntegrationConnections(value={},fallback={}){
+  const mqttValue=value.mqtt||{},mqttFallback=fallback.mqtt||{};
+  const plutoValue=value.pluto||{},plutoFallback=fallback.pluto||{};
+  const veyonValue=value.veyon||{},veyonFallback=fallback.veyon||{};
+  const scanSubnet=String(veyonValue.scanSubnet??veyonFallback.scanSubnet??"").trim().replace(/\.$/,"");
+  const subnetParts=scanSubnet.split(".");
+  if(scanSubnet&&(subnetParts.length!==3||subnetParts.some(x=>!/^\d{1,3}$/.test(x)||Number(x)>255)))throw Error("Veyon scan subnet must contain the first three IPv4 octets, for example 192.168.40");
+  const scanStart=boundedNumber(veyonValue.scanStart,Number(veyonFallback.scanStart)||1,1,254);
+  return {
+    mqtt:{url:validMqttEndpoint(mqttValue.url??mqttFallback.url??""),username:String(mqttValue.username??mqttFallback.username??"").trim(),jsonBridge:mqttValue.jsonBridge??mqttFallback.jsonBridge??true,legacyBridge:mqttValue.legacyBridge??mqttFallback.legacyBridge??true},
+    pluto:{url:validHttpEndpoint(plutoValue.url??plutoFallback.url??"","Pluto endpoint"),timeoutMs:boundedNumber(plutoValue.timeoutMs,Number(plutoFallback.timeoutMs)||4000,500,30000),readRetries:boundedNumber(plutoValue.readRetries,Number(plutoFallback.readRetries)||4,0,10)},
+    veyon:{url:validHttpEndpoint(veyonValue.url??veyonFallback.url??"http://host.docker.internal:11080","Veyon WebAPI endpoint",{allowBlank:false}),keyName:String(veyonValue.keyName??veyonFallback.keyName??"ClassroomControlHub").trim()||"ClassroomControlHub",scanSubnet,scanStart,scanEnd:boundedNumber(veyonValue.scanEnd,Number(veyonFallback.scanEnd)||254,scanStart,254),poolMax:boundedNumber(veyonValue.poolMax,Number(veyonFallback.poolMax)||24,4,128),authRetries:boundedNumber(veyonValue.authRetries,Number(veyonFallback.authRetries)||2,0,5),thumbnailConcurrency:boundedNumber(veyonValue.thumbnailConcurrency,Number(veyonFallback.thumbnailConcurrency)||8,2,24)}
+  };
+}
+function currentIntegrationConnections(){return {mqtt:{url:MQTT_URL,username:MQTT_USERNAME,jsonBridge:MQTT_JSON_BRIDGE,legacyBridge:MQTT_LEGACY_BRIDGE},pluto:{url:PLUTO_URL,timeoutMs:PLUTO_TIMEOUT_MS,readRetries:PLUTO_READ_RETRIES},veyon:{url:VEYON_WEBAPI_URL,keyName:VEYON_KEY_NAME,scanSubnet:VEYON_SCAN_SUBNET,scanStart:VEYON_SCAN_START,scanEnd:VEYON_SCAN_END,poolMax:VEYON_POOL_MAX,authRetries:VEYON_AUTH_RETRIES,thumbnailConcurrency:VEYON_THUMBNAIL_CONCURRENCY}}}
+function applyIntegrationConnections(value){
+  MQTT_URL=value.mqtt.url;MQTT_USERNAME=value.mqtt.username;MQTT_JSON_BRIDGE=value.mqtt.jsonBridge!==false;MQTT_LEGACY_BRIDGE=value.mqtt.legacyBridge!==false;
+  PLUTO_URL=value.pluto.url;PLUTO_TIMEOUT_MS=value.pluto.timeoutMs;PLUTO_READ_RETRIES=value.pluto.readRetries;
+  VEYON_WEBAPI_URL=value.veyon.url;VEYON_KEY_NAME=value.veyon.keyName;VEYON_SCAN_SUBNET=value.veyon.scanSubnet;VEYON_SCAN_START=value.veyon.scanStart;VEYON_SCAN_END=value.veyon.scanEnd;VEYON_POOL_MAX=value.veyon.poolMax;VEYON_AUTH_RETRIES=value.veyon.authRetries;VEYON_THUMBNAIL_CONCURRENCY=value.veyon.thumbnailConcurrency;
+  try{if(dbStore.hasSecret("integration.mqtt.password"))MQTT_PASSWORD=String(dbStore.getSecret("integration.mqtt.password")||"")}catch{}
+}
+function integrationConnectionsView(){return {...currentIntegrationConnections(),mqtt:{...currentIntegrationConnections().mqtt,passwordConfigured:dbStore.hasSecret("integration.mqtt.password")||Boolean(MQTT_PASSWORD)},veyon:{...currentIntegrationConnections().veyon,privateKeyConfigured:dbStore.hasSecret("veyon.private-key")||fs.existsSync(VEYON_PRIVATE_KEY_FILE)}}}
+const storedIntegrationConnections=dbStore.getPreference("integrations.connections",null);
+if(storedIntegrationConnections)applyIntegrationConnections(normalizedIntegrationConnections(storedIntegrationConnections,currentIntegrationConnections()));
+else try{if(dbStore.hasSecret("integration.mqtt.password"))MQTT_PASSWORD=String(dbStore.getSecret("integration.mqtt.password")||"")}catch{}
 
 function databaseBackedFile(file){
   const resolved=path.resolve(file);
@@ -3506,6 +3547,9 @@ function mqttPublish(topic, payload, options = {}) {
 }
 
 function connectMqtt() {
+  runtime.mqtt.configured=Boolean(MQTT_URL);
+  runtime.mqtt.url=MQTT_URL?MQTT_URL.replace(/:\/\/.*@/, "://***@"):"";
+  runtime.mqtt.lastError=null;
   if (!MQTT_URL) {
     console.log("MQTT_URL is blank; MQTT bridge disabled.");
     return;
@@ -3642,6 +3686,12 @@ function connectMqtt() {
       return;
     }
   });
+}
+
+function reconnectMqtt(){
+  if(mqttClient){mqttClient.removeAllListeners();mqttClient.end(true);mqttClient=null}
+  runtime.mqtt.connected=false;
+  connectMqtt();
 }
 
 // -----------------------------------------------------------------------------
@@ -4828,7 +4878,7 @@ app.get("/api/v1/admin/summary",requireAdmin,(_req,res)=>{
   }});
 });
 app.get("/api/v1/admin/config",requireAdmin,(_req,res)=>{
-  res.json({ok:true,...dbStore.getAdminConfig(),database:dbStore.databaseInfo()});
+  res.json({ok:true,...dbStore.getAdminConfig(),integrationConnections:integrationConnectionsView(),database:dbStore.databaseInfo()});
 });
 app.put("/api/v1/admin/site",requireAdmin,(req,res)=>{
   try{
@@ -4850,6 +4900,24 @@ app.put("/api/v1/admin/displays",requireAdmin,(req,res)=>{
 });
 app.put("/api/v1/admin/hardware",requireAdmin,(req,res)=>{
   try{const value=req.body||{};dbStore.writeNormalized("hardware",value);audit({kind:"admin.config.hardware"});res.json({ok:true,hardware:value,restartRecommended:true})}catch(err){res.status(400).json({ok:false,error:err.message})}
+});
+app.put("/api/v1/admin/integration-connections",requireAdmin,async(req,res)=>{
+  try{
+    const body=req.body||{},next=normalizedIntegrationConnections(body,currentIntegrationConnections());
+    if(body.mqtt?.password){dbStore.putSecret("integration.mqtt.password",String(body.mqtt.password),{type:"integration-password",integration:"mqtt"})}
+    if(body.veyon?.privateKey){
+      const key=String(body.veyon.privateKey).trim();
+      if(!key.includes("BEGIN")||!key.includes("PRIVATE KEY"))throw Error("Veyon private key must be PEM-formatted private-key material");
+      dbStore.putSecret("veyon.private-key",key,{type:"private-key",integration:"veyon",keyName:next.veyon.keyName});
+    }
+    dbStore.setPreference("integrations.connections",next);
+    applyIntegrationConnections(next);
+    runtime.hardware.pluto={...runtime.hardware.pluto,configured:Boolean(PLUTO_URL),url:PLUTO_URL,lastError:null};
+    veyonConnectionCache.clear();veyonAuthInFlight.clear();
+    reconnectMqtt();
+    audit({kind:"admin.integrations.connections",mqttConfigured:Boolean(MQTT_URL),plutoConfigured:Boolean(PLUTO_URL),veyonConfigured:Boolean(VEYON_WEBAPI_URL)});
+    res.json({ok:true,integrationConnections:integrationConnectionsView(),applied:true});
+  }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 app.get("/api/v1/admin/secrets",requireAdmin,(_req,res)=>res.json({ok:true,secrets:dbStore.listSecrets(),certificates:dbStore.listCertificates()}));
 app.put("/api/v1/admin/secrets/:name",requireAdmin,(req,res)=>{

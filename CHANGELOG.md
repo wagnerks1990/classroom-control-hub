@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Database-backed classroom integration settings
+- Added structured controller settings for MQTT/Govee, Pluto AV matrix, and Veyon classroom-computer connections.
+- Stored connection settings in SQLite and MQTT/Veyon credential material in the encrypted secret store without returning secret values to browsers.
+- Applied connection changes live, including MQTT reconnection and Veyon connection-pool invalidation, while retaining environment variables as bootstrap/migration fallbacks.
+- Added validation for integration URL schemes, embedded credentials, Veyon scan ranges, timeouts, retries, and concurrency limits.
+
 ### One-command appliance deployment
 - Added a clean-machine Ubuntu Server 24.04 bootstrap for `amd64` and `arm64` that installs Docker Engine and Compose from Docker's signed apt repository.
 - Added safe temporary source staging, existing-installation refusal, and explicit repository/ref/target overrides.

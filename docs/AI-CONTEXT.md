@@ -82,6 +82,12 @@ secret-free `/api/v1/branding` contract. All browser surfaces load the shared
 branding client. This is an education-only product; do not introduce a generic
 organization/site/space model or neutral experience preset.
 
+MQTT/Govee, Pluto, Veyon, Music Assistant, and application-update settings are
+also controller-managed and database-backed. Integration passwords, private
+keys, and tokens belong in the encrypted secret store and must never be returned
+by browser APIs. Environment variables remain bootstrap/migration fallbacks and
+host/container boundary configuration, not the normal editing surface.
+
 ## Git and release workflow
 
 `main` is the source branch used by the current production Git workflow. Before changing source, inspect the latest branch head and relevant files. Do not overwrite runtime state when updating source.

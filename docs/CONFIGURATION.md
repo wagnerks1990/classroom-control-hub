@@ -6,10 +6,12 @@ Classroom Control Hub separates reusable application code from site-specific run
 
 Configuration comes from:
 
-1. environment variables / `.env`;
-2. persistent application configuration stored in SQLite;
-3. optional JSON configuration/catalog files for defaults and schemas;
-4. protected secret material supplied at runtime.
+1. persistent application configuration stored in SQLite and managed through the controller;
+2. encrypted credentials stored in the SQLite secret store;
+3. environment variables / `.env` required to bootstrap the appliance or provide host/container boundaries;
+4. optional JSON configuration/catalog files used only for shipped defaults, schemas, and migration compatibility.
+
+Normal classroom identity, display, schedule, automation, MQTT/Govee, Pluto, Veyon, Music Assistant, and application-update configuration should be changed through the GUI. `.env` remains necessary for settings that must exist before SQLite can be opened or before the browser is available, including database/master-key paths, initial setup and internal service tokens, port mapping, and reverse-proxy security boundaries.
 
 ## `.env`
 
@@ -43,12 +45,10 @@ Typical categories include:
 
 - application port and timezone;
 - persistent data locations;
-- Music Assistant connection information;
-- MQTT connection information;
-- Pluto connection information;
-- announcement/stream defaults;
 - host/maintenance-agent connection settings;
 - authentication/security options.
+
+Legacy integration values in `.env` are used as initial fallbacks. Once MQTT/Govee, Pluto, or Veyon connection settings are saved under **Settings → Integrations & Hardware**, the database values become authoritative and are applied live. MQTT passwords and Veyon private keys are stored encrypted and are never returned to the browser.
 
 Cross-origin API access is disabled unless an exact origin is listed in the
 comma-separated `CORS_ALLOWED_ORIGINS` setting. Same-origin browser use needs
@@ -145,7 +145,7 @@ Examples:
 
 ## Pluto
 
-Pluto configuration is normally supplied through:
+Pluto is normally configured under **Settings → Integrations & Hardware**. The following values remain supported as first-start or migration fallbacks:
 
 ```text
 PLUTO_URL=

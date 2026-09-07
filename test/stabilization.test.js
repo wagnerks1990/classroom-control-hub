@@ -7,6 +7,7 @@ const os=require("node:os");
 const path=require("node:path");
 const net=require("node:net");
 const {spawn}=require("node:child_process");
+const {DatabaseSync}=require("node:sqlite");
 const {WebSocket}=require("ws");
 
 const projectRoot=path.resolve(__dirname,"..");
@@ -223,6 +224,36 @@ test("maintenance database API is token-bound and keeps secrets masked by defaul
 
   result=await request("/api/v1/internal/maintenance/integrations",{headers:agentHeaders});
   assert.equal(result.json.integrations.modules.govee2mqtt.apiKey,"••••••••");
+});
+
+test("classroom integration connections are GUI-managed, database-backed, and secret-safe",async()=>{
+  const mqttPassword="mqtt-regression-secret",veyonKey="-----BEGIN PRIVATE KEY-----\nregression-only\n-----END PRIVATE KEY-----";
+  let result=await request("/api/v1/admin/integration-connections",{method:"PUT",authenticated:true,body:{mqtt:{url:"",username:"classroom-hub",password:mqttPassword,jsonBridge:true,legacyBridge:false},pluto:{url:"http://192.0.2.20/cgi-bin/instr",timeoutMs:5500,readRetries:3},veyon:{url:"http://host.docker.internal:11080",keyName:"ClassroomControlHub",privateKey:veyonKey,scanSubnet:"192.0.2",scanStart:20,scanEnd:39,poolMax:18,authRetries:1,thumbnailConcurrency:6}}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.applied,true);
+  assert.equal(result.json.integrationConnections.mqtt.passwordConfigured,true);
+  assert.equal(result.json.integrationConnections.veyon.privateKeyConfigured,true);
+  assert.equal(result.json.integrationConnections.pluto.timeoutMs,5500);
+  assert.equal(result.json.integrationConnections.veyon.scanSubnet,"192.0.2");
+  assert.equal(JSON.stringify(result.json).includes(mqttPassword),false);
+  assert.equal(JSON.stringify(result.json).includes("regression-only"),false);
+
+  result=await request("/api/v1/admin/config",{authenticated:true});
+  assert.equal(result.json.integrationConnections.mqtt.username,"classroom-hub");
+  assert.equal(result.json.integrationConnections.mqtt.legacyBridge,false);
+  assert.equal(result.json.integrationConnections.veyon.poolMax,18);
+  const db=new DatabaseSync(path.join(tempDir,"hub.db"),{readOnly:true});
+  const stored=JSON.parse(db.prepare("SELECT value_json FROM system_preferences WHERE key='integrations.connections'").get().value_json);
+  const encrypted=db.prepare("SELECT cipher_text FROM secret_store WHERE name='integration.mqtt.password'").get().cipher_text;
+  db.close();
+  assert.equal(stored.pluto.url,"http://192.0.2.20/cgi-bin/instr");
+  assert.equal(JSON.stringify(stored).includes(mqttPassword),false);
+  assert.equal(encrypted.includes(mqttPassword),false);
+
+  result=await request("/api/v1/admin/integration-connections",{method:"PUT",authenticated:true,body:{mqtt:{url:"mqtt://user:secret@example.test:1883"}}});
+  assert.equal(result.response.status,400);
+  result=await request("/api/v1/admin/integration-connections",{method:"PUT",authenticated:true,body:{veyon:{scanSubnet:"not-a-subnet"}}});
+  assert.equal(result.response.status,400);
 });
 
 test("maintenance agent does not own SQLite and restore includes verified rollback",()=>{
