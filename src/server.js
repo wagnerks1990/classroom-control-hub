@@ -42,6 +42,10 @@ const PLUTO_TIMEOUT_MS = Number(process.env.PLUTO_TIMEOUT_MS || 4000);
 const PLUTO_READ_RETRIES = Number(process.env.PLUTO_READ_RETRIES || 4);
 
 const CONTROL_TOKEN = String(process.env.CONTROL_TOKEN || "");
+const SETUP_TOKEN = String(process.env.SETUP_TOKEN || "");
+const MAINTENANCE_PROXY_ENABLED = String(process.env.MAINTENANCE_PROXY_ENABLED || "false").toLowerCase() === "true";
+const CORS_ALLOWED_ORIGINS = new Set(String(process.env.CORS_ALLOWED_ORIGINS || "").split(",").map(x=>x.trim()).filter(Boolean));
+const WS_MAX_PAYLOAD_BYTES = Math.max(1024*1024,Math.min(64*1024*1024,Number(process.env.WS_MAX_PAYLOAD_MB||16)*1024*1024));
 const MAINTENANCE_URL = String(process.env.MAINTENANCE_URL || "http://maintenance-agent:3010").replace(/\/$/,"");
 const MAINTENANCE_TOKEN = String(process.env.MAINTENANCE_TOKEN || "");
 const TRUST_PROXY_HOPS = Math.max(0, Math.min(5, Number(process.env.TRUST_PROXY_HOPS || 1)));
@@ -108,7 +112,7 @@ const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 500);
 const DEVICE_OFFLINE_SECONDS = Number(process.env.DEVICE_OFFLINE_SECONDS || 45);
 
 const APP_DIR = path.resolve(__dirname, "..");
-const DATA_DIR = path.join(APP_DIR, "data");
+const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(APP_DIR, "data"));
 const MEDIA_DIR = path.join(DATA_DIR, "media");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const AUDIT_FILE = path.join(DATA_DIR, "audit.jsonl");
@@ -139,6 +143,7 @@ const LAB_AI_RULES_FILE = path.join(DATA_DIR, "lab-ai-rules.json");
 fs.mkdirSync(LAB_SCREENSHOT_DIR,{recursive:true});
 fs.mkdirSync(LAB_UPDATE_DIR,{recursive:true});
 const SESSION_EFFECT_INTERVAL_MS = Number(process.env.SESSION_EFFECT_INTERVAL_MS || 4500);
+const SESSION_PARTICIPATION_ENABLED = String(process.env.SESSION_PARTICIPATION_ENABLED || "false").toLowerCase() === "true";
 const SESSION_MAX_QUEUE = Number(process.env.SESSION_MAX_QUEUE || 80);
 const SESSION_EFFECT_DURATION_MS = Number(process.env.SESSION_EFFECT_DURATION_MS || 7000);
 const SESSION_CLEAR_GAP_MS = Number(process.env.SESSION_CLEAR_GAP_MS || 1200);
@@ -1011,7 +1016,9 @@ function normalizeAutomation(input={},existing={}){
     payload:(input.payload&&typeof input.payload==="object")?input.payload:(existing.payload||{}),
     actions:Array.isArray(input.actions)
       ? input.actions.map((item,index)=>({
-          id:String(item?.id||`step-${index+1}`),
+          // Action IDs are globally unique in SQLite. Scope them to the
+          // automation instead of reusing generic step-1/step-2 identifiers.
+          id:`${id.slice(0,60)}-step-${index+1}`,
           action:String(item?.action||"display.clear"),
           targets:Array.isArray(item?.targets)?[...new Set(item.targets.map(cleanId).filter(Boolean))]:[],
           useEventTargets:item?.useEventTargets!==false,
@@ -3224,13 +3231,20 @@ function requestUser(req){
 function hasRole(user,minRole="operator"){
   const rank={viewer:1,operator:2,admin:3};return !!user&&(rank[user.role]||0)>=(rank[minRole]||2);
 }
+function secureTokenEqual(actual,expected){
+  const a=Buffer.from(String(actual||"")),b=Buffer.from(String(expected||""));
+  return a.length===b.length&&a.length>0&&crypto.timingSafeEqual(a,b);
+}
+function authenticationUnavailable(res){
+  return res.status(503).json({ok:false,error:"Secure setup is required before this operation is available",setupRequired:dbStore.userCount()===0});
+}
 function requireControl(req, res, next) {
   if(dbStore.authEnabled()){
     const user=requestUser(req);if(!hasRole(user,"operator"))return res.status(401).json({ok:false,error:"Authentication required",authRequired:true});return next();
   }
-  if (!CONTROL_TOKEN) return next();
-  const token = req.get("x-control-token") || req.query.token || (req.body && req.body.token) || "";
-  if (token !== CONTROL_TOKEN) return res.status(401).json({ ok: false, error: "Unauthorized" });
+  if(!CONTROL_TOKEN)return authenticationUnavailable(res);
+  const token=req.get("x-control-token")||"";
+  if(!secureTokenEqual(token,CONTROL_TOKEN))return res.status(401).json({ok:false,error:"Unauthorized"});
   next();
 }
 function requireAdmin(req,res,next){
@@ -3240,7 +3254,7 @@ function requireAdmin(req,res,next){
   return requireControl(req,res,next);
 }
 function requireAuthenticated(req,res,next){
-  if(!dbStore.authEnabled())return next();
+  if(!dbStore.authEnabled())return requireControl(req,res,next);
   const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Authentication required",authRequired:true});return next();
 }
 
@@ -4040,8 +4054,13 @@ app.use((req,res,next)=>{
   next();
 });
 
-function effectiveHost(req){return String(req.get("x-forwarded-host")||req.get("host")||"").split(",")[0].trim().toLowerCase()}
+function effectiveHost(req){return String(req.get?.("x-forwarded-host")||req.headers?.["x-forwarded-host"]||req.get?.("host")||req.headers?.host||"").split(",")[0].trim().toLowerCase()}
 function clientAddress(req){return String(req.ip||req.socket?.remoteAddress||"")}
+function browserWebSocketOriginAllowed(req){
+  const origin=String(req.headers?.origin||"").trim();
+  if(!origin)return false;
+  try{const u=new URL(origin);return u.host.toLowerCase()===effectiveHost(req)||CORS_ALLOWED_ORIGINS.has(origin)}catch{return false}
+}
 app.use((req,res,next)=>{
   if(!dbStore.authEnabled()||!["POST","PUT","PATCH","DELETE"].includes(req.method))return next();
   if(!cookieValue(req,"classroom_hub_session"))return next();
@@ -4088,6 +4107,7 @@ app.use((req,res,next)=>{
 // privileged maintenance agent directly; all requests remain behind the
 // existing Classroom Control Hub control authorization boundary.
 app.use("/api/v1/maintenance", requireAdmin, (req,res)=>{
+  if(!MAINTENANCE_PROXY_ENABLED)return res.status(503).json({ok:false,error:"Privileged maintenance proxy is disabled during stabilization"});
   if(!MAINTENANCE_TOKEN)return res.status(503).json({ok:false,error:"Maintenance agent is not configured"});
   let target;
   try{target=new URL(MAINTENANCE_URL + req.originalUrl.replace(/^\/api\/v1\/maintenance/,""))}
@@ -4113,12 +4133,17 @@ app.use("/api/v1/maintenance", requireAdmin, (req,res)=>{
 // Closed-lab HTTP application. No HSTS/TLS assumptions.
 app.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin=String(req.get("origin")||"");
+  if(origin&&CORS_ALLOWED_ORIGINS.has(origin)){
+    res.setHeader("Access-Control-Allow-Origin",origin);
+    res.setHeader("Vary","Origin");
+  }
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, X-Control-Token, X-Display-Token"
+    "Content-Type, X-Control-Token, X-Display-Token, X-Setup-Token"
   );
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  if(req.method==="OPTIONS"&&origin&&!CORS_ALLOWED_ORIGINS.has(origin))return res.status(403).json({ok:false,error:"Cross-origin request blocked"});
   if (req.method === "OPTIONS") return res.status(204).end();
   next();
 });
@@ -4305,7 +4330,7 @@ app.put("/api/v1/pluto/labels",requireControl,(req,res)=>{
 app.get("/api/v1/pluto/schedules",requireAuthenticated,(_req,res)=>res.json({ok:true,schedules:plutoSchedules}));
 app.post("/api/v1/pluto/schedules",requireControl,(req,res)=>{
   const incoming=req.body?.schedules||{},base=makeDefaultPlutoSchedules();
-  const validTime=t=>typeof t==="string"&&/^\\d{2}:\\d{2}$/.test(t);
+  const validTime=t=>typeof t==="string"&&/^\d{2}:\d{2}$/.test(t);
   for(const [k,v] of Object.entries(incoming)){
     if(!/^(hdmi|hdbt):[1-8]$/.test(k))continue;
     const [type,indexText]=k.split(":"),index=Number(indexText);
@@ -4421,7 +4446,6 @@ app.get("/api/v1/class-schedules",requireAuthenticated,(_req,res)=>{
 app.get("/api/v1/class-schedules/status",requireAuthenticated,(_req,res)=>{const now=new Date();res.json({ok:true,...classStatusPayload(now),scheduler:schedulerStatus()})});
 app.post("/api/v1/class-schedules",requireControl,(req,res)=>{try{const cls=normalizeClassSchedule(req.body||{});classScheduleStore.classes.push(cls);persistClassSchedules();res.json({ok:true,classSchedule:cls})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.put("/api/v1/class-schedules/:id",requireControl,(req,res)=>{try{const i=classScheduleStore.classes.findIndex(c=>c.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:"Class not found"});const cls=normalizeClassSchedule(req.body||{},classScheduleStore.classes[i]);classScheduleStore.classes[i]=cls;persistClassSchedules();res.json({ok:true,classSchedule:cls})}catch(err){res.status(400).json({ok:false,error:err.message})}});
-app.delete("/api/v1/class-schedules/:id",requireControl,(req,res)=>{const i=classScheduleStore.classes.findIndex(c=>c.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:"Class not found"});
 app.post("/api/v1/class-schedules/:id/duplicate",requireControl,(req,res)=>{
   try{
     const source=classScheduleStore.classes.find(c=>c.id===req.params.id);
@@ -4443,7 +4467,13 @@ app.post("/api/v1/class-schedules/:id/duplicate",requireControl,(req,res)=>{
     res.status(400).json({ok:false,error:err.message});
   }
 });
-const [removed]=classScheduleStore.classes.splice(i,1);persistClassSchedules();res.json({ok:true,removed})});
+app.delete("/api/v1/class-schedules/:id",requireControl,(req,res)=>{
+  const i=classScheduleStore.classes.findIndex(c=>c.id===req.params.id);
+  if(i<0)return res.status(404).json({ok:false,error:"Class not found"});
+  const [removed]=classScheduleStore.classes.splice(i,1);
+  persistClassSchedules();
+  res.json({ok:true,removed});
+});
 
 app.get("/api/v1/automations",requireAuthenticated,(_req,res)=>{
   res.json({ok:true,events:[...classroomAutomations.events].sort(compareAutomations).map(e=>({...e,resolved:resolveAutomationFromClass(e),resolvedOccurrences:resolveAutomationOccurrences(e)})),scheduler:schedulerStatus(),actions:[
@@ -4645,13 +4675,31 @@ app.delete("/api/v1/auth/sessions/:id",requireAuthenticated,(req,res)=>{const us
 app.post("/api/v1/auth/logout-others",requireAuthenticated,(req,res)=>{const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Not authenticated"});const removed=dbStore.deleteAllUserSessions(user.id,{exceptSessionId:user.sessionId});audit({kind:"auth.sessions.revoke-others",userId:user.id,removed});res.json({ok:true,removed})});
 app.post("/api/v1/auth/change-password",requireAuthenticated,(req,res)=>{try{const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Not authenticated"});dbStore.changeUserPassword(user.id,req.body?.currentPassword,req.body?.newPassword);dbStore.deleteAllUserSessions(user.id,{exceptSessionId:user.sessionId});audit({kind:"auth.password.change",userId:user.id,username:user.username});res.json({ok:true,message:"Password changed. Other sessions were signed out."})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.post("/api/v1/setup/administrator",(req,res)=>{
-  try{if(dbStore.userCount()>0&&!hasRole(requestUser(req),"admin"))return res.status(403).json({ok:false,error:"Administrator already exists"});const user=dbStore.putUser({id:req.body?.id||crypto.randomUUID(),username:req.body?.username,displayName:req.body?.displayName||req.body?.username,role:"admin",enabled:true},{password:req.body?.password});dbStore.setAuthEnabled(req.body?.enableAuth!==false);dbStore.setSetupCompleted(true);audit({kind:"setup.administrator",userId:user.id,username:user.username,authEnabled:dbStore.authEnabled()});res.json({ok:true,user,authEnabled:dbStore.authEnabled(),setupCompleted:true})}catch(err){res.status(400).json({ok:false,error:err.message})}
+  try{
+    if(dbStore.userCount()>0)return res.status(409).json({ok:false,error:"Secure setup is already complete"});
+    if(!SETUP_TOKEN)return res.status(503).json({ok:false,error:"SETUP_TOKEN must be configured before creating the first administrator"});
+    if(!secureTokenEqual(req.get("x-setup-token")||"",SETUP_TOKEN)){
+      audit({kind:"security.setup.denied",remote:clientAddress(req)});
+      return res.status(403).json({ok:false,error:"Invalid setup token"});
+    }
+    const user=dbStore.putUser({id:req.body?.id||crypto.randomUUID(),username:req.body?.username,displayName:req.body?.displayName||req.body?.username,role:"admin",enabled:true},{password:req.body?.password});
+    dbStore.setAuthEnabled(true);
+    dbStore.setSetupCompleted(true);
+    const policy=dbStore.authPolicy(),sess=dbStore.createSession(user,{remoteAddr:clientAddress(req),userAgent:req.get("user-agent")||"",ttlHours:policy.standardHours});
+    const secure=(req.secure||String(req.get("x-forwarded-proto")||"").toLowerCase()==="https")?"; Secure":"";
+    res.setHeader("Set-Cookie",`classroom_hub_session=${encodeURIComponent(sess.token)}; Path=/; HttpOnly; SameSite=Strict${secure}; Max-Age=${Math.round(policy.standardHours*3600)}`);
+    audit({kind:"setup.administrator",userId:user.id,username:user.username,authEnabled:true,remote:clientAddress(req)});
+    res.status(201).json({ok:true,user,authEnabled:true,setupCompleted:true});
+  }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 app.get("/api/v1/admin/users",requireAdmin,(_req,res)=>res.json({ok:true,users:dbStore.listUsers(),authEnabled:dbStore.authEnabled(),policy:dbStore.authPolicy(),sessions:dbStore.listAllUserSessions()}));
 app.post("/api/v1/admin/users",requireAdmin,(req,res)=>{try{const user=dbStore.putUser(req.body||{},{password:req.body?.password});audit({kind:"admin.user.create",userId:user.id,username:user.username,role:user.role});res.json({ok:true,user})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.put("/api/v1/admin/users/:id",requireAdmin,(req,res)=>{try{const current=dbStore.listUsers().find(x=>x.id===req.params.id);if(!current)return res.status(404).json({ok:false,error:"User not found"});const enabledAdmins=dbStore.listUsers().filter(x=>x.enabled&&x.role==="admin");if(current.role==="admin"&&enabledAdmins.length<=1&&(req.body?.enabled===false||(req.body?.role&&req.body.role!=="admin")))return res.status(400).json({ok:false,error:"Cannot disable or demote the last enabled administrator"});const user=dbStore.putUser({...current,...req.body,id:req.params.id},{password:req.body?.password||null});if(!user.enabled)dbStore.deleteAllUserSessions(user.id);audit({kind:"admin.user.update",userId:user.id,username:user.username,role:user.role,enabled:user.enabled});res.json({ok:true,user})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.delete("/api/v1/admin/users/:id",requireAdmin,(req,res)=>{const current=dbStore.listUsers().find(x=>x.id===req.params.id);if(!current)return res.status(404).json({ok:false,error:"User not found"});if(current.role==="admin"&&dbStore.listUsers().filter(x=>x.enabled&&x.role==="admin").length<=1)return res.status(400).json({ok:false,error:"Cannot remove the last enabled administrator"});dbStore.deleteUser(req.params.id);audit({kind:"admin.user.delete",userId:req.params.id,username:current.username});res.json({ok:true})});
-app.put("/api/v1/admin/auth",requireAdmin,(req,res)=>{if(req.body?.enabled===true&&dbStore.userCount()<1)return res.status(400).json({ok:false,error:"Create an administrator before enabling authentication"});const enabled=dbStore.setAuthEnabled(!!req.body?.enabled);audit({kind:"admin.auth.update",enabled});res.json({ok:true,enabled})});
+app.put("/api/v1/admin/auth",requireAdmin,(req,res)=>{
+  if(req.body?.enabled!==true)return res.status(400).json({ok:false,error:"Local authentication cannot be disabled on a secured appliance"});
+  const enabled=dbStore.setAuthEnabled(true);audit({kind:"admin.auth.update",enabled});res.json({ok:true,enabled});
+});
 app.post("/api/v1/admin/users/:id/reset-password",requireAdmin,(req,res)=>{try{const user=dbStore.resetUserPassword(req.params.id,req.body?.password);audit({kind:"admin.user.password-reset",userId:user.id,username:user.username});res.json({ok:true,user,message:"Password reset. All existing sessions for this user were revoked."})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.delete("/api/v1/admin/sessions/:id",requireAdmin,(req,res)=>{const sess=dbStore.listAllUserSessions().find(x=>x.id===req.params.id);if(!sess)return res.status(404).json({ok:false,error:"Session not found"});const removed=dbStore.deleteUserSession(sess.userId,sess.id);audit({kind:"admin.session.revoke",sessionId:sess.id,userId:sess.userId,removed});res.json({ok:true,removed})});
 app.put("/api/v1/admin/auth-policy",requireAdmin,(req,res)=>{try{const policy=dbStore.setAuthPolicy(req.body||{});audit({kind:"admin.auth-policy.update",policy});res.json({ok:true,policy})}catch(err){res.status(400).json({ok:false,error:err.message})}});
@@ -4949,7 +4997,7 @@ app.get("/api/v1/diagnostics/events",requireAuthenticated,(req,res)=>{
   })});
 });
 
-app.get("/api/v1/diagnostics/export",async(_req,res)=>{
+app.get("/api/v1/diagnostics/export",requireAdmin,async(_req,res)=>{
   try{
     const snapshot=await buildDiagnosticsSnapshot();
     res.setHeader("Content-Disposition",`attachment; filename="classroom-hub-diagnostics-${new Date().toISOString().replace(/[:.]/g,"-")}.json"`);
@@ -4992,6 +5040,10 @@ app.post("/api/v1/diagnostics/test",requireControl,async(req,res)=>{
 // -----------------------------------------------------------------------------
 // v0.6 Session API
 // -----------------------------------------------------------------------------
+app.use("/api/v1/sessions",(req,res,next)=>{
+  if(!SESSION_PARTICIPATION_ENABLED)return res.status(503).json({ok:false,error:"Anonymous classroom participation is disabled during stabilization"});
+  next();
+});
 app.get("/api/v1/sessions/:id", (req,res) => {
   const session=getSession(req.params.id);
   res.json({ok:true,state:publicSessionState(session)});
@@ -5325,14 +5377,14 @@ app.delete("/api/v1/veyon/computers/:id",requireControl,(req,res)=>{
   delete veyonComputerStore.computers[id];veyonConnectionCache.delete(rec.ip);persistVeyonComputers();
   res.json({ok:true,id});
 });
-app.get("/api/v1/veyon/computers/:id/info",async(req,res)=>{
+app.get("/api/v1/veyon/computers/:id/info",requireAuthenticated,async(req,res)=>{
   try{
     const rec=veyonComputerStore.computers[veyonComputerId(req.params.id)];
     if(!rec)return res.status(404).json({ok:false,error:"Computer not found"});
     res.json({ok:true,computer:await veyonStatusFor(rec,{includeInfo:true})});
   }catch(err){res.status(502).json({ok:false,error:err.message})}
 });
-app.get("/api/v1/veyon/computers/:id/framebuffer",async(req,res)=>{
+app.get("/api/v1/veyon/computers/:id/framebuffer",requireAuthenticated,async(req,res)=>{
   try{
     const rec=veyonComputerStore.computers[veyonComputerId(req.params.id)];
     if(!rec)return res.status(404).json({ok:false,error:"Computer not found"});
@@ -5356,21 +5408,21 @@ app.get("/api/v1/veyon/computers/:id/framebuffer",async(req,res)=>{
   }catch(err){res.status(502).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/veyon/computers/:id/features",async(req,res)=>{
+app.get("/api/v1/veyon/computers/:id/features",requireAuthenticated,async(req,res)=>{
   try{
     const rec=veyonComputerStore.computers[veyonComputerId(req.params.id)];
     if(!rec)return res.status(404).json({ok:false,error:"Computer not found"});
     res.json({ok:true,features:await veyonAvailableFeatures(rec.ip)});
   }catch(err){res.status(502).json({ok:false,error:err.message})}
 });
-app.get("/api/v1/veyon/computers/:id/feature/:feature",async(req,res)=>{
+app.get("/api/v1/veyon/computers/:id/feature/:feature",requireAuthenticated,async(req,res)=>{
   try{
     const rec=veyonComputerStore.computers[veyonComputerId(req.params.id)];
     if(!rec)return res.status(404).json({ok:false,error:"Computer not found"});
     res.json({ok:true,feature:req.params.feature,...await veyonFeatureStatus(rec.ip,req.params.feature)});
   }catch(err){res.status(502).json({ok:false,error:err.message})}
 });
-app.get("/api/v1/veyon/connections",(_req,res)=>{
+app.get("/api/v1/veyon/connections",requireAuthenticated,(_req,res)=>{
   const now=Math.floor(Date.now()/1000);
   res.json({ok:true,max:VEYON_POOL_MAX,size:veyonConnectionCache.size,connections:[...veyonConnectionCache.entries()].map(([host,r])=>({
     host,validUntil:r.validUntil,secondsRemaining:Math.max(0,Number(r.validUntil||0)-now),idleSeconds:Math.floor((Date.now()-Number(r.lastUsed||0))/1000)
@@ -5451,7 +5503,7 @@ app.post("/api/v1/veyon/feature",requireControl,async(req,res)=>{
 });
 
 app.get("/api/v1/lab/computers",requireAuthenticated,(_req,res)=>res.json(publicLabInventory()));
-app.get("/api/v1/lab/computers/:id/history",(req,res)=>{
+app.get("/api/v1/lab/computers/:id/history",requireAuthenticated,(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id);
     if(!labComputerStore.computers[id])return res.status(404).json({ok:false,error:"Lab computer not found"});
@@ -5460,7 +5512,7 @@ app.get("/api/v1/lab/computers/:id/history",(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/history/export",(req,res)=>{
+app.get("/api/v1/lab/computers/:id/history/export",requireAuthenticated,(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id);
     if(!labComputerStore.computers[id])return res.status(404).json({ok:false,error:"Lab computer not found"});
@@ -5520,7 +5572,7 @@ function safeScreenshotPath(id,rel){
   return full;
 }
 
-app.get("/api/v1/lab/computers/:id/screenshot",(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshot",requireAuthenticated,(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rec=labComputerStore.computers[id];
     if(!rec?.screenshotFile)return res.status(404).json({ok:false,error:"No screenshot available"});
@@ -5531,7 +5583,7 @@ app.get("/api/v1/lab/computers/:id/screenshot",(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/screenshot/download",(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshot/download",requireAuthenticated,(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rec=labComputerStore.computers[id];
     if(!rec?.screenshotFile)return res.status(404).json({ok:false,error:"No screenshot available"});
@@ -5542,7 +5594,7 @@ app.get("/api/v1/lab/computers/:id/screenshot/download",(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/screenshots",(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshots",requireAuthenticated,(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rec=labComputerStore.computers[id];
     if(!rec)return res.status(404).json({ok:false,error:"Lab computer not found"});
@@ -5560,7 +5612,7 @@ app.get("/api/v1/lab/computers/:id/screenshots",(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/screenshots/file",(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshots/file",requireAuthenticated,(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rel=String(req.query.file||"");
     const p=safeScreenshotPath(id,rel);
@@ -5570,7 +5622,7 @@ app.get("/api/v1/lab/computers/:id/screenshots/file",(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/screenshots/download",(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshots/download",requireAuthenticated,(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rel=String(req.query.file||"");
     const p=safeScreenshotPath(id,rel);
@@ -5624,7 +5676,7 @@ app.get("/api/v1/lab/ai-monitor",requireAuthenticated,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.put("/api/v1/lab/ai-monitor/rules",(req,res)=>{
+app.put("/api/v1/lab/ai-monitor/rules",requireControl,(req,res)=>{
   try{
     const body=req.body||{};
     if(typeof body.enabled==="boolean")labAiRulesStore.enabled=body.enabled;
@@ -5639,7 +5691,7 @@ app.put("/api/v1/lab/ai-monitor/rules",(req,res)=>{
 });
 
 
-app.post("/api/v1/lab/ai-monitor/:id/capture",(req,res)=>{
+app.post("/api/v1/lab/ai-monitor/:id/capture",requireControl,(req,res)=>{
   try{
     const alert=labAiAlertsStore.alerts.find(a=>a.id===String(req.params.id));
     if(!alert)return res.status(404).json({ok:false,error:"Alert not found"});
@@ -5662,7 +5714,7 @@ app.post("/api/v1/lab/ai-monitor/:id/capture",(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.put("/api/v1/lab/ai-monitor/:id",(req,res)=>{
+app.put("/api/v1/lab/ai-monitor/:id",requireControl,(req,res)=>{
   try{
     const alert=labAiAlertsStore.alerts.find(a=>a.id===String(req.params.id));
     if(!alert)return res.status(404).json({ok:false,error:"Alert not found"});
@@ -5995,7 +6047,7 @@ app.use((err, _req, res, _next) => {
 // -----------------------------------------------------------------------------
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD_BYTES });
 
 // Stable Music Assistant 2.9.x Sendspin proxy. TVs connect only to Classroom Control Hub.
 // Classroom Control Hub opens MA's authenticated /sendspin socket, sends the encrypted-at-rest
@@ -6047,6 +6099,8 @@ wss.on("connection", (ws, req) => {
   ws.role = "unknown";
   ws.deviceId = "";
   ws.isAlive = true;
+  ws.sessionToken = "";
+  ws.helloTimer=setTimeout(()=>{if(ws.role==="unknown"&&ws.readyState===WebSocket.OPEN)ws.close(1008,"Authentication timeout")},10000);
   wsClients.add(ws);
   runtime.websocketClients = wsClients.size;
 
@@ -6065,13 +6119,21 @@ wss.on("connection", (ws, req) => {
 
     try {
       if (msg.type === "hello") {
+        if(ws.role!=="unknown")throw new Error("WebSocket identity is already established");
         const role = cleanId(msg.role);
 
         if (role === "controller" || role === "admin") {
-          if (CONTROL_TOKEN && msg.token !== CONTROL_TOKEN) {
+          if(!browserWebSocketOriginAllowed(req))throw new Error("Untrusted WebSocket origin");
+          if(dbStore.authEnabled()){
+            const user=requestUser(req),requiredRole=role==="admin"?"admin":"operator";
+            if(!hasRole(user,requiredRole))throw new Error("Authenticated operator session required");
+            ws.authUser=user;
+            ws.sessionToken=cookieValue(req,"classroom_hub_session");
+          }else if(!CONTROL_TOKEN||!secureTokenEqual(msg.token,CONTROL_TOKEN)){
             throw new Error("Unauthorized controller");
           }
           ws.role = role;
+          clearTimeout(ws.helloTimer);
           wsSend(ws, {
             type: "hello.ack",
             role,
@@ -6085,6 +6147,11 @@ wss.on("connection", (ws, req) => {
         }
 
         if (role === "preview") {
+          if(!browserWebSocketOriginAllowed(req))throw new Error("Untrusted WebSocket origin");
+          if(dbStore.authEnabled()){
+            const user=requestUser(req);if(!hasRole(user,"viewer"))throw new Error("Authenticated session required");
+            ws.authUser=user;ws.sessionToken=cookieValue(req,"classroom_hub_session");
+          }else if(!CONTROL_TOKEN||!secureTokenEqual(msg.token,CONTROL_TOKEN))throw new Error("Unauthorized preview");
           const deviceId = cleanId(msg.deviceId);
           if (!devices[deviceId] || devices[deviceId].enabled === false) {
             throw new Error("Unknown or disabled preview display");
@@ -6092,6 +6159,7 @@ wss.on("connection", (ws, req) => {
 
           ws.role = "preview";
           ws.deviceId = deviceId;
+          clearTimeout(ws.helloTimer);
 
           wsSend(ws, {
             type: "hello.ack",
@@ -6106,7 +6174,7 @@ wss.on("connection", (ws, req) => {
         }
 
         if (role === "display") {
-          if (DISPLAY_TOKEN && msg.token !== DISPLAY_TOKEN) {
+          if (!DISPLAY_TOKEN || !secureTokenEqual(msg.token,DISPLAY_TOKEN)) {
             throw new Error("Unauthorized display");
           }
 
@@ -6117,6 +6185,7 @@ wss.on("connection", (ws, req) => {
 
           ws.role = "display";
           ws.deviceId = deviceId;
+          clearTimeout(ws.helloTimer);
           ws.maAudioRestored = false;
           ws.maAudioRestorePending = false;
           markDisplaySeen(ws, {
@@ -6166,6 +6235,7 @@ wss.on("connection", (ws, req) => {
           if (msg.token !== LAB_AGENT_TOKEN) throw new Error("Unauthorized lab agent");
           const agentId=cleanLabAgentId(msg.agentId||msg.deviceId||msg.hostname);
           ws.role="lab-agent";ws.labAgentId=agentId;ws.deviceId=agentId;
+          clearTimeout(ws.helloTimer);
           const old=labAgentSockets.get(agentId);if(old&&old!==ws&&old.readyState===WebSocket.OPEN){try{old.close(4001,"Replaced by newer agent connection")}catch{}}
           labAgentSockets.set(agentId,ws);
           upsertLabComputer(agentId,{hostname:String(msg.hostname||msg.meta?.hostname||agentId).slice(0,120),agentVersion:String(msg.agentVersion||msg.meta?.agentVersion||"").slice(0,40),
@@ -6175,8 +6245,15 @@ wss.on("connection", (ws, req) => {
         }
 
         if (role === "student" || role === "session-teacher") {
+          if(!SESSION_PARTICIPATION_ENABLED)throw new Error("Classroom participation is disabled");
+          if(role==="session-teacher"){
+            if(!browserWebSocketOriginAllowed(req))throw new Error("Untrusted WebSocket origin");
+            const user=requestUser(req);if(!hasRole(user,"operator"))throw new Error("Authenticated operator session required");
+            ws.authUser=user;ws.sessionToken=cookieValue(req,"classroom_hub_session");
+          }
           const sessionId=cleanId(msg.sessionId || "it1-opening");
           ws.role=role; ws.sessionId=sessionId; ws.studentId=cleanId(msg.studentId);
+          clearTimeout(ws.helloTimer);
           const session=getSession(sessionId);
           wsSend(ws,{type:"hello.ack",role,sessionId,state:publicSessionState(session)});
           return;
@@ -6335,6 +6412,10 @@ wss.on("connection", (ws, req) => {
       }
 
       if (msg.type === "command" && (ws.role === "controller" || ws.role === "admin")) {
+        if(dbStore.authEnabled()){
+          const user=dbStore.sessionUser(ws.sessionToken);
+          if(!hasRole(user,ws.role==="admin"?"admin":"operator"))throw new Error("Operator session expired or was revoked");
+        }
         const result = await executeCommand(msg.command || msg, "websocket");
         return wsSend(ws, { type: "command.ack", result });
       }
@@ -6346,10 +6427,12 @@ wss.on("connection", (ws, req) => {
       throw new Error("Unknown WebSocket message");
     } catch (err) {
       wsSend(ws, { type: "error", error: err.message });
+      if(msg?.type==="hello"&&ws.role==="unknown")setTimeout(()=>{try{ws.close(1008,"Authentication failed")}catch{}},25);
     }
   });
 
   ws.on("close", () => {
+    clearTimeout(ws.helloTimer);
     wsClients.delete(ws);
     runtime.websocketClients = wsClients.size;
 
@@ -6487,4 +6570,3 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`MQTT: ${MQTT_URL || "disabled"}`);
   console.log("Node-RED: not required (v0.8 direct hardware mode)");
 });setInterval(()=>reconcileGoveeDiscovery(),60000);
-

@@ -48,6 +48,9 @@ jobs:
       - name: Validate controller JavaScript
         run: node tools/validate-controller.js
 
+      - name: Run stabilization regression tests
+        run: npm test
+
       - name: Validate host agent Python
         run: python -m py_compile host-agent/server.py
 

@@ -21,17 +21,22 @@ services:
       MQTT_LEGACY_BRIDGE: ${MQTT_LEGACY_BRIDGE:-true}
       MQTT_JSON_BRIDGE: ${MQTT_JSON_BRIDGE:-true}
       CONTROL_TOKEN: ${CONTROL_TOKEN:-}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
       LOGIN_WINDOW_MS: ${LOGIN_WINDOW_MS:-900000}
       LOGIN_LOCK_MS: ${LOGIN_LOCK_MS:-900000}
       DISPLAY_TOKEN: ${DISPLAY_TOKEN:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      WS_MAX_PAYLOAD_MB: ${WS_MAX_PAYLOAD_MB:-16}
+      SESSION_PARTICIPATION_ENABLED: ${SESSION_PARTICIPATION_ENABLED:-false}
+      MAINTENANCE_PROXY_ENABLED: ${MAINTENANCE_PROXY_ENABLED:-false}
       MAINTENANCE_URL: http://maintenance-agent:3010
       MUSIC_ASSISTANT_URL: ${MUSIC_ASSISTANT_URL:-http://host.docker.internal:8095}
       DATABASE_FILE: ${DATABASE_FILE:-/app/data/classroom-control-hub.db}
       MASTER_KEY_FILE: ${MASTER_KEY_FILE:-/run/secrets/classroom-control-hub-master-key}
       LEGACY_JSON_MIRROR: ${LEGACY_JSON_MIRROR:-false}
-      MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-classroom-hub-internal-agent}
+      MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-}
       VEYON_WEBAPI_URL: ${VEYON_WEBAPI_URL:-http://host.docker.internal:11080}
       VEYON_KEY_NAME: ${VEYON_KEY_NAME:-ClassroomControlHub}
       VEYON_PRIVATE_KEY_FILE: ${VEYON_PRIVATE_KEY_FILE:-/run/secrets/veyon-private-key}
@@ -68,8 +73,9 @@ services:
     environment:
       PORT: 3010
       TZ: ${TZ:-America/New_York}
-      MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-classroom-hub-internal-agent}
+      MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-}
       MAINTENANCE_ALLOW_SHELL: ${MAINTENANCE_ALLOW_SHELL:-false}
+      MAINTENANCE_ALLOW_UNSAFE_SOURCE_UPDATES: ${MAINTENANCE_ALLOW_UNSAFE_SOURCE_UPDATES:-false}
       MANAGED_HUB_ROOT: /managed/classroom-hub
       MANAGED_Classroom_ROOT: /managed/services
       HOST_HUB_PATH: ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}

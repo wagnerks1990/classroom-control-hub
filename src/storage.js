@@ -291,7 +291,9 @@ class ClassroomHubStorage{
 
   authPolicy(){const p=this.getPreference("auth.policy",{});return {standardHours:Math.max(1,Math.min(168,Number(p.standardHours)||12)),rememberHours:Math.max(1,Math.min(720,Number(p.rememberHours)||168)),maxSessions:Math.max(1,Math.min(50,Number(p.maxSessions)||10))}}
   setAuthPolicy(value){const current=this.authPolicy(),next={...current,...(value||{})};next.standardHours=Math.max(1,Math.min(168,Number(next.standardHours)||12));next.rememberHours=Math.max(next.standardHours,Math.min(720,Number(next.rememberHours)||168));next.maxSessions=Math.max(1,Math.min(50,Number(next.maxSessions)||10));this.setPreference("auth.policy",next);return next}
-  authEnabled(){return !!this.getPreference("auth.enabled",false)}
+  // Fresh appliances fail closed. The one-use setup endpoint creates the first
+  // administrator and leaves authentication enabled.
+  authEnabled(){return !!this.getPreference("auth.enabled",true)}
   setAuthEnabled(value){this.setPreference("auth.enabled",!!value);return !!value}
   setupCompleted(){return !!this.getPreference("setup.completed",false)}
   setSetupCompleted(value=true){this.setPreference("setup.completed",!!value);return !!value}

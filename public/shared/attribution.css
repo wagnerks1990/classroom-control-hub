@@ -1,0 +1,5 @@
+.app-attribution{margin-top:24px;padding:14px 18px;text-align:center;color:inherit;opacity:.78;font-size:13px}
+.app-attribution a{color:inherit;font-weight:700;text-underline-offset:3px}
+.app-attribution--overlay{position:fixed;left:10px;bottom:8px;z-index:100000;margin:0;padding:5px 8px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;opacity:.45;font-size:11px;pointer-events:none}
+.app-attribution--overlay a{pointer-events:auto}
+
