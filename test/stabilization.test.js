@@ -170,6 +170,36 @@ test("Kyle Wagner attribution is installed on every current site surface",()=>{
   assert.match(component,/Built by/);
   assert.match(component,/https:\/\/github\.com\/wagnerks1990/);
   assert.match(component,/Kyle Wagner/);
+  assert.match(component,/\/shared\/branding\.js/);
+  for(const file of surfaces){
+    const html=fs.readFileSync(path.join(projectRoot,file),"utf8");
+    assert.ok(html.includes("/shared/branding.js")||html.includes("/shared/attribution.js"),`${file} cannot load shared branding`);
+  }
+});
+
+test("organization branding is public, database-backed, validated, and contains no secrets",async()=>{
+  let result=await request("/api/v1/branding");
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.branding.productName,"Classroom Control Hub");
+  assert.equal(result.json.branding.terminology.endpoint,"Endpoint");
+
+  result=await request("/api/v1/admin/site",{method:"PUT",authenticated:true,body:{organizationName:"Example Arts Center",siteName:"Downtown Campus",spaceName:"Auditorium",productName:"Venue Control",logoUrl:"/media/brand/logo.svg",faviconUrl:"https://assets.example.test/icon.png",displayPrefix:"Screen",timezone:"America/New_York",theme:{mode:"dark",primary:"#123456",accent:"#654321",background:"#101820",surface:"#182630",text:"#fefefe"},terminology:{space:"Venue",endpoint:"Screen",operator:"Coordinator",schedule:"Program"}}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.site.organizationName,"Example Arts Center");
+  assert.equal(result.json.site.school,"Example Arts Center");
+  assert.equal(result.json.site.room,"Auditorium");
+  assert.ok(result.json.site.revision>=1);
+
+  result=await request("/api/v1/branding");
+  assert.equal(result.json.branding.productName,"Venue Control");
+  assert.equal(result.json.branding.theme.primary,"#123456");
+  assert.equal(result.json.branding.terminology.schedule,"Program");
+  assert.equal(JSON.stringify(result.json).includes("preferences"),false);
+
+  result=await request("/api/v1/admin/site",{method:"PUT",authenticated:true,body:{theme:{primary:"red"}}});
+  assert.equal(result.response.status,400);
+  result=await request("/api/v1/admin/site",{method:"PUT",authenticated:true,body:{logoUrl:"javascript:alert(1)"}});
+  assert.equal(result.response.status,400);
 });
 
 test("maintenance database API is token-bound and keeps secrets masked by default",async()=>{

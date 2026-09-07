@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Organization-neutral identity and theming
+- Added a public, secret-free branding contract backed by the SQLite site profile so login, setup, controller, embedded tools, and renderer surfaces share one identity.
+- Added GUI settings for organization, site, space, product name, logo, favicon, theme mode/colors, and neutral terminology labels.
+- Preserved legacy `school` and `room` aliases while moving new configuration to organization/site/space vocabulary.
+- Added revision metadata and validation for theme colors and brand asset URLs.
+
 ### Verified web updates and rollback
 - Replaced the controller's arbitrary source-ZIP update workflow with GitHub release checks using configurable alpha, beta, or stable channels.
 - Added database-backed automatic-update policy, maintenance windows, encrypted private-repository token storage, and update history.

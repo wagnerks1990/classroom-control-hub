@@ -121,6 +121,13 @@ Important integrations include MQTT/Govee, Pluto Mark I, Music Assistant, Veyon,
 
 Slow or optional hardware probes must not block the initial Overview UI from rendering.
 
+Organization identity and theming are stored in the SQLite site profile and
+exposed to browser surfaces only through the presentation-safe
+`/api/v1/branding` response. New code uses organization/site/space and neutral
+endpoint/operator/schedule terminology. Treat `school` and `room` as migration
+aliases, not new core identifiers. Keep the Kyle Wagner attribution present on
+all current user-facing pages.
+
 ## Testing before commit/release
 
 At minimum run the validations represented by `.github/workflows/validate.yml`:
