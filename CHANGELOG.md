@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Verified web updates and rollback
+- Replaced the controller's arbitrary source-ZIP update workflow with GitHub release checks using configurable alpha, beta, or stable channels.
+- Added database-backed automatic-update policy, maintenance windows, encrypted private-repository token storage, and update history.
+- Added a native host application-update job that accepts semantic-version tags, preserves runtime state, rebuilds the Compose services, verifies application/version health, and automatically rolls back failures.
+- Added a one-click controller action to restore the prior source commit and its matching pre-upgrade database/configuration backup.
+
 ### Documentation / migration hygiene
 - Standardized the documented/default production checkout on `/opt/classroom-hub`.
 - Corrected Host Agent service/install defaults to use `/opt/classroom-hub` and `/run/classroom-control-hub/host-agent.sock`.

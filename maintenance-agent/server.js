@@ -94,6 +94,21 @@ app.get("/host/agent/health",async(_req,res)=>{try{res.json(await hostAgentReque
 app.get("/host/system",async(_req,res)=>{try{res.json(await hostAgentRequest("GET","/system"))}catch(e){res.status(502).json({ok:false,error:`Host agent unavailable: ${e.message}`})}});
 app.get("/host/updates",async(_req,res)=>{try{res.json(await hostAgentRequest("GET","/updates"))}catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
 app.get("/host/updates/job",async(_req,res)=>{try{res.json(await hostAgentRequest("GET","/updates/job",null,30000))}catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
+app.get("/app-updates/job",async(_req,res)=>{try{res.json(await hostAgentRequest("GET","/app-updates/job",null,30000))}catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
+app.post("/app-updates/start",async(req,res)=>{try{
+  if(String(req.body?.confirm||"")!=="INSTALL_RELEASE")return res.status(400).json({ok:false,error:"Explicit INSTALL_RELEASE confirmation required"});
+  const targetRef=String(req.body?.targetRef||""),expectedVersion=String(req.body?.expectedVersion||"");
+  if(!/^v?\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$/.test(targetRef)||!/^v?\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$/.test(expectedVersion))return res.status(400).json({ok:false,error:"A semantic-version GitHub release tag and version are required"});
+  const safety=await createOperationalBackupNamed("pre-app-update");
+  const result=await hostAgentRequest("POST","/app-updates/start",{action:"update",targetRef,expectedVersion,githubToken:String(req.body?.githubToken||""),backupName:safety.name,failureBackupName:safety.name,confirm:"INSTALL_RELEASE"},30000);
+  res.status(202).json({ok:true,safetyBackup:safety.name,...result});
+}catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
+app.post("/app-updates/revert",async(req,res)=>{try{
+  if(String(req.body?.confirm||"")!=="REVERT_RELEASE")return res.status(400).json({ok:false,error:"Explicit REVERT_RELEASE confirmation required"});
+  const safety=await createOperationalBackupNamed("pre-app-revert");
+  const result=await hostAgentRequest("POST","/app-updates/revert",{confirm:"REVERT_RELEASE",failureBackupName:safety.name},30000);
+  res.status(202).json({ok:true,safetyBackup:safety.name,...result});
+}catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
 app.post("/host/updates/apply",async(req,res)=>{try{
   if(String(req.body?.confirm||"")!=="INSTALL_UPDATES")return res.status(400).json({ok:false,error:"Explicit INSTALL_UPDATES confirmation required"});
   const safety=await createOperationalBackupNamed("pre-host-update");

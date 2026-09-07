@@ -28,6 +28,14 @@ The socket is bind-mounted into the maintenance container. No Host Agent TCP por
 
 The Host Agent provides allowlisted host inventory and lifecycle functions for systemd services, journal logs, host health, update/recovery helpers, and cleanup discovery. Protected services such as Docker, containerd, SSH, networking, DNS, time synchronization, and the Host Agent itself cannot be stopped or disabled through Classroom Control Hub.
 
+Application releases run as the separate oneshot unit
+`classroom-hub-app-update.service`. The Host Agent validates and writes a
+root-only transient request; the runner then resolves an approved semantic
+version tag, updates the Git checkout, refreshes the Host Agent, rebuilds the
+Compose services, and performs version-aware health verification. A private
+repository token is sourced from the encrypted application database and exists
+on the host only for the duration of `git fetch`.
+
 All browser requests still pass through the authenticated Classroom Control Hub backend and Maintenance Agent before reaching the Host Agent.
 
 ## Migration verification

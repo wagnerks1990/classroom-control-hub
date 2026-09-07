@@ -24,6 +24,7 @@ SERVICE_POLICY = {
     "unattended-upgrades.service":{"owner":"host","recommendation":"keep","purpose":"Ubuntu security updates"},
     "classroom-control-hub-host-agent.service":{"owner":"core","recommendation":"keep","purpose":"Native host-management bridge for Classroom Control Hub","protected":True},
     "classroom-hub-update.service":{"owner":"core","recommendation":"keep","purpose":"Native package update runner (idle except during explicit updates)","protected":True},
+    "classroom-hub-app-update.service":{"owner":"core","recommendation":"keep","purpose":"Verified application release and rollback runner","protected":True},
 }
 UNIT_RE = re.compile(r"^[A-Za-z0-9_.@:-]+\.(?:service|socket|timer|target)$")
 
@@ -124,6 +125,10 @@ def update_details():
 
 UPDATE_STATE_FILE=Path('/var/lib/classroom-hub/update-status.json')
 UPDATE_SERVICE='classroom-hub-update.service'
+APP_UPDATE_STATE_FILE=Path('/var/lib/classroom-hub/app-update-status.json')
+APP_UPDATE_REQUEST_FILE=Path('/var/lib/classroom-hub/app-update-request.json')
+APP_UPDATE_SERVICE='classroom-hub-app-update.service'
+RELEASE_REF_RE=re.compile(r'^v?\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$')
 
 def update_job_status(include_log=False):
     state={"phase":"idle","message":"No host update has been started.","ok":None,"rebootRequired":Path('/var/run/reboot-required').exists()}
@@ -148,6 +153,44 @@ def start_update_job():
     p=run(['systemctl','start','--no-block',UPDATE_SERVICE],20,False)
     if p.returncode!=0: raise RuntimeError((p.stderr or p.stdout or 'Unable to start host update service').strip())
     return {"ok":True,"started":True,"job":update_job_status(False)}
+
+def app_update_job_status(include_log=False):
+    state={"phase":"idle","message":"No application update has been started.","ok":None}
+    try:
+        if APP_UPDATE_STATE_FILE.exists(): state.update(json.loads(APP_UPDATE_STATE_FILE.read_text()))
+    except Exception as e: state['stateReadError']=str(e)
+    svc=unit_state(APP_UPDATE_SERVICE); state['service']=svc; state['running']=svc.get('active') in ('active','activating')
+    if include_log:
+        p=run(['journalctl','-u',APP_UPDATE_SERVICE,'-n','500','--no-pager','--output=short-iso'],25,False)
+        state['log']=((p.stdout or '')+(p.stderr or ''))[-50000:]
+    return state
+
+def start_app_update_job(body):
+    current=app_update_job_status(False)
+    if current.get('running'): raise RuntimeError('An application update is already running')
+    action=str(body.get('action') or 'update')
+    if action not in ('update','revert'): raise RuntimeError('Unsupported application update action')
+    request={"action":action,"targetRef":"","targetCommit":"","expectedVersion":"","backupName":str(body.get('backupName') or ''),"failureBackupName":str(body.get('failureBackupName') or body.get('backupName') or ''),"githubToken":str(body.get('githubToken') or '')}
+    if len(request['githubToken'])>1000: raise RuntimeError('GitHub token is too long')
+    if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',request['backupName']): raise RuntimeError('A valid pre-update backup is required')
+    if action=='update':
+        ref=str(body.get('targetRef') or ''); version=str(body.get('expectedVersion') or '')
+        if not RELEASE_REF_RE.fullmatch(ref): raise RuntimeError('Only semantic-version GitHub release tags are accepted')
+        if not RELEASE_REF_RE.fullmatch(version): raise RuntimeError('Invalid expected release version')
+        request.update({"targetRef":ref,"expectedVersion":version})
+    else:
+        if str(body.get('confirm') or '')!='REVERT_RELEASE': raise RuntimeError('Explicit REVERT_RELEASE confirmation required')
+        commit=str(current.get('previousCommit') or ''); version=str(current.get('previousVersion') or '')
+        backup=str(current.get('backupName') or request['backupName'])
+        if not re.fullmatch(r'[0-9a-f]{40}',commit): raise RuntimeError('No verified previous release is available to revert')
+        failure_backup=str(body.get('failureBackupName') or '')
+        if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',failure_backup): raise RuntimeError('A valid pre-revert backup is required')
+        request.update({"targetCommit":commit,"expectedVersion":version,"backupName":backup,"failureBackupName":failure_backup})
+    APP_UPDATE_REQUEST_FILE.parent.mkdir(parents=True,exist_ok=True)
+    temp=APP_UPDATE_REQUEST_FILE.with_suffix('.tmp'); temp.write_text(json.dumps(request,indent=2)); os.chmod(temp,0o600); temp.replace(APP_UPDATE_REQUEST_FILE)
+    p=run(['systemctl','start','--no-block',APP_UPDATE_SERVICE],20,False)
+    if p.returncode!=0: raise RuntimeError((p.stderr or p.stdout or 'Unable to start application update service').strip())
+    return {"ok":True,"started":True,"request":{"action":action,"targetRef":request['targetRef'],"expectedVersion":request['expectedVersion'],"backupName":request['backupName']},"job":app_update_job_status(False)}
 
 def migration_snapshots():
     base=Path('/opt/classroom-control-hub-backups'); items=[]
@@ -259,6 +302,7 @@ class Handler(BaseHTTPRequestHandler):
                 items=legacy_backups(); return self.send_json(200,{"ok":True,"items":items,"count":len(items)})
             if path=='/updates': return self.send_json(200,{"ok":True,**update_details(),"job":update_job_status(False)})
             if path=='/updates/job': return self.send_json(200,{"ok":True,**update_job_status(True)})
+            if path=='/app-updates/job': return self.send_json(200,{"ok":True,**app_update_job_status(True)})
             if path=='/cleanup/migration-snapshots':
                 items=migration_snapshots(); return self.send_json(200,{"ok":True,"items":items,"count":len(items)})
             return self.send_json(404,{"ok":False,"error":"Not found"})
@@ -271,6 +315,13 @@ class Handler(BaseHTTPRequestHandler):
                 body=self.body()
                 if str(body.get('confirm') or '')!='INSTALL_UPDATES': return self.send_json(400,{"ok":False,"error":"Explicit INSTALL_UPDATES confirmation required"})
                 return self.send_json(202,start_update_job())
+            if path=='/app-updates/start':
+                body=self.body()
+                if str(body.get('confirm') or '')!='INSTALL_RELEASE': return self.send_json(400,{"ok":False,"error":"Explicit INSTALL_RELEASE confirmation required"})
+                return self.send_json(202,start_app_update_job(body))
+            if path=='/app-updates/revert':
+                body=self.body()
+                return self.send_json(202,start_app_update_job({**body,"action":"revert"}))
             if path=='/cleanup/migration-retention':
                 body=self.body()
                 if str(body.get('confirm') or '')!='PRUNE_MIGRATIONS': return self.send_json(400,{"ok":False,"error":"Explicit PRUNE_MIGRATIONS confirmation required"})

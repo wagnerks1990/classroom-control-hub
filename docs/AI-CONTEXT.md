@@ -93,6 +93,13 @@ docker compose ps
 curl -fsS http://localhost:3000/health
 ```
 
+The web-managed updater uses GitHub releases and a native systemd job. Update
+policy and history are database-backed; a private-repository read token is kept
+in the encrypted secret store. The host job accepts semantic-version tags,
+creates/uses a matching operational backup, verifies the expected version after
+Compose recreation, and automatically restores the prior commit and backup on
+failure. Do not reintroduce arbitrary source-ZIP deployment as the normal path.
+
 ## Documentation map
 
 - `README.md` — public project overview

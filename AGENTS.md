@@ -72,6 +72,13 @@ curl -fsS http://localhost:3000/health
 
 Take a filesystem/database-safe backup before production upgrades.
 
+The GUI updater accepts only semantic-version GitHub releases and delegates the
+durable update to `classroom-hub-app-update.service`. Preserve its invariant:
+every update has a matching operational backup, version-aware health check, and
+automatic source/database rollback. Automatic updates remain opt-in and bounded
+by the database-backed maintenance window. Do not restore arbitrary source-ZIP
+deployment as the normal update mechanism.
+
 ## Version convergence
 
 A release is not complete until every user-visible/runtime version surface agrees. At minimum inspect/update:

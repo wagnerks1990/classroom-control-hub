@@ -53,7 +53,9 @@ jobs:
         run: python -m py_compile host-agent/server.py
 
       - name: Validate installer shell syntax
-        run: bash -n install.sh
+        run: |
+          bash -n install.sh
+          bash -n host-agent/app-update-runner.sh
 
       - name: Validate Compose configuration
         run: docker compose config >/dev/null

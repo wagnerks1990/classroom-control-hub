@@ -198,3 +198,31 @@ test("maintenance agent does not own SQLite and restore includes verified rollba
   assert.match(source,/rollback\.attempted=true/);
   assert.match(source,/waitForMainApplication/);
 });
+
+test("application update policy and GitHub token are stored in the database",async()=>{
+  let result=await request("/api/v1/admin/app-updates/settings",{authenticated:true});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.settings.repository,"wagnerks1990/classroom-control-hub");
+  assert.equal(result.json.settings.automatic,false);
+
+  result=await request("/api/v1/admin/app-updates/settings",{method:"PUT",authenticated:true,body:{repository:"example/general-control-hub",channel:"stable",automatic:true,checkIntervalHours:12,maintenanceStart:"01:30",maintenanceEnd:"03:00",token:"github-test-token"}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.tokenConfigured,true);
+  assert.equal(result.json.settings.channel,"stable");
+  assert.equal(result.json.settings.automatic,true);
+  assert.equal(JSON.stringify(result.json).includes("github-test-token"),false);
+});
+
+test("verified application updater has a durable host job and GUI rollback controls",()=>{
+  const host=fs.readFileSync(path.join(projectRoot,"host-agent/server.py"),"utf8");
+  const runner=fs.readFileSync(path.join(projectRoot,"host-agent/app-update-runner.sh"),"utf8");
+  const controller=fs.readFileSync(path.join(projectRoot,"public/controller/index.html"),"utf8");
+  assert.match(host,/app-updates\/start/);
+  assert.match(host,/REVERT_RELEASE/);
+  assert.match(runner,/git fetch --force --prune --tags origin/);
+  assert.match(runner,/Only semantic-version release tags are accepted/);
+  assert.match(runner,/restore_safety_backup/);
+  assert.match(controller,/Revert Last Upgrade/);
+  assert.match(controller,/Automatically install approved releases/);
+  assert.doesNotMatch(controller,/Upload a Classroom Control Hub release ZIP/);
+});

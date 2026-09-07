@@ -81,6 +81,23 @@ If the release has no incompatible database migration, restore the previous know
 
 If the release changes the database schema, follow release-specific rollback instructions and restore the matching database backup if required.
 
+## Web-managed updates
+
+The Infrastructure & Recovery page can check a configured GitHub repository for
+approved alpha, beta, or stable semantic-version releases. Draft releases and
+arbitrary source archives are not eligible. Private-repository read tokens are
+encrypted in the application database.
+
+The native `classroom-hub-app-update.service` resolves the release tag to a Git
+commit, rebuilds the Compose services, and verifies the reported application
+version. Every update has a pre-update operational backup. Deployment failure
+automatically restores the prior commit and backup. Revert Last Upgrade restores
+that same known-good pair after first preserving the current state.
+
+Automatic updates are off by default and run only during the configured
+maintenance window. Run `sudo ./install.sh` once when upgrading an older
+installation to install the native updater service.
+
 ## Release acceptance
 
 A release is not considered production-ready merely because the container starts. Validate the classroom behaviors that can disrupt instruction: display state, timers, announcements, audio arbitration, schedules, integration health, Host Agent access, and recovery after reconnects.
