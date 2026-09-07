@@ -32,6 +32,21 @@ Ubuntu host
 
 The application and maintenance service run in containers. Host-level operations are delegated to a narrow systemd host agent instead of giving the main application broad host privileges.
 
+## One-command appliance install
+
+On a clean Ubuntu Server 24.04 LTS machine, download and run the reviewed bootstrap:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/wagnerks1990/classroom-control-hub/main/deploy/bootstrap.sh \
+  -o /tmp/classroom-hub-bootstrap.sh
+sudo bash /tmp/classroom-hub-bootstrap.sh
+```
+
+It installs Docker Engine and Compose from Docker's signed package repository, clones the hub into `/opt/classroom-hub`, generates unique appliance credentials, installs the native Host Agent, starts the containers, verifies component health, and prints the secure first-time setup URL. Review the downloaded script before running it on a production machine.
+
+Use the web controller for routine upgrades and rollback after initial installation. The bootstrap refuses to overwrite an existing installation unless `CLASSROOM_HUB_REINSTALL=true` is explicitly supplied.
+
 ## Production updates
 
 The standard production checkout is `/opt/classroom-hub`. Production updates are Git-first:

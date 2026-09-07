@@ -261,3 +261,22 @@ test("verified application updater has a durable host job and GUI rollback contr
   assert.match(controller,/Automatically install approved releases/);
   assert.doesNotMatch(controller,/Upload a Classroom Control Hub release ZIP/);
 });
+
+test("one-command deployment bootstraps a guarded appliance with unique credentials",()=>{
+  const bootstrap=fs.readFileSync(path.join(projectRoot,"deploy/bootstrap.sh"),"utf8");
+  const installer=fs.readFileSync(path.join(projectRoot,"install.sh"),"utf8");
+  const compose=fs.readFileSync(path.join(projectRoot,"docker-compose.yml"),"utf8");
+  assert.match(bootstrap,/Ubuntu Server 24\.04 LTS/);
+  assert.match(bootstrap,/download\.docker\.com/);
+  assert.match(bootstrap,/signed-by=\/etc\/apt\/keyrings\/docker\.asc/);
+  assert.match(bootstrap,/mktemp -d/);
+  assert.match(bootstrap,/git clone/);
+  assert.match(bootstrap,/CLASSROOM_HUB_REINSTALL/);
+  assert.doesNotMatch(bootstrap,/curl[^\n]*\|\s*(?:ba)?sh/);
+  for(const name of ["SETUP_TOKEN","CONTROL_TOKEN","DISPLAY_TOKEN","LAB_AGENT_TOKEN","MAINTENANCE_TOKEN"]){
+    assert.match(installer,new RegExp(`ensure_secret ${name}`));
+  }
+  assert.match(installer,/SOURCE_REAL.*TARGET_REAL/);
+  assert.match(installer,/First-time setup:/);
+  assert.match(compose,/LAB_AGENT_TOKEN:/);
+});

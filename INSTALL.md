@@ -20,6 +20,21 @@ The native Host Agent listens on:
 /run/classroom-control-hub/host-agent.sock
 ```
 
+## Clean-machine one-command installation
+
+The supported appliance target is a clean Ubuntu Server 24.04 LTS machine on `amd64` or `arm64`. Docker does not need to be installed first.
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/wagnerks1990/classroom-control-hub/main/deploy/bootstrap.sh \
+  -o /tmp/classroom-hub-bootstrap.sh
+sudo bash /tmp/classroom-hub-bootstrap.sh
+```
+
+Review the downloaded script before executing it. The bootstrap installs Docker Engine and Compose from Docker's signed apt repository, checks out the public repository, generates separate setup/control/display/lab/maintenance secrets, delegates to `install.sh`, and prints a first-time setup URL. Treat that URL as a temporary administrator secret; its token is unusable after the first administrator is created.
+
+Optional environment overrides are `CLASSROOM_HUB_REF`, `CLASSROOM_HUB_DIR`, and `CLASSROOM_HUB_REPOSITORY_URL`. The bootstrap will not replace an existing deployment unless `CLASSROOM_HUB_REINSTALL=true` is deliberately set; established appliances should normally be updated or reverted from the web controller.
+
 ## Existing Classroom Control Hub deployment
 
 From a checked-out release or staging clone, run:

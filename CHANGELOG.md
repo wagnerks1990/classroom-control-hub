@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### One-command appliance deployment
+- Added a clean-machine Ubuntu Server 24.04 bootstrap for `amd64` and `arm64` that installs Docker Engine and Compose from Docker's signed apt repository.
+- Added safe temporary source staging, existing-installation refusal, and explicit repository/ref/target overrides.
+- Made fresh and in-place installation idempotent, generated distinct setup/control/display/lab/maintenance secrets, and printed the token-bearing first-time setup URL after health and version convergence.
+- Added the lab-agent credential to the Compose application environment and CI shell validation for the bootstrap.
+
 ### School and classroom identity and theming
 - Added a public, secret-free branding contract backed by the SQLite site profile so login, setup, controller, embedded tools, and renderer surfaces share one identity.
 - Added GUI settings for school/district name, classroom name, product name, logo, favicon, and theme mode/colors.
