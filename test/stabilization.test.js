@@ -53,7 +53,7 @@ test.before(async()=>{
   wsUrl=`ws://127.0.0.1:${port}/ws`;
   child=spawn(process.execPath,["src/server.js"],{
     cwd:projectRoot,
-    env:{...process.env,PORT:String(port),DATA_DIR:tempDir,DATABASE_FILE:path.join(tempDir,"hub.db"),MASTER_KEY_FILE:keyFile,SETUP_TOKEN:"test-setup-secret",DISPLAY_TOKEN:"test-display-secret",CONTROL_TOKEN:"",MAINTENANCE_TOKEN:"",MAINTENANCE_PROXY_ENABLED:"false",SESSION_PARTICIPATION_ENABLED:"false",MQTT_URL:"",TRUST_PROXY_HOPS:"0"},
+    env:{...process.env,PORT:String(port),DATA_DIR:tempDir,DATABASE_FILE:path.join(tempDir,"hub.db"),MASTER_KEY_FILE:keyFile,SETUP_TOKEN:"test-setup-secret",DISPLAY_TOKEN:"test-display-secret",CONTROL_TOKEN:"",MAINTENANCE_TOKEN:"test-maintenance-secret",MAINTENANCE_PROXY_ENABLED:"false",SESSION_PARTICIPATION_ENABLED:"false",MQTT_URL:"",TRUST_PROXY_HOPS:"0"},
     stdio:["ignore","pipe","pipe"]
   });
   child.stdout.on("data",chunk=>{logs+=chunk});
@@ -170,4 +170,31 @@ test("Kyle Wagner attribution is installed on every current site surface",()=>{
   assert.match(component,/Built by/);
   assert.match(component,/https:\/\/github\.com\/wagnerks1990/);
   assert.match(component,/Kyle Wagner/);
+});
+
+test("maintenance database API is token-bound and keeps secrets masked by default",async()=>{
+  let result=await request("/api/v1/internal/maintenance/status");
+  assert.equal(result.response.status,401);
+
+  const agentHeaders={"x-maintenance-token":"test-maintenance-secret"};
+  result=await request("/api/v1/internal/maintenance/status",{headers:agentHeaders});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.ok(result.json.database.schemaVersion>=1);
+
+  result=await request("/api/v1/internal/maintenance/integrations/govee2mqtt",{method:"PUT",headers:agentHeaders,body:{settings:{mqttHost:"127.0.0.1",apiKey:"super-secret"}}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.config.apiKey,"••••••••");
+  assert.equal(result.json.resolved.apiKey,"super-secret");
+
+  result=await request("/api/v1/internal/maintenance/integrations",{headers:agentHeaders});
+  assert.equal(result.json.integrations.modules.govee2mqtt.apiKey,"••••••••");
+});
+
+test("maintenance agent does not own SQLite and restore includes verified rollback",()=>{
+  const source=fs.readFileSync(path.join(projectRoot,"maintenance-agent/server.js"),"utf8");
+  assert.doesNotMatch(source,/ClassroomHubStorage|\bdbStore\b/);
+  assert.match(source,/MANAGED_APP_CONTAINER\|\|"classroom-control-hub"/);
+  assert.match(source,/PRAGMA quick_check/);
+  assert.match(source,/rollback\.attempted=true/);
+  assert.match(source,/waitForMainApplication/);
 });

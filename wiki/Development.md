@@ -70,7 +70,6 @@ Every release should:
 node --check src/server.js
 node --check src/storage.js
 node --check maintenance-agent/server.js
-node --check maintenance-agent/storage.js
 node tools/validate-controller.js
 python3 -m py_compile host-agent/server.py
 bash -n install.sh

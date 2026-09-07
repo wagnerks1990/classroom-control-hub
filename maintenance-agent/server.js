@@ -4,12 +4,10 @@ const http=require("http");
 const fs=require("fs");
 const path=require("path");
 const os=require("os");
-const crypto=require("crypto");
 const {execFile,spawn}=require("child_process");
 const {promisify}=require("util");
 const multer=require("multer");
 const AdmZip=require("adm-zip");
-const {ClassroomHubStorage}=require("./storage");
 const execFileAsync=promisify(execFile);
 const app=express();
 const PORT=Number(process.env.PORT||3010);
@@ -20,9 +18,12 @@ const HUB_ROOT=path.resolve(process.env.MANAGED_HUB_ROOT||"/managed/classroom-hu
 const Classroom_ROOT=path.resolve(process.env.MANAGED_Classroom_ROOT||"/managed/services");
 const HOST_HUB_PATH=String(process.env.HOST_HUB_PATH||"/opt/classroom-control-hub");
 const HOST_AGENT_SOCKET=String(process.env.HOST_AGENT_SOCKET||"/run/classroom-control-hub/host-agent.sock");
+const MAIN_APP_URL=String(process.env.MAIN_APP_URL||"http://classroom-hub:3000").replace(/\/$/,"");
+const APP_CONTAINER=cleanName(process.env.MANAGED_APP_CONTAINER||"classroom-control-hub");
+const RESTORE_HEALTH_TIMEOUT_MS=Math.max(5000,Math.min(300000,Number(process.env.RESTORE_HEALTH_TIMEOUT_MS||60000)));
+const RESTORE_MAX_EXPANDED_BYTES=Math.max(64*1024*1024,Number(process.env.RESTORE_MAX_EXPANDED_MB||4096)*1024*1024);
 const BACKUP_DIR=path.join(HUB_ROOT,"data","backups");
 const MASTER_KEY_FILE=String(process.env.MASTER_KEY_FILE||"/run/secrets/classroom-control-hub-master-key");
-const dbStore=new ClassroomHubStorage({dataDir:path.join(HUB_ROOT,"data"),dbFile:path.join(HUB_ROOT,"data","classroom-control-hub.db"),masterKeyFile:MASTER_KEY_FILE});
 const UPLOAD_DIR="/work/uploads";
 fs.mkdirSync(BACKUP_DIR,{recursive:true});fs.mkdirSync(UPLOAD_DIR,{recursive:true});
 app.use(express.json({limit:"8mb"}));
@@ -33,8 +34,17 @@ function safeRoot(root){return root==="hub"?HUB_ROOT:root==="services"?Classroom
 function safePath(root,rel=""){const base=safeRoot(root);if(!base)throw Error("Unknown managed root");const resolved=path.resolve(base,"."+path.sep+String(rel||""));if(resolved!==base&&!resolved.startsWith(base+path.sep))throw Error("Path escapes managed root");return resolved}
 function statInfo(p,base){const st=fs.statSync(p);return {name:path.basename(p),path:path.relative(base,p)||".",type:st.isDirectory()?"directory":"file",size:st.size,modifiedAt:st.mtime.toISOString()}}
 async function run(cmd,args=[],opts={}){const {stdout,stderr}=await execFileAsync(cmd,args,{timeout:opts.timeout||15000,maxBuffer:opts.maxBuffer||8*1024*1024,cwd:opts.cwd||undefined,env:{...process.env,...(opts.env||{})}});return {stdout,stderr}}
+async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const response=await fetch(MAIN_APP_URL+pathName,{method,headers:{"x-maintenance-token":TOKEN,...(body==null?{}:{"content-type":"application/json"})},body:body==null?undefined:JSON.stringify(body),signal:controller.signal});
+    const text=await response.text();let value;try{value=JSON.parse(text||"{}")}catch{value={ok:false,error:text||`Main application HTTP ${response.status}`}}
+    if(!response.ok){const error=Error(value.error||`Main application HTTP ${response.status}`);error.status=response.status;throw error}return value;
+  }finally{clearTimeout(timer)}
+}
+async function mainAppStatus(){return mainAppRequest("GET","/api/v1/internal/maintenance/status",null,10000)}
 async function dockerContainers(){const r=await run("docker",["ps","-a","--format","{{json .}}"],{timeout:10000});return r.stdout.split(/\r?\n/).filter(Boolean).map(x=>{try{return JSON.parse(x)}catch{return {raw:x}}})}
-app.get("/health",async(_req,res)=>{let docker=false,hostAgent=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}res.json({ok:true,version:"1.0.0-alpha.66",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:ALLOW_SHELL,database:dbStore.databaseInfo()})});
+app.get("/health",async(_req,res)=>{let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}res.json({ok:true,version:"1.0.0-alpha.66",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:ALLOW_SHELL,application,database:application?.database||null})});
 app.get("/system",async(_req,res)=>{
   const nets=os.networkInterfaces();let disk=null,hostDocker=null;
   try{disk=(await run("df",["-h","/managed/classroom-hub"])).stdout}catch{}
@@ -155,7 +165,7 @@ app.get("/checks/run",async(_req,res)=>{
   await check("Docker Engine",async()=>String((await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:7000})).stdout||"").trim());
   await check("Classroom Control Hub Root",async()=>{if(!fs.existsSync(HUB_ROOT))throw Error("Missing managed Classroom Control Hub root");return HUB_ROOT});
   await check("Services Stack Root",async()=>{if(!fs.existsSync(Classroom_ROOT))throw Error("Missing managed services-stack root");return Classroom_ROOT});
-  await check("SQLite Database",async()=>{const i=dbStore.databaseInfo();if(!i.file||!fs.existsSync(i.file))throw Error("Database file missing");return {schemaVersion:i.schemaVersion,size:i.size,journalMode:i.journalMode}});
+  await check("SQLite Database",async()=>{const i=(await mainAppStatus()).database;if(!i?.file)throw Error("Database status unavailable");return {schemaVersion:i.schemaVersion,size:i.size,journalMode:i.journalMode}});
   await check("Disk Capacity",async()=>String((await run("df",["-h","/managed/classroom-hub"])).stdout||"").trim());
   await check("Container Inventory",async()=>({count:(await dockerContainers()).length}));
   const failed=checks.filter(x=>!x.ok).length;res.status(failed?207:200).json({ok:failed===0,generatedAt:new Date().toISOString(),summary:{total:checks.length,passed:checks.length-failed,failed},checks});
@@ -250,58 +260,87 @@ async function createOperationalBackupNamed(prefix="pre-restore") {
   return {name,dest,size:fs.statSync(dest).size};
 }
 function backupRestorePlan(name){
-  const p=path.join(BACKUP_DIR,cleanName(name));
+  const safeName=cleanName(name);if(safeName!==String(name||"")||!safeName.endsWith(".zip"))throw Error("Invalid backup name");
+  const p=path.join(BACKUP_DIR,safeName);
   if(!fs.existsSync(p))throw Error("Backup not found");
   const zip=new AdmZip(p),entries=zip.getEntries();
+  let expandedBytes=0;
+  for(const entry of entries){
+    const normalized=entry.entryName.replace(/\\/g,"/");
+    if(!normalized||normalized.startsWith("/")||normalized.split("/").includes(".."))throw Error(`Unsafe archive path: ${normalized}`);
+    const allowed=normalized==="backup-manifest.json"||normalized.startsWith("classroom-hub/")||normalized.startsWith("services/")||normalized.startsWith("recovery-secrets/");
+    if(!allowed)throw Error(`Unexpected restore entry: ${normalized}`);
+    const unixType=(Number(entry.header?.attr||0)>>>16)&0xf000;if(unixType===0xa000)throw Error(`Symbolic links are not permitted in restore archives: ${normalized}`);
+    expandedBytes+=Number(entry.header?.size||0);if(expandedBytes>RESTORE_MAX_EXPANDED_BYTES)throw Error("Restore archive exceeds the configured expanded-size limit");
+  }
   let manifest=null;const me=entries.find(e=>e.entryName==="backup-manifest.json");
   if(me)try{manifest=JSON.parse(me.getData().toString("utf8"))}catch{}
   const names=entries.map(e=>e.entryName.replace(/\\/g,"/"));
-  return {name:cleanName(name),path:p,manifest,entries:entries.length,hasConfig:names.some(n=>n.startsWith("classroom-hub/config/")),hasData:names.some(n=>n.startsWith("classroom-hub/data/")),hasDatabase:names.includes("classroom-hub/data/classroom-control-hub.db"),hasEnv:names.includes("classroom-hub/.env"),hasMasterKey:names.some(n=>/master\.key$/.test(n)),preview:names.slice(0,100)};
+  return {name:safeName,path:p,manifest,entries:entries.length,expandedBytes,hasConfig:names.some(n=>n.startsWith("classroom-hub/config/")),hasData:names.some(n=>n.startsWith("classroom-hub/data/")),hasDatabase:names.includes("classroom-hub/data/classroom-control-hub.db"),hasEnv:names.includes("classroom-hub/.env"),hasMasterKey:names.some(n=>/master\.key$/.test(n)),preview:names.slice(0,100)};
 }
 app.get("/backup/:name/restore-plan",(req,res)=>{try{res.json({ok:true,plan:backupRestorePlan(req.params.name)})}catch(e){res.status(400).json({ok:false,error:e.message})}});
+async function verifyRestoreSource(srcRoot,{data=false}={}){
+  if(!fs.existsSync(srcRoot))throw Error("Backup does not contain classroom-hub root");
+  if(data){
+    const dbPath=path.join(srcRoot,"data","classroom-control-hub.db");if(!fs.existsSync(dbPath))throw Error("Data restore requires a consistent SQLite database snapshot");
+    const check=String((await run("sqlite3",[dbPath,"PRAGMA quick_check;"],{timeout:60000})).stdout||"").trim();if(check!=="ok")throw Error(`Backup database integrity check failed: ${check||"no result"}`);
+  }
+}
+function replaceRestoreContent(srcRoot,{configuration=false,data=false}={}){
+  const restored=[];
+  if(configuration){const src=path.join(srcRoot,"config"),dst=path.join(HUB_ROOT,"config");if(fs.existsSync(src)){fs.rmSync(dst,{recursive:true,force:true});fs.cpSync(src,dst,{recursive:true});restored.push("config")}}
+  if(data){
+    const src=path.join(srcRoot,"data"),dst=path.join(HUB_ROOT,"data");fs.mkdirSync(dst,{recursive:true});
+    for(const ent of fs.readdirSync(dst,{withFileTypes:true})){if(ent.name==="backups")continue;fs.rmSync(path.join(dst,ent.name),{recursive:true,force:true})}
+    for(const ent of fs.readdirSync(src,{withFileTypes:true})){if(ent.name==="backups")continue;fs.cpSync(path.join(src,ent.name),path.join(dst,ent.name),{recursive:true})}
+    for(const suffix of ["-wal","-shm"])fs.rmSync(path.join(dst,"classroom-control-hub.db"+suffix),{force:true});restored.push("data");
+  }
+  return restored;
+}
+async function waitForMainApplication(){
+  const deadline=Date.now()+RESTORE_HEALTH_TIMEOUT_MS;let last="not ready";
+  while(Date.now()<deadline){try{const status=await mainAppStatus();if(status.ok&&status.database)return status}catch(e){last=e.message}await new Promise(resolve=>setTimeout(resolve,1000))}
+  throw Error(`Classroom Control Hub did not become healthy after restore: ${last}`);
+}
+async function extractRestore(name,target){const plan=backupRestorePlan(name);new AdmZip(plan.path).extractAllTo(target,true);return {plan,srcRoot:path.join(target,"classroom-hub")}}
 app.post("/backup/:name/restore",async(req,res)=>{
-  let stopped=false,temp=null;
+  let stopped=false,temp=null,safety=null,mutationStarted=false;
   try{
     if(String(req.body?.confirm||"")!=="RESTORE")return res.status(400).json({ok:false,error:"Restore requires confirm=RESTORE"});
     const mode=String(req.body?.mode||"configuration-data");
     if(!["configuration","data","configuration-data"].includes(mode))throw Error("Invalid restore mode");
     const plan=backupRestorePlan(req.params.name);
-    const safety=await createOperationalBackupNamed("pre-restore");
-    temp=path.join(UPLOAD_DIR,`restore-${Date.now()}`);fs.mkdirSync(temp,{recursive:true});new AdmZip(plan.path).extractAllTo(temp,true);
-    const srcRoot=path.join(temp,"classroom-hub");if(!fs.existsSync(srcRoot))throw Error("Backup does not contain classroom-hub root");
+    safety=await createOperationalBackupNamed("pre-restore");
+    temp=path.join(UPLOAD_DIR,`restore-${Date.now()}`);fs.mkdirSync(temp,{recursive:true});const extracted=await extractRestore(plan.name,temp),srcRoot=extracted.srcRoot;
     const doConfig=mode.includes("configuration"),doData=mode.includes("data");
-    const restored=[];
-    if(doConfig){
-      const src=path.join(srcRoot,"config"),dst=path.join(HUB_ROOT,"config");
-      if(fs.existsSync(src)){fs.rmSync(dst,{recursive:true,force:true});fs.cpSync(src,dst,{recursive:true});restored.push("config")}
-    }
-    if(doData){
-      const src=path.join(srcRoot,"data"),dst=path.join(HUB_ROOT,"data");
-      if(fs.existsSync(src)){
-        await run("docker",["stop","classroom-hub"],{timeout:30000});stopped=true;
-        // Preserve server-side backup history while restoring operational data.
-        const keepBackups=path.join(dst,"backups");
-        const backupHold=path.join(UPLOAD_DIR,`backups-hold-${Date.now()}`);
-        if(fs.existsSync(keepBackups))fs.cpSync(keepBackups,backupHold,{recursive:true});
-        for(const ent of fs.readdirSync(dst,{withFileTypes:true})){if(ent.name==="backups")continue;fs.rmSync(path.join(dst,ent.name),{recursive:true,force:true})}
-        for(const ent of fs.readdirSync(src,{withFileTypes:true})){if(ent.name==="backups")continue;fs.cpSync(path.join(src,ent.name),path.join(dst,ent.name),{recursive:true})}
-        for(const suffix of ["-wal","-shm"])fs.rmSync(path.join(dst,"classroom-control-hub.db"+suffix),{force:true});
-        restored.push("data");
-      }
-    }
-    if(stopped){await run("docker",["start","classroom-hub"],{timeout:30000});stopped=false}
-    res.json({ok:true,name:plan.name,mode,restored,safetyBackup:safety.name,message:"Restore completed. Classroom Control Hub was restarted when database/data restoration was required."});
+    await verifyRestoreSource(srcRoot,{data:doData});
+    await run("docker",["stop",APP_CONTAINER],{timeout:30000});stopped=true;mutationStarted=true;
+    const restored=replaceRestoreContent(srcRoot,{configuration:doConfig,data:doData});
+    if(!restored.length)throw Error("Selected restore mode has no matching content in this backup");
+    await run("docker",["start",APP_CONTAINER],{timeout:30000});stopped=false;await waitForMainApplication();
+    res.json({ok:true,name:plan.name,mode,restored,safetyBackup:safety.name,healthVerified:true,message:"Restore completed and the application passed its database health check."});
   }catch(e){
-    if(stopped)try{await run("docker",["start","classroom-hub"],{timeout:30000})}catch{}
-    res.status(500).json({ok:false,error:e.message});
+    let rollback={attempted:false,ok:false};
+    if(mutationStarted&&safety){
+      rollback.attempted=true;
+      try{
+        if(!stopped){await run("docker",["stop",APP_CONTAINER],{timeout:30000});stopped=true}
+        const rollbackDir=path.join(UPLOAD_DIR,`rollback-${Date.now()}`);fs.mkdirSync(rollbackDir,{recursive:true});
+        try{const extracted=await extractRestore(safety.name,rollbackDir);await verifyRestoreSource(extracted.srcRoot,{data:true});replaceRestoreContent(extracted.srcRoot,{configuration:true,data:true})}finally{fs.rmSync(rollbackDir,{recursive:true,force:true})}
+        await run("docker",["start",APP_CONTAINER],{timeout:30000});stopped=false;await waitForMainApplication();rollback={attempted:true,ok:true,backup:safety.name};
+      }catch(rollbackError){rollback={attempted:true,ok:false,backup:safety.name,error:rollbackError.message}}
+    }
+    if(stopped)try{await run("docker",["start",APP_CONTAINER],{timeout:30000});stopped=false}catch{}
+    res.status(500).json({ok:false,error:e.message,safetyBackup:safety?.name||null,rollback});
   }finally{if(temp)try{fs.rmSync(temp,{recursive:true,force:true})}catch{}}
 });
 app.delete("/backup/:name",(req,res)=>{try{const name=cleanName(req.params.name),p=path.join(BACKUP_DIR,name);if(!fs.existsSync(p))return res.json({ok:true,missing:true});fs.unlinkSync(p);res.json({ok:true,name})}catch(e){res.status(400).json({ok:false,error:e.message})}});
-app.get("/audit/status",(_req,res)=>{try{const total=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;const first=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at ASC LIMIT 1").get()?.at||null;const last=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at DESC LIMIT 1").get()?.at||null;res.json({ok:true,total,first,last,database:dbStore.databaseInfo()})}catch(e){res.status(500).json({ok:false,error:e.message})}});
-app.post("/audit/prune",(req,res)=>{try{const days=Math.max(7,Math.min(3650,Number(req.body?.days||180)));if(req.body?.confirm!==true)return res.status(400).json({ok:false,error:"Confirmation required"});const cutoff=new Date(Date.now()-days*86400000).toISOString();const before=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;const info=dbStore.db.prepare("DELETE FROM audit_events WHERE at < ?").run(cutoff);dbStore.db.exec("PRAGMA wal_checkpoint(PASSIVE)");const after=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;res.json({ok:true,days,cutoff,removed:info.changes,before,after})}catch(e){res.status(500).json({ok:false,error:e.message})}});
+app.get("/audit/status",async(_req,res)=>{try{const status=await mainAppStatus();res.json({ok:true,...status.audit,database:status.database})}catch(e){res.status(e.status||502).json({ok:false,error:e.message})}});
+app.post("/audit/prune",async(req,res)=>{try{res.json(await mainAppRequest("POST","/api/v1/internal/maintenance/audit/prune",req.body||{}))}catch(e){res.status(e.status||502).json({ok:false,error:e.message})}});
 app.get("/diagnostics/bundle",async(_req,res)=>{try{
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-diagnostics-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
-  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.66",database:dbStore.databaseInfo(),roots:{hub:HUB_ROOT,services:Classroom_ROOT,services:Classroom_ROOT}};
+  let application=null;try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}
+  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.66",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
   zip.addFile("summary.json",Buffer.from(JSON.stringify(info,null,2)));
   try{const c=await dockerContainers();zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(c,null,2)));for(const row of c){const n=cleanName(row.Names||row.Name||"");if(!n)continue;try{const r=await run("docker",["logs","--timestamps","--tail","1000",n],{timeout:20000,maxBuffer:16*1024*1024});zip.addFile(`logs/${n}.log`,Buffer.from((r.stdout||"")+(r.stderr||"")))}catch(e){zip.addFile(`logs/${n}.error.txt`,Buffer.from(e.message))}}}catch(e){zip.addFile("docker/error.txt",Buffer.from(e.message))}
   try{const r=await run("docker",["stats","--no-stream","--format","{{json .}}"],{timeout:15000});zip.addFile("docker/stats.jsonl",Buffer.from(r.stdout||""))}catch{}
@@ -319,19 +358,19 @@ app.post("/update/deploy",requireUnsafeSourceUpdates,async(req,res)=>{try{const 
 },700)}catch(e){res.status(500).json({ok:false,error:e.message})}});
 
 const MANAGED_INTEGRATIONS_FILE=path.join(HUB_ROOT,"data","managed-integrations.json");
-function secretSetting(k){return /password|token|secret|api.?key|credential/i.test(String(k||""))}
-function secretName(id,k){return `integration.${id}.${k}`}
-function readManagedIntegrations(){
-  const relational=dbStore.getManagedIntegrations();
-  if(Object.keys(relational.modules||{}).length)return relational;
-  let v=null;
-  if(dbStore.hasObject("managed-integrations"))v=dbStore.getObject("managed-integrations",{version:1,modules:{}});
-  else if(fs.existsSync(MANAGED_INTEGRATIONS_FILE)){try{v=JSON.parse(fs.readFileSync(MANAGED_INTEGRATIONS_FILE,"utf8"))}catch{}}
-  if(v){for(const [id,cfg] of Object.entries(v.modules||{})){for(const [k,val] of Object.entries(cfg||{})){if(secretSetting(k)&&val&&val!=="__encrypted__"){dbStore.putSecret(secretName(id,k),String(val),{type:"integration-setting",integration:id,key:k});cfg[k]="__encrypted__"}}}dbStore.putManagedIntegrations(v);dbStore.deleteObject("managed-integrations");dbStore.recordMigration(MANAGED_INTEGRATIONS_FILE,"sqlite:managed_modules",Object.keys(v.modules||{}).length,{type:"integration-config"});return v}
-  return {version:1,modules:{}}
+async function readManagedIntegrations({resolved=false}={}){
+  const result=await mainAppRequest("GET",`/api/v1/internal/maintenance/integrations${resolved?"?resolved=1":""}`);
+  let value=result.integrations||{version:1,modules:{}};
+  if(!Object.keys(value.modules||{}).length&&fs.existsSync(MANAGED_INTEGRATIONS_FILE)){
+    try{
+      const legacy=JSON.parse(fs.readFileSync(MANAGED_INTEGRATIONS_FILE,"utf8"));
+      for(const [id,settings] of Object.entries(legacy.modules||{}))await mainAppRequest("PUT",`/api/v1/internal/maintenance/integrations/${encodeURIComponent(id)}`,{settings});
+      value=(await mainAppRequest("GET",`/api/v1/internal/maintenance/integrations${resolved?"?resolved=1":""}`)).integrations||value;
+      fs.renameSync(MANAGED_INTEGRATIONS_FILE,MANAGED_INTEGRATIONS_FILE+`.migrated-${Date.now()}`);
+    }catch{}
+  }
+  return value;
 }
-function writeManagedIntegrations(v){dbStore.putManagedIntegrations(v)}
-function resolvedIntegrationConfig(id,cfg){const out={...cfg};for(const k of Object.keys(out)){if(secretSetting(k)&&out[k]==="__encrypted__")out[k]=dbStore.getSecret(secretName(id,k))||""}return out}
 const MODULES={
   mosquitto:{name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:latest",description:"MQTT broker used by Classroom Control Hub integrations.",expectedProject:"services",ownership:"integration"},
   govee2mqtt:{name:"Govee Lighting",container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:latest",description:"Govee discovery and LAN/cloud control through MQTT.",expectedProject:"services",ownership:"integration"},
@@ -340,7 +379,7 @@ const MODULES={
 };
 async function containerExists(name){try{await run("docker",["inspect",name],{timeout:5000});return true}catch{return false}}
 app.get("/modules",async(_req,res)=>{
-  const cfg=readManagedIntegrations(),out=[];
+  const cfg=await readManagedIntegrations(),out=[];
   for(const [id,m] of Object.entries(MODULES)){
     let state="not-installed",status="",composeProject="",composeService="";
     if(await containerExists(m.container)){
@@ -354,8 +393,8 @@ app.get("/modules",async(_req,res)=>{
   }
   res.json({ok:true,modules:out})
 });
-app.get("/modules/:id/config",(req,res)=>{const id=String(req.params.id||""),cfg=readManagedIntegrations().modules?.[id]||{};const masked={...cfg};for(const k of Object.keys(masked))if(secretSetting(k)&&(masked[k]||dbStore.hasSecret(secretName(id,k))))masked[k]="••••••••";res.json({ok:true,id,config:masked})});
-app.post("/modules/:id/deploy",async(req,res)=>{const id=String(req.params.id||""),m=MODULES[id];if(!m)return res.status(404).json({ok:false,error:"Unknown integration"});if(m.externalOnly)return res.status(409).json({ok:false,error:"This integration is externally managed and can be monitored/adopted without recreating it."});try{const settings=req.body?.settings||{},cfg=readManagedIntegrations();cfg.modules=cfg.modules||{};const prior=cfg.modules[id]||{};for(const [k,v] of Object.entries(settings)){if(v==="••••••••")continue;if(secretSetting(k)){if(v!==undefined&&v!==null&&String(v)!==""){dbStore.putSecret(secretName(id,k),String(v),{type:"integration-setting",integration:id,key:k});prior[k]="__encrypted__"}}else prior[k]=v}cfg.modules[id]=prior;writeManagedIntegrations(cfg);const resolved=resolvedIntegrationConfig(id,prior);const exists=await containerExists(m.container);if(exists&&!req.body?.recreate)return res.json({ok:true,id,adopted:true,message:"Existing container adopted. Use recreate to apply managed settings."});if(exists)await run("docker",["rm","-f",m.container],{timeout:30000});let args=["run","-d","--name",m.container,"--restart","unless-stopped"];
+app.get("/modules/:id/config",async(req,res)=>{try{const id=String(req.params.id||""),cfg=(await readManagedIntegrations()).modules?.[id]||{};res.json({ok:true,id,config:cfg})}catch(e){res.status(e.status||502).json({ok:false,error:e.message})}});
+app.post("/modules/:id/deploy",async(req,res)=>{const id=String(req.params.id||""),m=MODULES[id];if(!m)return res.status(404).json({ok:false,error:"Unknown integration"});if(m.externalOnly)return res.status(409).json({ok:false,error:"This integration is externally managed and can be monitored/adopted without recreating it."});try{const configured=await mainAppRequest("PUT",`/api/v1/internal/maintenance/integrations/${encodeURIComponent(id)}`,{settings:req.body?.settings||{}}),resolved=configured.resolved||{};const exists=await containerExists(m.container);if(exists&&!req.body?.recreate)return res.json({ok:true,id,adopted:true,message:"Existing container adopted. Use recreate to apply managed settings."});if(exists)await run("docker",["rm","-f",m.container],{timeout:30000});let args=["run","-d","--name",m.container,"--restart","unless-stopped"];
   if(id==="mosquitto"){
     const base=path.join(Classroom_ROOT,"mosquitto");for(const d of ["config","data","log"])fs.mkdirSync(path.join(base,d),{recursive:true});const conf=path.join(base,"config","mosquitto.conf");if(!fs.existsSync(conf))fs.writeFileSync(conf,"persistence true\npersistence_location /mosquitto/data/\nlog_dest stdout\nlistener 1883\nallow_anonymous true\n");args.push("-p",`${resolved.port||1883}:1883`,"-v",`${base}/config:/mosquitto/config`,`-v`,`${base}/data:/mosquitto/data`,`-v`,`${base}/log:/mosquitto/log`);
   } else if(id==="govee2mqtt"){
