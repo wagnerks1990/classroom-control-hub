@@ -1,5 +1,11 @@
 "use strict";
 
+if(!window.ControlHubBranding&&!document.querySelector('script[src="/shared/branding.js"]')){
+  const branding=document.createElement("script");
+  branding.src="/shared/branding.js";
+  document.head.append(branding);
+}
+
 function addKyleAttribution(){
   if(document.querySelector("[data-kyle-attribution]"))return;
   const footer=document.createElement("footer");
@@ -18,4 +24,3 @@ function addKyleAttribution(){
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",addKyleAttribution,{once:true});
 else addKyleAttribution();
-

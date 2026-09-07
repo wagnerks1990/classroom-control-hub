@@ -1,17 +1,43 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://classroom-hub.local/schema/site.schema.json",
-  "title": "Classroom Control Hub Site Configuration",
+  "title": "Organization and Branding Configuration",
   "type": "object",
   "properties": {
     "site": {
       "type": "object",
       "properties": {
-        "name": {"type":"string","minLength":1,"maxLength":120},
-        "room": {"type":"string","minLength":1,"maxLength":80},
-        "timezone": {"type":"string","minLength":1}
+        "organizationName": {"type":"string","minLength":1,"maxLength":120},
+        "siteName": {"type":"string","minLength":1,"maxLength":80},
+        "spaceName": {"type":"string","minLength":1,"maxLength":80},
+        "productName": {"type":"string","minLength":1,"maxLength":120},
+        "logoUrl": {"type":"string","maxLength":2048},
+        "faviconUrl": {"type":"string","maxLength":2048},
+        "timezone": {"type":"string","minLength":1},
+        "theme": {
+          "type":"object",
+          "properties": {
+            "mode":{"enum":["dark","light","system"]},
+            "primary":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"},
+            "accent":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"},
+            "background":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"},
+            "surface":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"},
+            "text":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"}
+          },
+          "additionalProperties":false
+        },
+        "terminology": {
+          "type":"object",
+          "properties": {
+            "space":{"type":"string","minLength":1,"maxLength":40},
+            "endpoint":{"type":"string","minLength":1,"maxLength":40},
+            "operator":{"type":"string","minLength":1,"maxLength":40},
+            "schedule":{"type":"string","minLength":1,"maxLength":40}
+          },
+          "additionalProperties":false
+        }
       },
-      "required": ["room","timezone"]
+      "required": ["organizationName","siteName","spaceName","productName","timezone"]
     },
     "displays": {
       "type":"object",
