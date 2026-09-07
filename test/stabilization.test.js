@@ -177,24 +177,29 @@ test("Kyle Wagner attribution is installed on every current site surface",()=>{
   }
 });
 
-test("organization branding is public, database-backed, validated, and contains no secrets",async()=>{
+test("school branding is public, database-backed, validated, and contains no secrets",async()=>{
   let result=await request("/api/v1/branding");
   assert.equal(result.response.status,200,JSON.stringify(result.json));
   assert.equal(result.json.branding.productName,"Classroom Control Hub");
-  assert.equal(result.json.branding.terminology.endpoint,"Endpoint");
+  assert.equal(result.json.branding.room,"Classroom");
 
-  result=await request("/api/v1/admin/site",{method:"PUT",authenticated:true,body:{organizationName:"Example Arts Center",siteName:"Downtown Campus",spaceName:"Auditorium",productName:"Venue Control",logoUrl:"/media/brand/logo.svg",faviconUrl:"https://assets.example.test/icon.png",displayPrefix:"Screen",timezone:"America/New_York",theme:{mode:"dark",primary:"#123456",accent:"#654321",background:"#101820",surface:"#182630",text:"#fefefe"},terminology:{space:"Venue",endpoint:"Screen",operator:"Coordinator",schedule:"Program"}}});
+  result=await request("/api/v1/admin/site",{method:"PUT",authenticated:true,body:{school:"Example School District",room:"Technology Classroom",productName:"Technology Classroom Hub",logoUrl:"/media/brand/logo.svg",faviconUrl:"https://assets.example.test/icon.png",displayPrefix:"TV",timezone:"America/New_York",theme:{mode:"dark",primary:"#123456",accent:"#654321",background:"#101820",surface:"#182630",text:"#fefefe"}}});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
-  assert.equal(result.json.site.organizationName,"Example Arts Center");
-  assert.equal(result.json.site.school,"Example Arts Center");
-  assert.equal(result.json.site.room,"Auditorium");
+  assert.equal(result.json.site.school,"Example School District");
+  assert.equal(result.json.site.room,"Technology Classroom");
   assert.ok(result.json.site.revision>=1);
+  assert.equal("organizationName" in result.json.site,false);
+  assert.equal("siteName" in result.json.site,false);
+  assert.equal("spaceName" in result.json.site,false);
 
   result=await request("/api/v1/branding");
-  assert.equal(result.json.branding.productName,"Venue Control");
+  assert.equal(result.json.branding.productName,"Technology Classroom Hub");
   assert.equal(result.json.branding.theme.primary,"#123456");
-  assert.equal(result.json.branding.terminology.schedule,"Program");
   assert.equal(JSON.stringify(result.json).includes("preferences"),false);
+  assert.equal("organizationName" in result.json.branding,false);
+  assert.equal("siteName" in result.json.branding,false);
+  assert.equal("spaceName" in result.json.branding,false);
+  assert.equal("terminology" in result.json.branding,false);
 
   result=await request("/api/v1/admin/site",{method:"PUT",authenticated:true,body:{theme:{primary:"red"}}});
   assert.equal(result.response.status,400);
