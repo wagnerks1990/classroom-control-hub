@@ -21,6 +21,24 @@ cp .env.example .env
 
 Never commit the resulting `.env`.
 
+Before the first network-accessible start, generate unique bootstrap, display,
+and maintenance credentials. For example:
+
+```bash
+openssl rand -hex 32
+```
+
+Store separate generated values in `SETUP_TOKEN`, `DISPLAY_TOKEN`, and
+`MAINTENANCE_TOKEN`. The first administrator request must provide
+`SETUP_TOKEN` in the `X-Setup-Token` header; the token is never accepted in a
+query string. Authentication remains enabled after bootstrap.
+
+The stabilization defaults intentionally disable the privileged maintenance
+proxy, anonymous classroom participation, shell access, and legacy source-ZIP
+updates. Do not enable `MAINTENANCE_PROXY_ENABLED` on an untrusted network.
+`MAINTENANCE_ALLOW_UNSAFE_SOURCE_UPDATES` exists only as a temporary legacy
+escape hatch and must remain `false` in production.
+
 Typical categories include:
 
 - application port and timezone;
@@ -31,6 +49,10 @@ Typical categories include:
 - announcement/stream defaults;
 - host/maintenance-agent connection settings;
 - authentication/security options.
+
+Cross-origin API access is disabled unless an exact origin is listed in the
+comma-separated `CORS_ALLOWED_ORIGINS` setting. Same-origin browser use needs
+no CORS entry.
 
 ## Standard host-path variables
 
@@ -127,6 +149,18 @@ Recommended conceptual record:
 ```
 
 Do not use a transient IP address as the only display identity unless the environment guarantees it is stable.
+
+Display WebSockets now fail closed when `DISPLAY_TOKEN` is empty. Provision a
+receiver once with a URL fragment so the secret is not sent in the HTTP request
+or retained in server access logs:
+
+```text
+http://hub.example/display/?id=tv1#displayToken=<generated DISPLAY_TOKEN>
+```
+
+The display stores the token locally and removes the fragment from the visible
+URL. This shared token is a stabilization measure; the v2 design replaces it
+with individually enrolled, revocable endpoint credentials.
 
 ## Class schedules
 

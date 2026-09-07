@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Classroom Display</title>
+<link rel="stylesheet" href="/shared/attribution.css">
+<script src="/shared/attribution.js" defer></script>
 <style>
 :root{--logical-width:1920px;--logical-height:1080px}
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}
@@ -41,6 +43,7 @@ import {wsUrl,getDisplayId} from '/shared/common.js';
 import {SendspinPlayer} from '/display/sendspin.bundle.js';
 const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,MIN_FONT=12,DISPLAY_BUILD='1.0.0-alpha.66';
 const id=getDisplayId(),preview=new URLSearchParams(location.search).get('preview')==='1';
+const displayToken=(()=>{try{const p=new URLSearchParams(location.hash.slice(1)),incoming=p.get('displayToken');if(incoming){localStorage.setItem('classroom-hub-display-token',incoming);history.replaceState(null,'',location.pathname+location.search)}return localStorage.getItem('classroom-hub-display-token')||''}catch{return ''}})();
 const stage=document.getElementById('stage'),media=document.getElementById('media'),titleRegion=document.getElementById('titleRegion'),subtitleRegion=document.getElementById('subtitleRegion'),textLayer=document.getElementById('textLayer'),text=document.getElementById('text'),title=document.getElementById('title'),subtitle=document.getElementById('subtitle'),presentationBlack=document.getElementById('presentationBlack'),identify=document.getElementById('identify'),badge=document.getElementById('badge'),timerOverlay=document.getElementById('timerOverlay'),timerLabel=document.getElementById('timerLabel'),timerValue=document.getElementById('timerValue');
 let ws,timerState={visible:false,running:false,mode:'countdown',durationSeconds:300,remainingSeconds:300},timerTick=null,lastViewportSignature='';
 let textOptions={size:64,autoFit:true},titleOptions={size:92,autoFit:true},subtitleOptions={size:44,autoFit:true};
@@ -292,7 +295,7 @@ function handle(c){const p=c.payload||{};switch(c.type){
   case'music.assistant.attach':attachMusicAssistant(p);break;case'music.assistant.detach':detachMusicAssistant();break;
   case'display.reload':location.reload();break;
 }}
-function connect(){ws=new WebSocket(wsUrl());ws.onopen=()=>{badge.textContent=`${id} ${preview?'preview':'connected'}`;ws.send(JSON.stringify({type:'hello',role:preview?'preview':'display',deviceId:id,token:'',clientVersion:DISPLAY_BUILD,meta:{url:location.href,...displayMetrics(),logicalResolution:`${LOGICAL_WIDTH}x${LOGICAL_HEIGHT}`,logicalScale:Number(stage.dataset.scale||1)}}))};ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='hello.ack'){if(!preview&&m.version&&m.version!==DISPLAY_BUILD){badge.textContent=`${id} updating`;setTimeout(()=>location.reload(),250);return}applyState(m.state)}if(m.type==='command')handle(m.command);if(m.type==='heartbeat.ack'&&!preview)badge.textContent=`${id} connected`};ws.onclose=()=>{badge.textContent=`${id} disconnected`;setTimeout(connect,1500)}}
+function connect(){ws=new WebSocket(wsUrl());ws.onopen=()=>{badge.textContent=`${id} ${preview?'preview':'connected'}`;ws.send(JSON.stringify({type:'hello',role:preview?'preview':'display',deviceId:id,token:preview?'':displayToken,clientVersion:DISPLAY_BUILD,meta:{url:location.href,...displayMetrics(),logicalResolution:`${LOGICAL_WIDTH}x${LOGICAL_HEIGHT}`,logicalScale:Number(stage.dataset.scale||1)}}))};ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='hello.ack'){if(!preview&&m.version&&m.version!==DISPLAY_BUILD){badge.textContent=`${id} updating`;setTimeout(()=>location.reload(),250);return}applyState(m.state)}if(m.type==='error')badge.textContent=`${id} ${m.error||'error'}`;if(m.type==='command')handle(m.command);if(m.type==='heartbeat.ack'&&!preview)badge.textContent=`${id} connected`};ws.onclose=()=>{badge.textContent=`${id} disconnected`;setTimeout(connect,1500)}}
 window.addEventListener('resize',scaleStage);
 window.visualViewport?.addEventListener('resize',scaleStage);
 document.addEventListener('fullscreenchange',scaleStage);
