@@ -4250,17 +4250,14 @@ app.use("/vendor/hls", express.static(path.join(path.resolve(__dirname,".."),"no
 app.use(express.static(path.join(APP_DIR, "public")));
 
 const BRAND_THEME_DEFAULTS={mode:"dark",primary:"#2aa866",accent:"#1b7a49",background:"#040705",surface:"#121923",text:"#eef4f8"};
-const BRAND_TERMINOLOGY_DEFAULTS={space:"Space",endpoint:"Endpoint",operator:"Operator",schedule:"Schedule"};
 function shortBrandText(value,fallback,max=120){const text=String(value??fallback??"").trim();return (text||String(fallback||"")).slice(0,max)}
 function brandColor(value,fallback){const text=String(value||"").trim();if(text&&!/^#[0-9a-f]{6}$/i.test(text))throw Error("Theme colors must use six-digit hexadecimal values");return text||fallback}
 function brandAssetUrl(value){const text=String(value||"").trim();if(!text)return "";if(text.length>2048)throw Error("Brand asset URL is too long");if(text.startsWith("/")&&!text.startsWith("//"))return text;let parsed;try{parsed=new URL(text)}catch{throw Error("Brand asset URL must be an HTTPS, HTTP, or site-relative URL")}if(!["https:","http:"].includes(parsed.protocol))throw Error("Brand asset URL must be an HTTPS, HTTP, or site-relative URL");return parsed.href}
 function normalizedSiteProfile(input={}){
-  const organizationName=shortBrandText(input.organizationName??input.school,"Your Organization");
-  const siteName=shortBrandText(input.siteName??input.room,"Primary Site",80);
-  const spaceName=shortBrandText(input.spaceName??input.room,"Main Space",80);
+  const school=shortBrandText(input.school,"Your School");
+  const room=shortBrandText(input.room,"Classroom",80);
   const mode=["dark","light","system"].includes(input.theme?.mode)?input.theme.mode:"dark";
-  const terminology={};for(const key of Object.keys(BRAND_TERMINOLOGY_DEFAULTS))terminology[key]=shortBrandText(input.terminology?.[key],BRAND_TERMINOLOGY_DEFAULTS[key],40);
-  return {organizationName,siteName,spaceName,school:organizationName,room:spaceName,productName:shortBrandText(input.productName,"Classroom Control Hub"),logoUrl:brandAssetUrl(input.logoUrl),faviconUrl:brandAssetUrl(input.faviconUrl),displayPrefix:shortBrandText(input.displayPrefix,terminology.endpoint,40),timezone:shortBrandText(input.timezone,"America/New_York",80),theme:{mode,primary:brandColor(input.theme?.primary,BRAND_THEME_DEFAULTS.primary),accent:brandColor(input.theme?.accent,BRAND_THEME_DEFAULTS.accent),background:brandColor(input.theme?.background,BRAND_THEME_DEFAULTS.background),surface:brandColor(input.theme?.surface,BRAND_THEME_DEFAULTS.surface),text:brandColor(input.theme?.text,BRAND_THEME_DEFAULTS.text)},terminology,revision:Math.max(0,Number(input.revision)||0),updatedAt:input.updatedAt||null};
+  return {school,room,productName:shortBrandText(input.productName,"Classroom Control Hub"),logoUrl:brandAssetUrl(input.logoUrl),faviconUrl:brandAssetUrl(input.faviconUrl),displayPrefix:shortBrandText(input.displayPrefix,"TV",40),timezone:shortBrandText(input.timezone,"America/New_York",80),theme:{mode,primary:brandColor(input.theme?.primary,BRAND_THEME_DEFAULTS.primary),accent:brandColor(input.theme?.accent,BRAND_THEME_DEFAULTS.accent),background:brandColor(input.theme?.background,BRAND_THEME_DEFAULTS.background),surface:brandColor(input.theme?.surface,BRAND_THEME_DEFAULTS.surface),text:brandColor(input.theme?.text,BRAND_THEME_DEFAULTS.text)},revision:Math.max(0,Number(input.revision)||0),updatedAt:input.updatedAt||null};
 }
 function publicBranding(){const site=normalizedSiteProfile(dbStore.getAdminConfig().site||{});return {ok:true,branding:site}}
 
@@ -4290,9 +4287,8 @@ app.get("/", (_req, res) => {
   res.type("text/plain").send(
     [
       `${brand.productName} Backend`,
-      `Organization: ${brand.organizationName}`,
-      `Site: ${brand.siteName}`,
-      `${brand.terminology.space}: ${brand.spaceName}`,
+      `School: ${brand.school}`,
+      `Classroom: ${brand.room}`,
       `API: http://HOST:${PORT}/api/v1/status`,
       `WebSocket: ws://HOST:${PORT}/ws`,
       `Media: http://HOST:${PORT}/media/`
@@ -4836,7 +4832,7 @@ app.get("/api/v1/admin/config",requireAdmin,(_req,res)=>{
 });
 app.put("/api/v1/admin/site",requireAdmin,(req,res)=>{
   try{
-    const current=normalizedSiteProfile(dbStore.getAdminConfig().site||{}),site=dbStore.putSiteProfile(normalizedSiteProfile({...current,...(req.body||{}),theme:{...current.theme,...(req.body?.theme||{})},terminology:{...current.terminology,...(req.body?.terminology||{})}}));
+    const current=normalizedSiteProfile(dbStore.getAdminConfig().site||{}),site=dbStore.putSiteProfile(normalizedSiteProfile({...current,...(req.body||{}),theme:{...current.theme,...(req.body?.theme||{})}}));
     if(site.room){deviceConfig.room=String(site.room);persistRuntimeConfig()}
     audit({kind:"admin.config.site",site:{...site}});res.json({ok:true,site});
   }catch(err){res.status(400).json({ok:false,error:err.message})}

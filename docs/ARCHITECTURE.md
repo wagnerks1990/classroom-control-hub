@@ -162,7 +162,7 @@ Standard conceptual layout:
 
 The public repository remains generic. These belong outside tracked source:
 
-- organization/district branding;
+- school/district and classroom branding;
 - internal IP addresses and VLAN information;
 - production device identifiers/topology;
 - Ant Media stream URLs/IDs;

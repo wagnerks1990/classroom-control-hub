@@ -76,12 +76,11 @@ The public repository intentionally uses generic configuration. Production endpo
 
 The standard production checkout is `/opt/classroom-hub`. Older documentation or code referring to `/opt/classroom-control-hub` should be treated as migration-era stale configuration unless a deployment explicitly chose that custom path.
 
-Organization identity is database-backed. Prefer `organizationName`,
-`siteName`, and `spaceName`; `school` and `room` are temporary compatibility
-aliases. Product name, logo, favicon, color tokens, and neutral terminology are
-served through the secret-free `/api/v1/branding` contract. All browser surfaces
-load the shared branding client. Never place organization-specific branding in
-tracked defaults.
+School and classroom identity is database-backed. Product name, school/district
+name, classroom name, logo, favicon, and color tokens are served through the
+secret-free `/api/v1/branding` contract. All browser surfaces load the shared
+branding client. This is an education-only product; do not introduce a generic
+organization/site/space model or neutral experience preset.
 
 ## Git and release workflow
 

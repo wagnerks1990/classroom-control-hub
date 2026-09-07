@@ -1,15 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://classroom-hub.local/schema/site.schema.json",
-  "title": "Organization and Branding Configuration",
+  "title": "School and Classroom Branding Configuration",
   "type": "object",
   "properties": {
     "site": {
       "type": "object",
       "properties": {
-        "organizationName": {"type":"string","minLength":1,"maxLength":120},
-        "siteName": {"type":"string","minLength":1,"maxLength":80},
-        "spaceName": {"type":"string","minLength":1,"maxLength":80},
+        "school": {"type":"string","minLength":1,"maxLength":120},
+        "room": {"type":"string","minLength":1,"maxLength":80},
         "productName": {"type":"string","minLength":1,"maxLength":120},
         "logoUrl": {"type":"string","maxLength":2048},
         "faviconUrl": {"type":"string","maxLength":2048},
@@ -25,19 +24,9 @@
             "text":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"}
           },
           "additionalProperties":false
-        },
-        "terminology": {
-          "type":"object",
-          "properties": {
-            "space":{"type":"string","minLength":1,"maxLength":40},
-            "endpoint":{"type":"string","minLength":1,"maxLength":40},
-            "operator":{"type":"string","minLength":1,"maxLength":40},
-            "schedule":{"type":"string","minLength":1,"maxLength":40}
-          },
-          "additionalProperties":false
         }
       },
-      "required": ["organizationName","siteName","spaceName","productName","timezone"]
+      "required": ["school","room","productName","timezone"]
     },
     "displays": {
       "type":"object",

@@ -263,7 +263,7 @@ nav button{min-width:135px}
 <aside>
   <div class="brandWrap">
       <div class="logo" id="brandLogoWrap" title="Classroom Control Hub" style="display:none">
-        <img id="brandLogo" src="" alt="Organization logo">
+        <img id="brandLogo" src="" alt="School logo">
       </div>
       <div>
         <div class="brand" id="brandProductName">Classroom <span class="green">Hub</span></div>
@@ -951,11 +951,10 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   <div id="cfgSummary" class="adminHero"><div class="muted">Loading configuration summary…</div></div>
 
   <div class="panel">
-    <h2 class="sectionTitle">Organization & Branding</h2>
+    <h2 class="sectionTitle">School & Classroom Branding</h2>
     <div class="formGrid">
-      <div class="formField"><label>Organization Name</label><input id="cfgOrganizationName"></div>
-      <div class="formField"><label>Site Name</label><input id="cfgSiteName"></div>
-      <div class="formField"><label>Space / Zone Name</label><input id="cfgSpaceName"></div>
+      <div class="formField"><label>School / District Name</label><input id="cfgSchool"></div>
+      <div class="formField"><label>Classroom Name</label><input id="cfgRoom"></div>
       <div class="formField"><label>Product / Portal Name</label><input id="cfgProductName" placeholder="Classroom Control Hub"></div>
       <div class="formField"><label>Logo URL (optional)</label><input id="cfgLogoUrl" placeholder="https://.../logo.png"></div>
       <div class="formField"><label>Favicon URL (optional)</label><input id="cfgFaviconUrl" placeholder="/favicon.ico"></div>
@@ -967,10 +966,6 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
       <div class="formField"><label>Background Color</label><input id="cfgThemeBackground" type="color" value="#040705"></div>
       <div class="formField"><label>Surface Color</label><input id="cfgThemeSurface" type="color" value="#121923"></div>
       <div class="formField"><label>Text Color</label><input id="cfgThemeText" type="color" value="#eef4f8"></div>
-      <div class="formField"><label>Space Label</label><input id="cfgTermSpace" placeholder="Space"></div>
-      <div class="formField"><label>Endpoint Label</label><input id="cfgTermEndpoint" placeholder="Endpoint"></div>
-      <div class="formField"><label>Operator Label</label><input id="cfgTermOperator" placeholder="Operator"></div>
-      <div class="formField"><label>Schedule Label</label><input id="cfgTermSchedule" placeholder="Schedule"></div>
       <div><button class="primary" onclick="saveAdminSite()">Save Site Settings</button></div>
     </div>
     <div id="cfgSiteMsg" class="muted" style="margin-top:8px"></div>
@@ -1177,8 +1172,8 @@ function paintBrandCycle(){
 }
 function applySiteBranding(site={},fromShared=false){
   const product=String(site.productName||'Classroom Control Hub');
-  const school=String(site.organizationName||site.school||'').trim();
-  const room=String(site.spaceName||site.room||site.siteName||'').trim();
+  const school=String(site.school||'').trim();
+  const room=String(site.room||'').trim();
   const logo=String(site.logoUrl||'').trim();
   document.title=`${room?room+' • ':''}${product}`;
   if(window.brandProductName)brandProductName.textContent=product;
@@ -2901,7 +2896,7 @@ let ADMINCFG=null;
 async function loadAdminConfiguration(){
   try{
     const [j,sum]=await Promise.all([api('/api/v1/admin/config'),api('/api/v1/admin/summary')]);ADMINCFG=j;
-    const site=j.site||{},theme=site.theme||{},terms=site.terminology||{};cfgOrganizationName.value=site.organizationName||site.school||'';cfgSiteName.value=site.siteName||'';cfgSpaceName.value=site.spaceName||site.room||j.devices?.room||'';cfgProductName.value=site.productName||'Classroom Control Hub';cfgLogoUrl.value=site.logoUrl||'';cfgFaviconUrl.value=site.faviconUrl||'';cfgDisplayPrefix.value=site.displayPrefix||'Display';cfgTimezone.value=site.timezone||'America/New_York';cfgThemeMode.value=theme.mode||'dark';cfgThemePrimary.value=theme.primary||'#2aa866';cfgThemeAccent.value=theme.accent||'#1b7a49';cfgThemeBackground.value=theme.background||'#040705';cfgThemeSurface.value=theme.surface||'#121923';cfgThemeText.value=theme.text||'#eef4f8';cfgTermSpace.value=terms.space||'Space';cfgTermEndpoint.value=terms.endpoint||'Endpoint';cfgTermOperator.value=terms.operator||'Operator';cfgTermSchedule.value=terms.schedule||'Schedule';applySiteBranding(site);
+    const site=j.site||{},theme=site.theme||{};cfgSchool.value=site.school||'';cfgRoom.value=site.room||j.devices?.room||'';cfgProductName.value=site.productName||'Classroom Control Hub';cfgLogoUrl.value=site.logoUrl||'';cfgFaviconUrl.value=site.faviconUrl||'';cfgDisplayPrefix.value=site.displayPrefix||'TV';cfgTimezone.value=site.timezone||'America/New_York';cfgThemeMode.value=theme.mode||'dark';cfgThemePrimary.value=theme.primary||'#2aa866';cfgThemeAccent.value=theme.accent||'#1b7a49';cfgThemeBackground.value=theme.background||'#040705';cfgThemeSurface.value=theme.surface||'#121923';cfgThemeText.value=theme.text||'#eef4f8';applySiteBranding(site);
     cfgHardware.value=JSON.stringify(j.hardware||{},null,2);
     renderAdminSummary(sum);renderAdminIntegrationCards();
     const d=j.database||{};cfgDatabase.innerHTML=`<div class="grid"><div class="card"><div class="muted">Schema</div><div class="kpi">v${esc(d.schemaVersion||0)}</div></div><div class="card"><div class="muted">Database</div><div class="kpi">${fmtBytes(d.size||0)}</div></div><div class="card"><div class="muted">Audits</div><div class="kpi">${Number(d.audits||0).toLocaleString()}</div></div><div class="card"><div class="muted">Telemetry States</div><div class="kpi">${Number(d.telemetry||0).toLocaleString()}</div></div></div><div class="muted" style="margin-top:8px">SQLite WAL • encrypted secrets ${d.encryptedSecrets?'enabled':'unavailable'} • ${d.objects||0} compatibility objects remaining</div>`;
@@ -2919,14 +2914,14 @@ function collectAdminDisplays(){
   const old=ADMINCFG?.devices?.devices||{},devices={};
   cfgDisplayEditor.querySelectorAll('[data-display-id]').forEach(row=>{const id=row.dataset.displayId,d={...(old[id]||{})};d.name=row.querySelector('[data-f="name"]').value.trim()||id;d.enabled=row.querySelector('[data-f="enabled"]').value==='1';const av=row.querySelector('[data-f="avOutput"]').value;d.avOutput=av===''?null:Number(av);d.lightingAlias=row.querySelector('[data-f="lightingAlias"]').value.trim()||null;d.tags=row.querySelector('[data-f="tags"]').value.split(',').map(x=>x.trim()).filter(Boolean);devices[id]=d});
   const displayGroups={};cfgGroupEditor.querySelectorAll('[data-group]').forEach(card=>{displayGroups[card.dataset.group]=[...card.querySelectorAll('input[type="checkbox"]:checked')].map(x=>x.value)});
-  return {room:ADMINCFG?.devices?.room||cfgSpaceName.value.trim(),devices,displayGroups,lightingGroups:ADMINCFG?.devices?.lightingGroups||[]};
+  return {room:ADMINCFG?.devices?.room||cfgRoom.value.trim(),devices,displayGroups,lightingGroups:ADMINCFG?.devices?.lightingGroups||[]};
 }
 async function saveAdminDisplaysStructured(){try{const v=collectAdminDisplays();const j=await api('/api/v1/admin/displays',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(v)});ADMINCFG.devices={...v,devices:j.devices,displayGroups:j.displayGroups};cfgDisplaysMsg.textContent='Displays and groups validated and saved.';renderAdminDisplayEditor();await loadAdminConfiguration()}catch(e){cfgDisplaysMsg.textContent=e.message}}
 function removeAdminDisplay(id){if(!confirm(`Remove display ${id}? Existing schedules referencing it may need review.`))return;delete ADMINCFG.devices.devices[id];for(const g of Object.keys(ADMINCFG.devices.displayGroups||{}))ADMINCFG.devices.displayGroups[g]=(ADMINCFG.devices.displayGroups[g]||[]).filter(x=>x!==id);renderAdminDisplayEditor()}
 function addAdminDisplayGroup(){const n=cfgNewGroup.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g,'-');if(!n)return;if(!ADMINCFG.devices.displayGroups)ADMINCFG.devices.displayGroups={};if(ADMINCFG.devices.displayGroups[n])return alert('That group already exists.');ADMINCFG.devices.displayGroups[n]=[];cfgNewGroup.value='';renderAdminDisplayEditor()}
 function removeAdminDisplayGroup(name){if(!confirm(`Remove display group ${name}?`))return;delete ADMINCFG.devices.displayGroups[name];renderAdminDisplayEditor()}
 function renderAdminIntegrationCards(){const hw=ADMINCFG?.hardware||{},g=hw.govee||{},p=hw.pluto||{};cfgIntegrationCards.innerHTML=`<div class="integrationCard"><div><b>Pluto AV Matrix</b><div class="muted">${esc(p.name||'AV matrix')}</div><div class="integrationState"><span class="pill">${esc(p.host||'Host not configured')}</span><span class="pill">External hardware</span></div></div><button onclick="showPage('av')">Open Displays & AV</button></div><div class="integrationCard"><div><b>Govee Lighting</b><div class="muted">${Object.keys(g.devices||{}).length} devices • ${Object.keys(g.groups||{}).length} groups</div><div class="integrationState"><span class="pill">MQTT-backed</span><span class="pill">Encrypted secrets supported</span></div></div><button onclick="showPage('lights')">Open Lighting</button></div>`}
-async function saveAdminSite(){try{const body={organizationName:cfgOrganizationName.value.trim(),siteName:cfgSiteName.value.trim(),spaceName:cfgSpaceName.value.trim(),productName:cfgProductName.value.trim()||'Classroom Control Hub',logoUrl:cfgLogoUrl.value.trim(),faviconUrl:cfgFaviconUrl.value.trim(),displayPrefix:cfgDisplayPrefix.value.trim()||'Display',timezone:cfgTimezone.value.trim(),theme:{mode:cfgThemeMode.value,primary:cfgThemePrimary.value,accent:cfgThemeAccent.value,background:cfgThemeBackground.value,surface:cfgThemeSurface.value,text:cfgThemeText.value},terminology:{space:cfgTermSpace.value.trim()||'Space',endpoint:cfgTermEndpoint.value.trim()||'Endpoint',operator:cfgTermOperator.value.trim()||'Operator',schedule:cfgTermSchedule.value.trim()||'Schedule'}};const j=await api('/api/v1/admin/site',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});cfgSiteMsg.textContent=`Saved to database (revision ${j.site.revision}).`;ADMINCFG&&(ADMINCFG.site=j.site);applySiteBranding(j.site||{})}catch(e){cfgSiteMsg.textContent=e.message}}
+async function saveAdminSite(){try{const body={school:cfgSchool.value.trim(),room:cfgRoom.value.trim(),productName:cfgProductName.value.trim()||'Classroom Control Hub',logoUrl:cfgLogoUrl.value.trim(),faviconUrl:cfgFaviconUrl.value.trim(),displayPrefix:cfgDisplayPrefix.value.trim()||'TV',timezone:cfgTimezone.value.trim(),theme:{mode:cfgThemeMode.value,primary:cfgThemePrimary.value,accent:cfgThemeAccent.value,background:cfgThemeBackground.value,surface:cfgThemeSurface.value,text:cfgThemeText.value}};const j=await api('/api/v1/admin/site',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});cfgSiteMsg.textContent=`Saved to database (revision ${j.site.revision}).`;ADMINCFG&&(ADMINCFG.site=j.site);applySiteBranding(j.site||{})}catch(e){cfgSiteMsg.textContent=e.message}}
 async function saveAdminHardware(){try{const v=JSON.parse(cfgHardware.value);await api('/api/v1/admin/hardware',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(v)});ADMINCFG.hardware=v;renderAdminIntegrationCards();cfgHardwareMsg.textContent='Hardware configuration validated and saved. Restart Classroom Control Hub if integration endpoints changed.'}catch(e){cfgHardwareMsg.textContent=e.message}}
 function showLogin(){document.body.classList.add('auth-locked');loginOverlay.style.display='flex';setTimeout(()=>loginUser.focus(),50)}
 function hideLogin(){document.body.classList.remove('auth-locked');loginOverlay.style.display='none';loginMsg.textContent=''}

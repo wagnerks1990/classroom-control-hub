@@ -104,15 +104,15 @@ The controller persists operational settings such as displays, class schedules, 
 
 These values live in persistent storage mounted into the container.
 
-## Organization identity and theming
+## School and classroom identity and theming
 
-The setup wizard and controller Settings page store organization, site, space,
-product name, logo, favicon, theme mode/colors, and neutral terminology in the
-SQLite site profile. Normal branding does not require editing `.env` or JSON.
+The setup wizard and controller Settings page store school/district name,
+classroom name, product name, logo, favicon, and theme mode/colors in the SQLite
+site profile. Normal branding does not require editing `.env` or JSON.
 
-All browser surfaces load the secret-free `/api/v1/branding` contract. Legacy
-`school` and `room` fields remain compatibility aliases; new integrations and UI
-work should use `organizationName`, `siteName`, and `spaceName`.
+All browser surfaces load the secret-free `/api/v1/branding` contract. The
+product is intentionally education-specific and does not expose a neutral
+organization/site/space preset.
 
 ## Calendar and schedule rules
 

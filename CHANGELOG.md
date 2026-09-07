@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-### Organization-neutral identity and theming
+### School and classroom identity and theming
 - Added a public, secret-free branding contract backed by the SQLite site profile so login, setup, controller, embedded tools, and renderer surfaces share one identity.
-- Added GUI settings for organization, site, space, product name, logo, favicon, theme mode/colors, and neutral terminology labels.
-- Preserved legacy `school` and `room` aliases while moving new configuration to organization/site/space vocabulary.
+- Added GUI settings for school/district name, classroom name, product name, logo, favicon, and theme mode/colors.
+- Kept the product focused strictly on classroom and education workflows; removed the experimental organization/site/space and neutral-terminology model.
 - Added revision metadata and validation for theme colors and brand asset URLs.
 
 ### Verified web updates and rollback

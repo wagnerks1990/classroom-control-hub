@@ -96,7 +96,7 @@ The encrypted secret store depends on protected master-key material. Losing that
 
 The following should normally be runtime configuration rather than source constants:
 
-- organization name and branding;
+- school/district and classroom branding;
 - classroom names;
 - display IDs/names;
 - private/internal IP addresses;
@@ -109,17 +109,16 @@ The following should normally be runtime configuration rather than source consta
 - delay/half-day mappings;
 - classroom automation targets.
 
-## Organization identity and theme
+## School and classroom identity and theme
 
-Normal branding is configured in **Settings → Organization & Branding** or during browser
+Normal branding is configured in **Settings → School & Classroom Branding** or during browser
 setup and is stored in SQLite under the site profile. It does not require an
 `.env` or tracked JSON edit. The profile includes:
 
-- organization, site, and space/zone names;
+- school/district and classroom names;
 - product/portal name, logo URL, and favicon URL;
 - dark, light, or system color mode plus validated primary, accent,
-  background, surface, and text colors;
-- administrator-selected labels for space, endpoint, operator, and schedule.
+  background, surface, and text colors.
 
 The unauthenticated `GET /api/v1/branding` response intentionally contains only
 presentation-safe fields so the sign-in and display surfaces can load the
@@ -128,10 +127,10 @@ credentials, integration configuration, or encrypted-secret metadata. Brand
 asset URLs accept HTTP(S) or site-relative paths and reject executable URL
 schemes. Each saved profile receives a monotonically increasing revision.
 
-Legacy `school` and `room` values are retained as compatibility aliases during
-the staged rebuild. New code should use `organizationName`, `siteName`, and
-`spaceName`. Education-specific labels and behavior will continue moving into
-the Education preset rather than the neutral core.
+The product is intentionally education-specific. New code should use classroom,
+school, teacher/operator, student/participant, class schedule, and display/TV
+language where it makes the workflow clearer. Do not add a neutral organization
+preset or generic organization/site/space aliases.
 
 ## Integration health
 
