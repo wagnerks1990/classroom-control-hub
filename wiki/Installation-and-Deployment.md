@@ -26,13 +26,26 @@ Recommended baseline:
 
 ## Production installation
 
+For a clean Ubuntu Server 24.04 LTS `amd64` or `arm64` host, Docker and the complete appliance can be installed with the reviewed bootstrap:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/wagnerks1990/classroom-control-hub/main/deploy/bootstrap.sh \
+  -o /tmp/classroom-hub-bootstrap.sh
+sudo bash /tmp/classroom-hub-bootstrap.sh
+```
+
+The bootstrap generates unique appliance credentials, verifies the running components, and prints the first-time administrator setup URL. It refuses to replace an existing deployment by default; use the controller's update/revert workflow for an installed appliance.
+
+For manual installation or migration:
+
 ```bash
 sudo git clone https://github.com/wagnerks1990/classroom-control-hub.git /opt/classroom-hub
 cd /opt/classroom-hub
 sudo cp .env.example .env
 ```
 
-Edit `.env` before starting the application. Never commit the populated `.env` file.
+The installer fills blank appliance secrets automatically. Review other site values in `.env` before exposing the application. Never commit the populated `.env` file.
 
 Then run:
 

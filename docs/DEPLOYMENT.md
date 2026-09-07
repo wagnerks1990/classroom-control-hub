@@ -18,8 +18,8 @@ Ubuntu host
 
 Recommended baseline:
 
-- Ubuntu Server 24.04 LTS or another current Linux distribution capable of running Docker Engine;
-- Docker Engine and Docker Compose v2;
+- Ubuntu Server 24.04 LTS on `amd64` or `arm64` for the supported automatic bootstrap;
+- Docker Engine and Docker Compose v2, installed automatically by the bootstrap or supplied in advance for manual installation;
 - persistent local storage for the SQLite database, uploads, backups, and runtime configuration;
 - reliable LAN connectivity to controlled classroom devices and integrations;
 - a reverse proxy and TLS when the controller is accessed outside a trusted management network.
@@ -42,7 +42,18 @@ Site-specific runtime data must survive source updates. The exact volume mapping
 
 ## First deployment
 
-Clone into the standard path:
+For a clean supported server, download, review, and run the appliance bootstrap:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/wagnerks1990/classroom-control-hub/main/deploy/bootstrap.sh \
+  -o /tmp/classroom-hub-bootstrap.sh
+sudo bash /tmp/classroom-hub-bootstrap.sh
+```
+
+The bootstrap installs Docker from its signed apt repository, downloads the selected repository ref into a temporary staging directory, generates independent appliance secrets, invokes the production installer, verifies health/version convergence, and prints the token-bearing first-time setup URL. It refuses to overwrite an established appliance by default.
+
+For a manual or migration deployment, clone into the standard path:
 
 ```bash
 sudo git clone https://github.com/wagnerks1990/classroom-control-hub.git /opt/classroom-hub

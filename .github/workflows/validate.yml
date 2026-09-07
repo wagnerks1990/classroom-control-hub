@@ -55,6 +55,7 @@ jobs:
       - name: Validate installer shell syntax
         run: |
           bash -n install.sh
+          bash -n deploy/bootstrap.sh
           bash -n host-agent/app-update-runner.sh
 
       - name: Validate Compose configuration
