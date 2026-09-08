@@ -43,6 +43,7 @@ else
 fi
 
 mkdir -p "$TARGET/data/backups" "$TARGET/config/schema"
+chown -R 10001:10001 "$TARGET/data"
 # New schema/catalog files are safe to merge into existing site configuration.
 if [[ "$SOURCE_REAL" != "$TARGET_REAL" ]]; then
   if [[ -d "$SOURCE/config/schema" ]]; then rsync -a "$SOURCE/config/schema/" "$TARGET/config/schema/"; fi
@@ -78,7 +79,8 @@ mkdir -p /etc/classroom-control-hub
 if [[ ! -s /etc/classroom-control-hub/master.key ]]; then
   openssl rand -hex 32 > /etc/classroom-control-hub/master.key
 fi
-chmod 600 /etc/classroom-control-hub/master.key
+chown root:10001 /etc/classroom-control-hub/master.key
+chmod 640 /etc/classroom-control-hub/master.key
 if ! grep -q '^CLASSROOM_HUB_MASTER_KEY_FILE=' "$TARGET/.env"; then echo 'CLASSROOM_HUB_MASTER_KEY_FILE=/etc/classroom-control-hub/master.key' >> "$TARGET/.env"; fi
 if ! grep -q '^DATABASE_FILE=' "$TARGET/.env"; then echo 'DATABASE_FILE=/app/data/classroom-control-hub.db' >> "$TARGET/.env"; fi
 

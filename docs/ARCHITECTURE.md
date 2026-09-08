@@ -139,6 +139,18 @@ The maintenance service is separated from the main application so maintenance-sp
 
 The Host Agent runs on the Ubuntu host as a controlled systemd service and listens only on `/run/classroom-control-hub/host-agent.sock`. It handles operations that genuinely require host visibility or privileges, such as system status and approved maintenance actions.
 
+The maintenance container has no Docker socket. Its Docker requests cross the
+authenticated Unix-socket boundary and are checked against exact operation,
+container, image, and path allowlists by the Host Agent.
+
+### Windows lab agents
+
+Windows computers connect outbound over the application WebSocket. New agents
+exchange an expiring one-time enrollment code for an individual revocable
+credential. Legacy shared-token access is a database policy used only during
+migration. The agent implements a fixed classroom command allowlist and stores
+its credential with Windows DPAPI rather than in plaintext configuration.
+
 ## Persistence
 
 Runtime state is replaceable-container-safe. The application uses SQLite plus persistent directories for configuration, uploads/media, backups, and other state.
@@ -192,5 +204,9 @@ The project follows these boundaries:
 - main container is not privileged;
 - host operations are delegated to the Host Agent;
 - write-capable APIs require authentication/authorization;
+- read APIs and media assets containing classroom state require an authenticated
+  user or an enrolled display's short-lived signed asset token;
+- access profiles map users to explicit capabilities, with student-sensitive
+  lab data isolated behind `lab.sensitive.read`;
 - logs and diagnostic bundles should avoid exposing credentials;
 - backups containing production state are not committed to Git.

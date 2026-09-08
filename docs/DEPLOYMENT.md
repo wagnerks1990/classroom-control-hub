@@ -167,10 +167,15 @@ to the browser.
 Manual installation and optional automatic installation use the native
 `classroom-hub-app-update.service`. The native job survives container
 replacement and performs `git fetch`, resolves the selected release tag to an
-immutable commit, rebuilds the application services, and requires `/health` to
-report the release's expected version. A failure restores the previous commit
-and the matching pre-update operational backup. The Revert Last Upgrade action
-performs the same process deliberately and first backs up the current state.
+immutable commit that must be reachable from `origin/main`, rebuilds the
+application services, discovers the published controller port from Compose,
+and requires `/health` to report the release's expected version. The configured
+Git remote must be this project's public GitHub repository. A failure restores
+the previous detached commit and matching pre-update operational backup. The
+**Revert Last Upgrade** action performs the same process deliberately and first
+backs up the current state. Administrators should not run the production
+checkout as a long-lived local branch; update and rollback deliberately leave
+it detached at a verified release commit.
 
 Automatic installation is disabled by default. When enabled, checks and
 installation occur only inside the configured maintenance window. The first
@@ -196,7 +201,7 @@ Recommended tags:
 
 - `:alpha` — current alpha channel;
 - `:beta` — testing/pre-release channel when introduced;
-- semantic version tags such as `:1.0.0-alpha.66`;
+- semantic version tags such as `:1.0.0-alpha.67`;
 - `:latest` — stable releases only.
 
 Do not point `latest` at experimental alpha builds.

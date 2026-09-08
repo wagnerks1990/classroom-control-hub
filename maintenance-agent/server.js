@@ -4,19 +4,16 @@ const http=require("http");
 const fs=require("fs");
 const path=require("path");
 const os=require("os");
-const {execFile,spawn}=require("child_process");
+const {execFile}=require("child_process");
 const {promisify}=require("util");
-const multer=require("multer");
+const crypto=require("crypto");
 const AdmZip=require("adm-zip");
 const execFileAsync=promisify(execFile);
 const app=express();
 const PORT=Number(process.env.PORT||3010);
 const TOKEN=String(process.env.MAINTENANCE_TOKEN||"");
-const ALLOW_SHELL=String(process.env.MAINTENANCE_ALLOW_SHELL||"false").toLowerCase()==="true";
-const ALLOW_UNSAFE_SOURCE_UPDATES=String(process.env.MAINTENANCE_ALLOW_UNSAFE_SOURCE_UPDATES||"false").toLowerCase()==="true";
 const HUB_ROOT=path.resolve(process.env.MANAGED_HUB_ROOT||"/managed/classroom-hub");
-const Classroom_ROOT=path.resolve(process.env.MANAGED_Classroom_ROOT||"/managed/services");
-const HOST_HUB_PATH=String(process.env.HOST_HUB_PATH||"/opt/classroom-control-hub");
+const Classroom_ROOT=path.resolve(process.env.MANAGED_SERVICES_ROOT||"/managed/services");
 const HOST_AGENT_SOCKET=String(process.env.HOST_AGENT_SOCKET||"/run/classroom-control-hub/host-agent.sock");
 const MAIN_APP_URL=String(process.env.MAIN_APP_URL||"http://classroom-hub:3000").replace(/\/$/,"");
 const APP_CONTAINER=cleanName(process.env.MANAGED_APP_CONTAINER||"classroom-control-hub");
@@ -27,13 +24,13 @@ const MASTER_KEY_FILE=String(process.env.MASTER_KEY_FILE||"/run/secrets/classroo
 const UPLOAD_DIR="/work/uploads";
 fs.mkdirSync(BACKUP_DIR,{recursive:true});fs.mkdirSync(UPLOAD_DIR,{recursive:true});
 app.use(express.json({limit:"8mb"}));
-function auth(req,res,next){if(!TOKEN)return res.status(503).json({ok:false,error:"Maintenance token not configured"});if(req.get("x-maintenance-token")!==TOKEN)return res.status(401).json({ok:false,error:"Unauthorized"});next()}
+function secretEqual(actual,expected){const a=Buffer.from(String(actual||"")),b=Buffer.from(String(expected||""));return a.length===b.length&&crypto.timingSafeEqual(a,b)}
+function auth(req,res,next){if(!TOKEN)return res.status(503).json({ok:false,error:"Maintenance token not configured"});if(!secretEqual(req.get("x-maintenance-token"),TOKEN))return res.status(401).json({ok:false,error:"Unauthorized"});next()}
 app.use(auth);
+app.use(["/files","/file","/file/upload","/env","/update/stage","/update/deploy"],(_req,res)=>res.status(410).json({ok:false,error:"Direct filesystem, environment-file, and source-ZIP mutation has been removed. Use database-backed settings and verified GitHub releases."}));
 function cleanName(v){return String(v||"").replace(/[^A-Za-z0-9._-]/g,"-").slice(0,180)}
-function safeRoot(root){return root==="hub"?HUB_ROOT:root==="services"?Classroom_ROOT:null}
-function safePath(root,rel=""){const base=safeRoot(root);if(!base)throw Error("Unknown managed root");const resolved=path.resolve(base,"."+path.sep+String(rel||""));if(resolved!==base&&!resolved.startsWith(base+path.sep))throw Error("Path escapes managed root");return resolved}
 function statInfo(p,base){const st=fs.statSync(p);return {name:path.basename(p),path:path.relative(base,p)||".",type:st.isDirectory()?"directory":"file",size:st.size,modifiedAt:st.mtime.toISOString()}}
-async function run(cmd,args=[],opts={}){const {stdout,stderr}=await execFileAsync(cmd,args,{timeout:opts.timeout||15000,maxBuffer:opts.maxBuffer||8*1024*1024,cwd:opts.cwd||undefined,env:{...process.env,...(opts.env||{})}});return {stdout,stderr}}
+async function run(cmd,args=[],opts={}){if(cmd==="docker")return hostAgentRequest("POST","/docker/exec",{args,cwd:opts.cwd===HUB_ROOT?"hub":""},opts.timeout||180000);const {stdout,stderr}=await execFileAsync(cmd,args,{timeout:opts.timeout||15000,maxBuffer:opts.maxBuffer||8*1024*1024,cwd:opts.cwd||undefined,env:{...process.env,...(opts.env||{})}});return {stdout,stderr}}
 async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
@@ -44,7 +41,7 @@ async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
 }
 async function mainAppStatus(){return mainAppRequest("GET","/api/v1/internal/maintenance/status",null,10000)}
 async function dockerContainers(){const r=await run("docker",["ps","-a","--format","{{json .}}"],{timeout:10000});return r.stdout.split(/\r?\n/).filter(Boolean).map(x=>{try{return JSON.parse(x)}catch{return {raw:x}}})}
-app.get("/health",async(_req,res)=>{let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}res.json({ok:true,version:"1.0.0-alpha.66",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:ALLOW_SHELL,application,database:application?.database||null})});
+app.get("/health",async(_req,res)=>{let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}res.json({ok:true,version:"1.0.0-alpha.67",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null})});
 app.get("/system",async(_req,res)=>{
   const nets=os.networkInterfaces();let disk=null,hostDocker=null;
   try{disk=(await run("df",["-h","/managed/classroom-hub"])).stdout}catch{}
@@ -52,7 +49,7 @@ app.get("/system",async(_req,res)=>{
   res.json({ok:true,
     host:{hostname:hostDocker?.Name||null,operatingSystem:hostDocker?.OperatingSystem||null,kernelVersion:hostDocker?.KernelVersion||os.release(),architecture:hostDocker?.Architecture||os.arch(),cpus:hostDocker?.NCPU||null,memoryBytes:hostDocker?.MemTotal||null,dockerVersion:hostDocker?.ServerVersion||null,containers:hostDocker?.Containers??null,containersRunning:hostDocker?.ContainersRunning??null},
     agent:{hostname:os.hostname(),platform:os.platform(),release:os.release(),arch:os.arch(),uptimeSeconds:os.uptime(),loadavg:os.loadavg(),memory:{total:os.totalmem(),free:os.freemem()},cpus:os.cpus().length,networks:nets},
-    disk,shellEnabled:ALLOW_SHELL,roots:{hub:HUB_ROOT,services:Classroom_ROOT,services:Classroom_ROOT}})
+    disk,shellEnabled:false,roots:{hub:HUB_ROOT,services:Classroom_ROOT}})
 });
 
 const APPLIANCE_CONTAINER_POLICY={
@@ -187,16 +184,6 @@ app.get("/checks/run",async(_req,res)=>{
 });
 app.post("/docker/:name/:action",async(req,res)=>{const name=cleanName(req.params.name),action=String(req.params.action||"");if(!["start","stop","restart","kill"].includes(action))return res.status(400).json({ok:false,error:"Unsupported action"});try{const r=await run("docker",[action,name],{timeout:30000});res.json({ok:true,name,action,...r})}catch(e){res.status(500).json({ok:false,error:e.message})}});
 app.get("/docker/:name/logs",async(req,res)=>{const name=cleanName(req.params.name),tail=String(Math.max(1,Math.min(5000,Number(req.query.tail||300))));try{const r=await run("docker",["logs","--timestamps","--tail",tail,name],{timeout:20000,maxBuffer:16*1024*1024});const text=(r.stdout||"")+(r.stderr||"");if(String(req.query.download||"")==="1"){res.setHeader("Content-Disposition",`attachment; filename="${name}-${Date.now()}.log"`);res.type("text/plain").send(text)}else res.json({ok:true,name,tail:Number(tail),text})}catch(e){res.status(500).json({ok:false,error:e.message})}});
-app.get("/files",(req,res)=>{try{const root=String(req.query.root||"hub"),base=safeRoot(root),p=safePath(root,req.query.path||"");if(!fs.existsSync(p))return res.status(404).json({ok:false,error:"Path not found"});const st=fs.statSync(p);if(!st.isDirectory())return res.json({ok:true,root,item:statInfo(p,base)});const items=fs.readdirSync(p).filter(n=>!["node_modules",".git"].includes(n)).map(n=>statInfo(path.join(p,n),base)).sort((a,b)=>a.type===b.type?a.name.localeCompare(b.name):a.type==="directory"?-1:1);res.json({ok:true,root,path:path.relative(base,p)||".",items})}catch(e){res.status(400).json({ok:false,error:e.message})}});
-app.get("/file",(req,res)=>{try{const root=String(req.query.root||"hub"),base=safeRoot(root),p=safePath(root,req.query.path||"");if(!fs.existsSync(p)||fs.statSync(p).isDirectory())return res.status(404).json({ok:false,error:"File not found"});if(String(req.query.download||"")==="1")return res.download(p,path.basename(p));const max=2*1024*1024,st=fs.statSync(p);if(st.size>max)return res.status(413).json({ok:false,error:"File too large for editor; download it instead",size:st.size});res.json({ok:true,root,path:path.relative(base,p),size:st.size,modifiedAt:st.mtime.toISOString(),content:fs.readFileSync(p,"utf8")})}catch(e){res.status(400).json({ok:false,error:e.message})}});
-app.put("/file",(req,res)=>{try{const root=String(req.body?.root||"hub"),p=safePath(root,req.body?.path||"");if(fs.existsSync(p)&&fs.statSync(p).isDirectory())throw Error("Cannot overwrite a directory");fs.mkdirSync(path.dirname(p),{recursive:true});if(fs.existsSync(p))fs.copyFileSync(p,p+`.bak-${Date.now()}`);fs.writeFileSync(p,String(req.body?.content??""),"utf8");res.json({ok:true,path:req.body.path})}catch(e){res.status(400).json({ok:false,error:e.message})}});
-app.delete("/file",(req,res)=>{try{const root=String(req.body?.root||"hub"),p=safePath(root,req.body?.path||"");if(!fs.existsSync(p))return res.json({ok:true,missing:true});const trash=path.join(HUB_ROOT,"data","backups","file-trash",String(Date.now())+"-"+cleanName(path.basename(p)));fs.mkdirSync(path.dirname(trash),{recursive:true});fs.renameSync(p,trash);res.json({ok:true,trashedTo:trash})}catch(e){res.status(400).json({ok:false,error:e.message})}});
-const upload=multer({dest:UPLOAD_DIR,limits:{fileSize:1024*1024*1024}});
-function requireUnsafeSourceUpdates(_req,res,next){
-  if(!ALLOW_UNSAFE_SOURCE_UPDATES)return res.status(503).json({ok:false,error:"Legacy source-ZIP updates are disabled. Use a verified appliance release workflow."});
-  next();
-}
-app.post("/file/upload",upload.single("file"),(req,res)=>{try{const root=String(req.body?.root||"hub"),dir=safePath(root,req.body?.path||""),name=cleanName(req.file?.originalname||"");if(!req.file||!name)throw Error("File required");fs.mkdirSync(dir,{recursive:true});const dest=path.join(dir,name);if(fs.existsSync(dest))fs.copyFileSync(dest,dest+`.bak-${Date.now()}`);fs.renameSync(req.file.path,dest);res.json({ok:true,name,path:dest})}catch(e){if(req.file?.path&&fs.existsSync(req.file.path))fs.unlinkSync(req.file.path);res.status(400).json({ok:false,error:e.message})}});
 function copyIntoZip(zip,src,prefix,filter){if(!fs.existsSync(src))return;for(const ent of fs.readdirSync(src,{withFileTypes:true})){const full=path.join(src,ent.name),rel=path.posix.join(prefix,ent.name);if(filter&&!filter(full,rel,ent))continue;if(ent.isDirectory())copyIntoZip(zip,full,rel,filter);else zip.addLocalFile(full,path.posix.dirname(rel),path.basename(rel))}}
 function backupFilter(scope){
   const skipDirs=new Set(["node_modules",".git","convert-tmp","presentation-upload-tmp"]);
@@ -355,7 +342,7 @@ app.post("/audit/prune",async(req,res)=>{try{res.json(await mainAppRequest("POST
 app.get("/diagnostics/bundle",async(_req,res)=>{try{
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-diagnostics-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
   let application=null;try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}
-  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.66",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
+  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.67",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
   zip.addFile("summary.json",Buffer.from(JSON.stringify(info,null,2)));
   try{const c=await dockerContainers();zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(c,null,2)));for(const row of c){const n=cleanName(row.Names||row.Name||"");if(!n)continue;try{const r=await run("docker",["logs","--timestamps","--tail","1000",n],{timeout:20000,maxBuffer:16*1024*1024});zip.addFile(`logs/${n}.log`,Buffer.from((r.stdout||"")+(r.stderr||"")))}catch(e){zip.addFile(`logs/${n}.error.txt`,Buffer.from(e.message))}}}catch(e){zip.addFile("docker/error.txt",Buffer.from(e.message))}
   try{const r=await run("docker",["stats","--no-stream","--format","{{json .}}"],{timeout:15000});zip.addFile("docker/stats.jsonl",Buffer.from(r.stdout||""))}catch{}
@@ -364,14 +351,6 @@ app.get("/diagnostics/bundle",async(_req,res)=>{try{
   try{const r=await run("ip",["route"]);zip.addFile("host/routes.txt",Buffer.from(r.stdout||""))}catch{}
   zip.writeZip(dest);res.download(dest,name);
 }catch(e){res.status(500).json({ok:false,error:e.message})}});
-app.post("/update/stage",requireUnsafeSourceUpdates,upload.single("file"),(req,res)=>{try{if(!req.file)throw Error("Update ZIP required");const zip=new AdmZip(req.file.path),entries=zip.getEntries();for(const e of entries){const n=e.entryName.replace(/\\/g,"/");if(n.startsWith("/")||n.includes("../"))throw Error(`Unsafe archive path: ${n}`)}const manifestEntry=entries.find(e=>/(^|\/)package\.json$/.test(e.entryName));let pkg=null;if(manifestEntry)try{pkg=JSON.parse(manifestEntry.getData().toString("utf8"))}catch{}const staged=path.join(UPLOAD_DIR,`update-${Date.now()}.zip`);fs.renameSync(req.file.path,staged);res.json({ok:true,stagedId:path.basename(staged),package:pkg,entries:entries.length})}catch(e){if(req.file?.path&&fs.existsSync(req.file.path))fs.unlinkSync(req.file.path);res.status(400).json({ok:false,error:e.message})}});
-app.post("/update/deploy",requireUnsafeSourceUpdates,async(req,res)=>{try{const id=cleanName(req.body?.stagedId||""),src=path.join(UPLOAD_DIR,id);if(!id||!fs.existsSync(src))throw Error("Staged update not found");const backupName=`pre-update-${new Date().toISOString().replace(/[:.]/g,"-")}.zip`;const zipBackup=new AdmZip();copyIntoZip(zipBackup,HUB_ROOT,"classroom-hub",backupFilter("operational"));zipBackup.writeZip(path.join(BACKUP_DIR,backupName));const temp=path.join(UPLOAD_DIR,`extract-${Date.now()}`);fs.mkdirSync(temp,{recursive:true});new AdmZip(src).extractAllTo(temp,true);let source=temp;if(fs.existsSync(path.join(temp,"classroom-hub")))source=path.join(temp,"classroom-hub");for(const name of ["src","public","maintenance-agent","Dockerfile","docker-compose.yml","package.json","package-lock.json","install.sh","README.md","INSTALL.md","SECURITY.md","LICENSE","CHANGELOG.md","VERSION","docs","config"]){const from=path.join(source,name),to=path.join(HUB_ROOT,name);if(!fs.existsSync(from))continue;fs.rmSync(to,{recursive:true,force:true});fs.cpSync(from,to,{recursive:true})}res.json({ok:true,message:"Update installed; Classroom Control Hub rebuild scheduled",backup:backupName});setTimeout(()=>{
-  // Run the rebuild from a separate Docker CLI container so it survives the
-  // maintenance-agent container being recreated during the update.
-  const args=["run","--rm","-d","-v","/var/run/docker.sock:/var/run/docker.sock","-v",`${HOST_HUB_PATH}:/workspace`,"-w","/workspace","docker:cli","sh","-lc","docker compose up -d --build"];
-  const child=spawn("docker",args,{detached:true,stdio:"ignore"});child.unref();
-},700)}catch(e){res.status(500).json({ok:false,error:e.message})}});
-
 const MANAGED_INTEGRATIONS_FILE=path.join(HUB_ROOT,"data","managed-integrations.json");
 async function readManagedIntegrations({resolved=false}={}){
   const result=await mainAppRequest("GET",`/api/v1/internal/maintenance/integrations${resolved?"?resolved=1":""}`);
@@ -387,10 +366,10 @@ async function readManagedIntegrations({resolved=false}={}){
   return value;
 }
 const MODULES={
-  mosquitto:{name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:latest",description:"MQTT broker used by Classroom Control Hub integrations.",expectedProject:"services",ownership:"integration"},
-  govee2mqtt:{name:"Govee Lighting",container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:latest",description:"Govee discovery and LAN/cloud control through MQTT.",expectedProject:"services",ownership:"integration"},
-  musicassistant:{name:"Music Assistant",container:"music-assistant-server",image:"ghcr.io/music-assistant/server:latest",description:"Classroom audio and media service discovered as an externally managed Compose integration.",expectedProject:"music-assistant",ownership:"integration",externalOnly:true},
-  nodered:{name:"Node-RED",container:"nodered",image:"nodered/node-red:latest",description:"Optional visual automation environment.",ownership:"optional"}
+  mosquitto:{name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:2.0.22",description:"MQTT broker used by Classroom Control Hub integrations.",expectedProject:"services",ownership:"integration"},
+  govee2mqtt:{name:"Govee Lighting",container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72",description:"Govee discovery and LAN/cloud control through MQTT.",expectedProject:"services",ownership:"integration"},
+  musicassistant:{name:"Music Assistant",container:"music-assistant-server",image:"ghcr.io/music-assistant/server:2.9.13",description:"Classroom audio and media service discovered as an externally managed Compose integration.",expectedProject:"music-assistant",ownership:"integration",externalOnly:true},
+  nodered:{name:"Node-RED",container:"nodered",image:"nodered/node-red:4.1.14-22",description:"Optional visual automation environment.",ownership:"optional"}
 };
 async function containerExists(name){try{await run("docker",["inspect",name],{timeout:5000});return true}catch{return false}}
 app.get("/modules",async(_req,res)=>{
@@ -411,21 +390,18 @@ app.get("/modules",async(_req,res)=>{
 app.get("/modules/:id/config",async(req,res)=>{try{const id=String(req.params.id||""),cfg=(await readManagedIntegrations()).modules?.[id]||{};res.json({ok:true,id,config:cfg})}catch(e){res.status(e.status||502).json({ok:false,error:e.message})}});
 app.post("/modules/:id/deploy",async(req,res)=>{const id=String(req.params.id||""),m=MODULES[id];if(!m)return res.status(404).json({ok:false,error:"Unknown integration"});if(m.externalOnly)return res.status(409).json({ok:false,error:"This integration is externally managed and can be monitored/adopted without recreating it."});try{const configured=await mainAppRequest("PUT",`/api/v1/internal/maintenance/integrations/${encodeURIComponent(id)}`,{settings:req.body?.settings||{}}),resolved=configured.resolved||{};const exists=await containerExists(m.container);if(exists&&!req.body?.recreate)return res.json({ok:true,id,adopted:true,message:"Existing container adopted. Use recreate to apply managed settings."});if(exists)await run("docker",["rm","-f",m.container],{timeout:30000});let args=["run","-d","--name",m.container,"--restart","unless-stopped"];
   if(id==="mosquitto"){
-    const base=path.join(Classroom_ROOT,"mosquitto");for(const d of ["config","data","log"])fs.mkdirSync(path.join(base,d),{recursive:true});const conf=path.join(base,"config","mosquitto.conf");if(!fs.existsSync(conf))fs.writeFileSync(conf,"persistence true\npersistence_location /mosquitto/data/\nlog_dest stdout\nlistener 1883\nallow_anonymous true\n");args.push("-p",`${resolved.port||1883}:1883`,"-v",`${base}/config:/mosquitto/config`,`-v`,`${base}/data:/mosquitto/data`,`-v`,`${base}/log:/mosquitto/log`);
+    const username=String(resolved.username||"classroom-hub").replace(/[^A-Za-z0-9._-]/g,""),password=String(resolved.password||"");if(!username||password.length<16)throw Error("MQTT broker requires a username and password of at least 16 characters");const base=path.join(Classroom_ROOT,"mosquitto");for(const d of ["config","data","log"])fs.mkdirSync(path.join(base,d),{recursive:true});const salt=crypto.randomBytes(12),hash=crypto.pbkdf2Sync(password,salt,101,64,"sha512"),passwordFile=path.join(base,"config","passwords");fs.writeFileSync(passwordFile,`${username}:$7$101$${salt.toString("base64").replace(/=+$/g,"")}$${hash.toString("base64").replace(/=+$/g,"")}\n`,{mode:0o600});const conf=path.join(base,"config","mosquitto.conf");fs.writeFileSync(conf,"persistence true\npersistence_location /mosquitto/data/\nlog_dest stdout\nlistener 1883\nallow_anonymous false\npassword_file /mosquitto/config/passwords\n",{mode:0o600});args.push("-p",`${resolved.port||1883}:1883`,"-v",`${base}/config:/mosquitto/config`,`-v`,`${base}/data:/mosquitto/data`,`-v`,`${base}/log:/mosquitto/log`);
   } else if(id==="govee2mqtt"){
-    args.push("--network","host","-e",`GOVEE_MQTT_HOST=${resolved.mqttHost||"127.0.0.1"}`,"-e",`GOVEE_MQTT_PORT=${resolved.mqttPort||1883}`,"-e",`GOVEE_LAN_BROADCAST_ALL=${resolved.lanBroadcast===false?"false":"true"}`,"-e",`GOVEE_TEMPERATURE_SCALE=${resolved.temperatureScale||"F"}`,"-e",`TZ=${resolved.timezone||process.env.TZ||"UTC"}`);if(resolved.apiKey)args.push("-e",`GOVEE_API_KEY=${resolved.apiKey}`);if(resolved.email)args.push("-e",`GOVEE_EMAIL=${resolved.email}`);if(resolved.password)args.push("-e",`GOVEE_PASSWORD=${resolved.password}`);
+    args.push("--network","host","-e",`GOVEE_MQTT_HOST=${resolved.mqttHost||"127.0.0.1"}`,"-e",`GOVEE_MQTT_PORT=${resolved.mqttPort||1883}`,"-e",`GOVEE_LAN_BROADCAST_ALL=${resolved.lanBroadcast===false?"false":"true"}`,"-e",`GOVEE_TEMPERATURE_SCALE=${resolved.temperatureScale||"F"}`,"-e",`TZ=${resolved.timezone||process.env.TZ||"UTC"}`);if(resolved.mqttUsername)args.push("-e",`GOVEE_MQTT_USER=${resolved.mqttUsername}`);if(resolved.mqttPassword)args.push("-e",`GOVEE_MQTT_PASSWORD=${resolved.mqttPassword}`);if(resolved.apiKey)args.push("-e",`GOVEE_API_KEY=${resolved.apiKey}`);if(resolved.email)args.push("-e",`GOVEE_EMAIL=${resolved.email}`);if(resolved.password)args.push("-e",`GOVEE_PASSWORD=${resolved.password}`);
   } else if(id==="nodered"){
     const data=path.join(Classroom_ROOT,"nodered");fs.mkdirSync(data,{recursive:true});args.push("-p",`${resolved.port||1880}:1880`,"-v",`${data}:/data`,`-e`,`TZ=${resolved.timezone||process.env.TZ||"UTC"}`);if(resolved.credentialSecret)args.push("-e",`NODE_RED_CREDENTIAL_SECRET=${resolved.credentialSecret}`);
-  } else if(id==="portainer"){
-    args.push("-p",`${resolved.httpPort||9000}:9000`,"-p",`${resolved.httpsPort||9443}:9443`,"-v","/var/run/docker.sock:/var/run/docker.sock","-v","portainer_data:/data");
   }
   args.push(m.image);const r=await run("docker",args,{timeout:120000,maxBuffer:16*1024*1024});res.json({ok:true,id,container:m.container,output:r.stdout.trim()})}catch(e){res.status(500).json({ok:false,error:e.message,output:(e.stdout||"")+(e.stderr||"")})}});
 app.post("/modules/:id/remove",async(req,res)=>{const id=String(req.params.id||""),m=MODULES[id];if(!m)return res.status(404).json({ok:false,error:"Unknown integration"});if(m.externalOnly)return res.status(409).json({ok:false,error:"Externally managed integrations are not removed from Classroom Control Hub."});try{if(await containerExists(m.container))await run("docker",["rm","-f",m.container],{timeout:30000});res.json({ok:true,id})}catch(e){res.status(500).json({ok:false,error:e.message})}});
-app.get("/env",(req,res)=>{try{const root=String(req.query.root||"hub"),p=safePath(root,".env");const rows=[];if(fs.existsSync(p))for(const line of fs.readFileSync(p,"utf8").split(/\r?\n/)){if(!line||line.trim().startsWith("#")||!line.includes("="))continue;const i=line.indexOf("="),key=line.slice(0,i).trim(),val=line.slice(i+1);rows.push({key,value:/password|token|secret|api.?key/i.test(key)&&val?"••••••••":val,secret:/password|token|secret|api.?key/i.test(key)})}res.json({ok:true,root,exists:fs.existsSync(p),variables:rows})}catch(e){res.status(400).json({ok:false,error:e.message})}});
-app.put("/env",(req,res)=>{try{const root=String(req.body?.root||"hub"),p=safePath(root,".env"),existing={};if(fs.existsSync(p))for(const line of fs.readFileSync(p,"utf8").split(/\r?\n/)){if(!line||line.trim().startsWith("#")||!line.includes("="))continue;const i=line.indexOf("=");existing[line.slice(0,i).trim()]=line.slice(i+1)}for(const row of req.body?.variables||[]){const key=String(row.key||"").trim();if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))continue;if(row.value==="••••••••")continue;existing[key]=String(row.value??"")}if(fs.existsSync(p))fs.copyFileSync(p,p+`.bak-${Date.now()}`);fs.writeFileSync(p,Object.entries(existing).map(([k,v])=>`${k}=${v}`).join("\n")+"\n",{mode:0o600});res.json({ok:true,root,count:Object.keys(existing).length})}catch(e){res.status(400).json({ok:false,error:e.message})}});
-
 const safeCommands={
-  "docker-ps":["docker",["ps","-a"]],"docker-stats":["docker",["stats","--no-stream"]],"disk-usage":["df",["-h"]],"memory":["free",["-h"]],"network":["ip",["addr"]],"routes":["ip",["route"]],"dns":["cat",["/etc/resolv.conf"]],"compose-status":["docker",["compose","-f",path.join(HUB_ROOT,"docker-compose.yml"),"ps"]]
+  "docker-ps":["docker",["ps","-a"]],"docker-stats":["docker",["stats","--no-stream"]],"disk-usage":["df",["-h"]],"memory":["free",["-h"]],"network":["ip",["addr"]],"routes":["ip",["route"]],"dns":["cat",["/etc/resolv.conf"]],"compose-status":["docker",["compose","ps"]]
 };
-app.post("/command",async(req,res)=>{try{const preset=String(req.body?.preset||"");if(preset&&safeCommands[preset]){const [cmd,args]=safeCommands[preset],r=await run(cmd,args,{timeout:30000,maxBuffer:16*1024*1024});return res.json({ok:true,preset,output:(r.stdout||"")+(r.stderr||"")})}if(!ALLOW_SHELL)return res.status(403).json({ok:false,error:"Advanced shell is disabled. Enable MAINTENANCE_ALLOW_SHELL only on trusted installations."});const command=String(req.body?.command||"").trim();if(!command)return res.status(400).json({ok:false,error:"Command required"});const r=await run("/bin/bash",["-lc",command],{timeout:60000,maxBuffer:16*1024*1024,cwd:HUB_ROOT});res.json({ok:true,command,output:(r.stdout||"")+(r.stderr||"")})}catch(e){res.status(500).json({ok:false,error:e.message,output:(e.stdout||"")+(e.stderr||"")})}});
-app.listen(PORT,"0.0.0.0",()=>console.log(`Classroom Control Hub Maintenance Agent listening on ${PORT}`));
+app.post("/command",async(req,res)=>{try{const preset=String(req.body?.preset||"");if(!preset||!safeCommands[preset])return res.status(403).json({ok:false,error:"Only fixed diagnostic presets are supported"});const [cmd,args]=safeCommands[preset],r=await run(cmd,args,{timeout:30000,maxBuffer:16*1024*1024,cwd:preset==="compose-status"?HUB_ROOT:undefined});return res.json({ok:true,preset,output:(r.stdout||"")+(r.stderr||"")})}catch(e){res.status(500).json({ok:false,error:e.message,output:(e.stdout||"")+(e.stderr||"")})}});
+const server=app.listen(PORT,"0.0.0.0",()=>console.log(`Classroom Control Hub Maintenance Agent listening on ${PORT}`));
+let stopping=false;function stop(signal){if(stopping)return;stopping=true;console.log(`${signal} received; draining maintenance agent`);const force=setTimeout(()=>process.exit(1),10000);force.unref();server.close(()=>{clearTimeout(force);process.exit(0)})}
+process.once("SIGTERM",()=>stop("SIGTERM"));process.once("SIGINT",()=>stop("SIGINT"));

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.0-alpha.67 - 2026-09-08
+
+- Locked both Node dependency graphs and upgraded `adm-zip` and `pdfjs-dist` past their high-severity advisories; CI now uses `npm ci`, production audits, immutable action SHAs, and container SBOM/provenance attestations.
+- Closed anonymous classroom topology, event, configuration, and media APIs. Enrolled displays receive renewable signed asset access while controller users continue using authenticated sessions.
+- Activated database-backed capability profiles and protected browser history, screenshots, framebuffers, and monitoring alerts behind the `lab.sensitive.read` capability.
+- Added GUI-managed student-data retention for browser history, screenshots, alerts, and audit records.
+- Added one-time Windows lab-agent enrollment, per-computer credential hashing, rotation/revocation, DPAPI-protected local credential storage, installer/uninstaller scripts, and Authenticode publisher enforcement when configured.
+- Removed Docker socket access from the maintenance container. Docker operations now cross the local host-agent socket and a pinned container/image/operation allowlist.
+- Retired web-based source, `.env`, arbitrary shell, and source-ZIP mutation surfaces. Runtime configuration remains in structured database-backed forms.
+- Corrected custom-port update health checks, verified the expected GitHub origin and `origin/main` ancestry, retained automatic database/source rollback, and documented detached-release recovery.
+- Hardened containers with health checks, dependency ordering, no-new-privileges, a non-root read-only main application, and graceful SIGTERM/SIGINT shutdown with a SQLite checkpoint.
+- Normalized default configuration keys, installation paths, service-root naming, integration versions, and removed the dead Portainer deployment branch.
+- Began incremental modularization with dedicated version and security modules and expanded regression coverage for lab enrollment and capability isolation.
+
 ## Unreleased
 
 ### Individually enrolled classroom displays

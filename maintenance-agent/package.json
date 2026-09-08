@@ -1,6 +1,6 @@
 {
   "name": "classroom-control-hub-maintenance-agent",
-  "version": "1.0.0-alpha.66",
+  "version": "1.0.0-alpha.67",
   "private": true,
   "main": "server.js",
   "scripts": {
@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "express": "^5.1.0",
-    "multer": "^2.0.2",
-    "adm-zip": "^0.5.16"
+    "adm-zip": "^0.6.0"
   }
 }

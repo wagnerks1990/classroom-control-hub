@@ -38,7 +38,13 @@ PY
 health_check(){
   local expected="$1"
   for _ in $(seq 1 90); do
-    if body="$(curl -fsS --max-time 10 http://127.0.0.1:3000/health 2>/dev/null)" && \
+    local published_port=""
+    published_port="$(docker compose port classroom-hub 3000 2>/dev/null | tail -n 1 | sed 's/.*://')"
+    if [[ -z "$published_port" && -f .env ]]; then
+      published_port="$(sed -n 's/^[[:space:]]*HUB_PORT[[:space:]]*=[[:space:]]*//p' .env | tail -n 1 | tr -d '\r' | tr -d "\"'")"
+    fi
+    [[ "$published_port" =~ ^[0-9]+$ ]] || published_port=3000
+    if body="$(curl -fsS --max-time 10 "http://127.0.0.1:${published_port}/health" 2>/dev/null)" && \
        EXPECTED="$expected" BODY="$body" python3 -c 'import json,os; j=json.loads(os.environ["BODY"]); raise SystemExit(0 if j.get("ok") and (not os.environ["EXPECTED"] or j.get("version")==os.environ["EXPECTED"]) else 1)'; then return 0; fi
     sleep 2
   done
@@ -115,6 +121,11 @@ trap rollback ERR
 
 write_state preflight "Checking the Git checkout and resolving the verified release target." null
 [[ -z "$(git status --porcelain --untracked-files=no)" ]] || { echo "Tracked source has local changes"; exit 32; }
+ORIGIN_URL="$(git remote get-url origin)"
+case "$ORIGIN_URL" in
+  https://github.com/wagnerks1990/classroom-control-hub|https://github.com/wagnerks1990/classroom-control-hub.git|git@github.com:wagnerks1990/classroom-control-hub.git) ;;
+  *) echo "Refusing update from unexpected origin: $ORIGIN_URL"; exit 36 ;;
+esac
 git fetch --force --prune --tags origin
 if [[ "$ACTION" == revert ]]; then
   [[ "$TARGETCOMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid rollback commit"; exit 33; }
@@ -123,6 +134,7 @@ else
   [[ "$TARGETREF" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || { echo "Only semantic-version release tags are accepted"; exit 34; }
   RESOLVED="$(git rev-parse --verify "refs/tags/$TARGETREF^{commit}")"
 fi
+git merge-base --is-ancestor "$RESOLVED" origin/main || { echo "Selected release is not in the trusted origin/main history"; exit 37; }
 set_state_fields "targetCommit=$RESOLVED"
 
 write_state switching "Switching the appliance source to the selected release." null

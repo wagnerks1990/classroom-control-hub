@@ -16,6 +16,8 @@ const mqtt = require("mqtt");
 const { WebSocketServer, WebSocket } = require("ws");
 const AdmZip = require("adm-zip");
 const {ClassroomHubStorage,keyForFile} = require("./storage");
+const {applicationVersion}=require("./version");
+const {secureTokenEqual,capabilitiesFor,hasCapability:profileHasCapability}=require("./security");
 
 // -----------------------------------------------------------------------------
 // Configuration
@@ -26,7 +28,7 @@ const SCHEDULER_TIMEZONE = String(process.env.SCHEDULER_TIMEZONE || process.env.
 const SCHEDULER_CATCHUP_MINUTES = Math.max(0, Math.min(60, Number(process.env.SCHEDULER_CATCHUP_MINUTES || 5)));
 process.env.TZ = SCHEDULER_TIMEZONE;
 const ROOM_NAME = String(process.env.ROOM_NAME || "Classroom");
-const APPLICATION_VERSION = (()=>{try{return fs.readFileSync(path.join(path.resolve(__dirname,".."),"VERSION"),"utf8").trim()}catch{return "unknown"}})();
+const APPLICATION_VERSION = applicationVersion();
 
 let MQTT_URL = String(process.env.MQTT_URL || "").trim();
 let MQTT_USERNAME = String(process.env.MQTT_USERNAME || "");
@@ -104,8 +106,8 @@ async function veyonCommandEligibility(rec,feature,active=true){
 }
 
 const LAB_AGENT_TOKEN = String(process.env.LAB_AGENT_TOKEN || "");
-const LAB_HISTORY_RETENTION_HOURS = Math.max(1, Math.min(24*365, Number(process.env.LAB_HISTORY_RETENTION_HOURS || 720)));
-const LAB_SCREENSHOT_RETENTION_DAYS = Math.max(1, Math.min(365, Number(process.env.LAB_SCREENSHOT_RETENTION_DAYS || 7)));
+let LAB_HISTORY_RETENTION_HOURS = Math.max(1, Math.min(24*365, Number(process.env.LAB_HISTORY_RETENTION_HOURS || 720)));
+let LAB_SCREENSHOT_RETENTION_DAYS = Math.max(1, Math.min(365, Number(process.env.LAB_SCREENSHOT_RETENTION_DAYS || 7)));
 const LAB_AI_MONITOR_ENABLED = String(process.env.LAB_AI_MONITOR_ENABLED || "true").toLowerCase() !== "false";
 const LAB_AI_ALERT_COOLDOWN_MINUTES = Math.max(1, Math.min(1440, Number(process.env.LAB_AI_ALERT_COOLDOWN_MINUTES || 10)));
 const DISPLAY_TOKEN = String(process.env.DISPLAY_TOKEN || "");
@@ -158,6 +160,9 @@ const DATABASE_FILE = String(process.env.DATABASE_FILE || path.join(DATA_DIR,"cl
 const MASTER_KEY_FILE = String(process.env.MASTER_KEY_FILE || "/run/secrets/classroom-control-hub-master-key");
 const LEGACY_JSON_MIRROR = String(process.env.LEGACY_JSON_MIRROR || "false").toLowerCase()==="true";
 const dbStore = new ClassroomHubStorage({dataDir:DATA_DIR,dbFile:DATABASE_FILE,masterKeyFile:MASTER_KEY_FILE,legacyMirror:LEGACY_JSON_MIRROR});
+function privacyRetentionPolicy(){const p=dbStore.getPreference("privacy.retention",{})||{};return {browserHistoryHours:Math.max(1,Math.min(24*365,Number(p.browserHistoryHours)||LAB_HISTORY_RETENTION_HOURS)),screenshotDays:Math.max(1,Math.min(365,Number(p.screenshotDays)||LAB_SCREENSHOT_RETENTION_DAYS)),alertDays:Math.max(1,Math.min(365,Number(p.alertDays)||30)),auditDays:Math.max(7,Math.min(3650,Number(p.auditDays)||180))}}
+function applyPrivacyRetentionPolicy(){const p=privacyRetentionPolicy();LAB_HISTORY_RETENTION_HOURS=p.browserHistoryHours;LAB_SCREENSHOT_RETENTION_DAYS=p.screenshotDays;return p}
+applyPrivacyRetentionPolicy();
 try{if(MQTT_PASSWORD&&!dbStore.hasSecret("integration.mqtt.password"))dbStore.putSecret("integration.mqtt.password",MQTT_PASSWORD,{type:"integration-password",integration:"mqtt",migratedFrom:"environment"})}catch(err){console.warn(`MQTT password database migration skipped: ${err.message}`)}
 
 function boundedNumber(value,fallback,min,max){const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.trunc(n))):fallback}
@@ -2492,7 +2497,7 @@ function publicLabInventory(){
   const computers=Object.keys(labComputerStore.computers).map(publicLabComputer).filter(Boolean)
     .sort((a,b)=>String(a.name||a.hostname||a.id).localeCompare(String(b.name||b.hostname||b.id)));
   return {ok:true,computers,summary:{total:computers.length,online:computers.filter(x=>x.online).length,offline:computers.filter(x=>!x.online).length},
-    retentionHours:LAB_HISTORY_RETENTION_HOURS,configured:!!LAB_AGENT_TOKEN};
+    retentionHours:LAB_HISTORY_RETENTION_HOURS,configured:dbStore.listLabAgentCredentials().credentials.some(x=>!x.revokedAt)||!!LAB_AGENT_TOKEN};
 }
 function upsertLabComputer(id,patch={}){
   const now=new Date().toISOString(),cur=labComputerStore.computers[id]||{id,hostname:patch.hostname||id,name:patch.hostname||id,groups:[],firstSeen:now};
@@ -2625,15 +2630,15 @@ function markLabSocketDisconnected(ws){
   broadcastControllers({type:"lab.status",computer:publicLabComputer(id)});audit({kind:"lab.disconnected",id});
 }
 
-setInterval(()=>{
-  const cutoff=Date.now()-LAB_SCREENSHOT_RETENTION_DAYS*86400000;
+function pruneStudentData(policy=privacyRetentionPolicy()){
+  const screenshotCutoff=Date.now()-policy.screenshotDays*86400000;
   let changed=false;
   for(const [id,rec] of Object.entries(labComputerStore.computers)){
     if(!Array.isArray(rec.screenshotHistory))continue;
     const keep=[];
     for(const item of rec.screenshotHistory){
       const t=Date.parse(item.capturedAt||0);
-      if(Number.isFinite(t)&&t>=cutoff){
+      if(Number.isFinite(t)&&t>=screenshotCutoff){
         keep.push(item);
       }else{
         try{
@@ -2649,13 +2654,16 @@ setInterval(()=>{
     }
   }
   if(changed)persistLabComputers();
-},60*60*1000);
+  const historyCutoff=Date.now()-policy.browserHistoryHours*3600000;let historyChanged=false;
+  for(const [id,list] of Object.entries(labHistoryStore.computers)){if(!Array.isArray(list))continue;const keep=list.filter(x=>Date.parse(x.visitTime||x.receivedAt||0)>=historyCutoff).slice(0,100000);if(keep.length!==list.length){labHistoryStore.computers[id]=keep;historyChanged=true}}
+  if(historyChanged)persistLabHistory();
+  const alertCutoff=Date.now()-policy.alertDays*86400000,alerts=labAiAlertsStore.alerts.filter(x=>Date.parse(x.createdAt||0)>=alertCutoff);
+  if(alerts.length!==labAiAlertsStore.alerts.length){labAiAlertsStore.alerts=alerts;persistLabAiAlerts()}
+  const auditCutoff=new Date(Date.now()-policy.auditDays*86400000).toISOString();
+  dbStore.db.prepare("DELETE FROM audit_events WHERE at < ?").run(auditCutoff);
+}
 
-setInterval(()=>{
-  const cutoff=Date.now()-LAB_HISTORY_RETENTION_HOURS*3600000;let changed=false;
-  for(const [id,list] of Object.entries(labHistoryStore.computers)){if(!Array.isArray(list))continue;const keep=list.filter(x=>Date.parse(x.visitTime||x.receivedAt||0)>=cutoff).slice(0,100000);if(keep.length!==list.length){labHistoryStore.computers[id]=keep;changed=true}}
-  if(changed)persistLabHistory();
-},10*60*1000);
+const studentDataPruneTimer=setInterval(()=>pruneStudentData(),10*60*1000);studentDataPruneTimer.unref();
 
 const baseDeviceConfig = readJson(DEVICE_CONFIG_FILE, {
   room: ROOM_NAME,
@@ -3273,10 +3281,12 @@ function requestUser(req){
 function hasRole(user,minRole="operator"){
   const rank={viewer:1,operator:2,admin:3};return !!user&&(rank[user.role]||0)>=(rank[minRole]||2);
 }
-function secureTokenEqual(actual,expected){
-  const a=Buffer.from(String(actual||"")),b=Buffer.from(String(expected||""));
-  return a.length===b.length&&a.length>0&&crypto.timingSafeEqual(a,b);
+function userCapabilities(user){
+  if(!user)return [];
+  const profile=(dbStore.listAccessProfiles()||[]).find(x=>x.id===user.profileId&&x.enabled);
+  return capabilitiesFor(user,profile);
 }
+function hasCapability(user,capability){const profile=(dbStore.listAccessProfiles()||[]).find(x=>x.id===user?.profileId&&x.enabled);return profileHasCapability(user,capability,profile)}
 function authenticationUnavailable(res){
   return res.status(503).json({ok:false,error:"Secure setup is required before this operation is available",setupRequired:dbStore.userCount()===0});
 }
@@ -3299,6 +3309,12 @@ function requireAuthenticated(req,res,next){
   if(!dbStore.authEnabled())return requireControl(req,res,next);
   const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Authentication required",authRequired:true});return next();
 }
+function requireCapability(capability){return (req,res,next)=>{
+  if(!dbStore.authEnabled())return requireControl(req,res,next);
+  const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Authentication required",authRequired:true});
+  if(!hasCapability(user,capability))return res.status(403).json({ok:false,error:`Permission required: ${capability}`});
+  next();
+}}
 
 function requireMaintenanceAgent(req,res,next){
   if(!MAINTENANCE_TOKEN)return res.status(503).json({ok:false,error:"Maintenance agent is not configured"});
@@ -4091,6 +4107,7 @@ async function executeCommand(input, source = "api") {
 // -----------------------------------------------------------------------------
 
 const app = express();
+let shuttingDown=false;
 app.disable("x-powered-by");
 app.set("trust proxy", TRUST_PROXY_HOPS);
 app.use(express.json({ limit: "2mb" }));
@@ -4292,8 +4309,12 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use("/media", express.static(MEDIA_DIR));
-app.use("/presentations", express.static(PRESENTATIONS_DIR));
+const assetAccessKey=crypto.randomBytes(32);
+function issueAssetAccessToken(deviceId,ttlSeconds=7200){const expires=Math.floor(Date.now()/1000)+ttlSeconds,payload=`${cleanId(deviceId)}.${expires}`,signature=crypto.createHmac("sha256",assetAccessKey).update(payload).digest("base64url");return `${payload}.${signature}`}
+function validAssetAccessToken(token){const parts=String(token||"").split(".");if(parts.length!==3||!/^\d+$/.test(parts[1])||Number(parts[1])<Math.floor(Date.now()/1000))return false;const payload=`${parts[0]}.${parts[1]}`,expected=crypto.createHmac("sha256",assetAccessKey).update(payload).digest("base64url");return secureTokenEqual(parts[2],expected)&&!!devices[cleanId(parts[0])]?.enabled}
+function requireAssetAccess(req,res,next){if(requestUser(req)||validAssetAccessToken(req.query.access_token))return next();return res.status(401).json({ok:false,error:"Authenticated or enrolled-display asset access required"})}
+app.use("/media",requireAssetAccess,express.static(MEDIA_DIR,{fallthrough:false}));
+app.use("/presentations",requireAssetAccess,express.static(PRESENTATIONS_DIR,{fallthrough:false}));
 app.use("/vendor/pdfjs", express.static(path.join(path.resolve(__dirname,".."),"node_modules","pdfjs-dist","build")));
 app.use("/vendor/hls", express.static(path.join(path.resolve(__dirname,".."),"node_modules","hls.js","dist")));
 
@@ -4347,15 +4368,16 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
+  res.status(shuttingDown?503:200).json({
+    ok: !shuttingDown,
+    ready: !shuttingDown,
     service: "classroom-hub-backend",
-    version: "1.0.0-alpha.66",
+    version: APPLICATION_VERSION,
     runtime: publicRuntime()
   });
 });
 
-app.get("/api/v1/status", (_req, res) => {
+app.get("/api/v1/status",requireAuthenticated, (_req, res) => {
   res.json({
     ok: true,
     runtime: publicRuntime(),
@@ -4363,7 +4385,7 @@ app.get("/api/v1/status", (_req, res) => {
   });
 });
 
-app.get("/api/v1/devices", (_req, res) => {
+app.get("/api/v1/devices",requireAuthenticated, (_req, res) => {
   res.json({
     ok: true,
     room: deviceConfig.room || ROOM_NAME,
@@ -4372,7 +4394,7 @@ app.get("/api/v1/devices", (_req, res) => {
   });
 });
 
-app.get("/api/v1/devices/:id", (req, res) => {
+app.get("/api/v1/devices/:id",requireAuthenticated, (req, res) => {
   const id = cleanId(req.params.id);
   if (!devices[id]) {
     return res.status(404).json({ ok: false, error: "Unknown device" });
@@ -4387,7 +4409,7 @@ app.get("/api/v1/devices/:id", (req, res) => {
   });
 });
 
-app.get("/api/v1/groups", (_req, res) => {
+app.get("/api/v1/groups",requireAuthenticated, (_req, res) => {
   res.json({
     ok: true,
     displayGroups,
@@ -4395,7 +4417,7 @@ app.get("/api/v1/groups", (_req, res) => {
   });
 });
 
-app.get("/api/v1/events", (req, res) => {
+app.get("/api/v1/events",requireAuthenticated, (req, res) => {
   const limit = Math.min(500, Math.max(1, Number(req.query.limit || 100)));
   res.json({ ok: true, events: recentEvents.slice(-limit) });
 });
@@ -4421,7 +4443,7 @@ app.get("/api/v1/integrations/check", async (_req,res)=>{
 
 
 // v0.9 media library / scenes
-app.get("/api/v1/media", (_req,res)=>{
+app.get("/api/v1/media",requireAuthenticated, (_req,res)=>{
   res.json({ok:true,files:listMediaLibrary(),converter:{available:true,engine:"LibreOffice headless"}});
 });
 app.get("/api/v1/scenes",requireAuthenticated,(_req,res)=>res.json({ok:true,scenes:savedScenes}));
@@ -4708,7 +4730,7 @@ app.post("/api/v1/automations/:id/run",requireControl,async(req,res)=>{
 
 
 // v0.5 configuration + diagnostics
-app.get("/api/v1/config",(_req,res)=>res.json({ok:true,room:deviceConfig.room||ROOM_NAME,devices,displayGroups,lightingGroups:[...lightingGroups]}));
+app.get("/api/v1/config",requireAuthenticated,(_req,res)=>res.json({ok:true,room:deviceConfig.room||ROOM_NAME,devices,displayGroups,lightingGroups:[...lightingGroups]}));
 
 app.post("/api/v1/config/devices/:id",requireControl,(req,res)=>{
  const id=cleanId(req.params.id);if(!devices[id])return res.status(404).json({ok:false,error:"Unknown device"});
@@ -4756,7 +4778,7 @@ async function buildDiagnosticsSnapshot(){
     ok:true,
     generatedAt:now.toISOString(),
     system:{
-      version:"1.0.0-alpha.66",
+      version:APPLICATION_VERSION,
       node:process.version,
       platform:process.platform,
       arch:process.arch,
@@ -4814,7 +4836,7 @@ async function buildDiagnosticsSnapshot(){
 }
 
 
-// v1.0.0-alpha.66 local authentication, users and setup completion.
+// Local authentication, users and setup completion.
 app.get("/api/v1/auth/status",(req,res)=>{
   const user=requestUser(req);res.json({ok:true,authEnabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:user?{id:user.id,username:user.username,displayName:user.displayName,role:user.role}:null,userCount:dbStore.userCount()});
 });
@@ -4854,7 +4876,7 @@ app.post("/api/v1/setup/administrator",(req,res)=>{
 });
 app.get("/api/v1/admin/users",requireAdmin,(_req,res)=>res.json({ok:true,users:dbStore.listUsers(),authEnabled:dbStore.authEnabled(),policy:dbStore.authPolicy(),sessions:dbStore.listAllUserSessions()}));
 app.post("/api/v1/admin/users",requireAdmin,(req,res)=>{try{const user=dbStore.putUser(req.body||{},{password:req.body?.password});audit({kind:"admin.user.create",userId:user.id,username:user.username,role:user.role});res.json({ok:true,user})}catch(err){res.status(400).json({ok:false,error:err.message})}});
-app.put("/api/v1/admin/users/:id",requireAdmin,(req,res)=>{try{const current=dbStore.listUsers().find(x=>x.id===req.params.id);if(!current)return res.status(404).json({ok:false,error:"User not found"});const enabledAdmins=dbStore.listUsers().filter(x=>x.enabled&&x.role==="admin");if(current.role==="admin"&&enabledAdmins.length<=1&&(req.body?.enabled===false||(req.body?.role&&req.body.role!=="admin")))return res.status(400).json({ok:false,error:"Cannot disable or demote the last enabled administrator"});const user=dbStore.putUser({...current,...req.body,id:req.params.id},{password:req.body?.password||null});if(!user.enabled)dbStore.deleteAllUserSessions(user.id);audit({kind:"admin.user.update",userId:user.id,username:user.username,role:user.role,enabled:user.enabled});res.json({ok:true,user})}catch(err){res.status(400).json({ok:false,error:err.message})}});
+app.put("/api/v1/admin/users/:id",requireAdmin,(req,res)=>{try{const current=dbStore.listUsers().find(x=>x.id===req.params.id);if(!current)return res.status(404).json({ok:false,error:"User not found"});const enabledAdmins=dbStore.listUsers().filter(x=>x.enabled&&x.role==="admin");if(current.role==="admin"&&enabledAdmins.length<=1&&(req.body?.enabled===false||(req.body?.role&&req.body.role!=="admin")))return res.status(400).json({ok:false,error:"Cannot disable or demote the last enabled administrator"});const profileId=req.body?.profileId||(req.body?.role&&req.body.role!==current.role?{admin:"administrator",operator:"teacher",viewer:"read-only"}[req.body.role]:current.profileId);const user=dbStore.putUser({...current,...req.body,profileId,id:req.params.id},{password:req.body?.password||null});if(!user.enabled)dbStore.deleteAllUserSessions(user.id);audit({kind:"admin.user.update",userId:user.id,username:user.username,role:user.role,profileId:user.profileId,enabled:user.enabled});res.json({ok:true,user})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.delete("/api/v1/admin/users/:id",requireAdmin,(req,res)=>{const current=dbStore.listUsers().find(x=>x.id===req.params.id);if(!current)return res.status(404).json({ok:false,error:"User not found"});if(current.role==="admin"&&dbStore.listUsers().filter(x=>x.enabled&&x.role==="admin").length<=1)return res.status(400).json({ok:false,error:"Cannot remove the last enabled administrator"});dbStore.deleteUser(req.params.id);audit({kind:"admin.user.delete",userId:req.params.id,username:current.username});res.json({ok:true})});
 app.put("/api/v1/admin/auth",requireAdmin,(req,res)=>{
   if(req.body?.enabled!==true)return res.status(400).json({ok:false,error:"Local authentication cannot be disabled on a secured appliance"});
@@ -4863,10 +4885,12 @@ app.put("/api/v1/admin/auth",requireAdmin,(req,res)=>{
 app.post("/api/v1/admin/users/:id/reset-password",requireAdmin,(req,res)=>{try{const user=dbStore.resetUserPassword(req.params.id,req.body?.password);audit({kind:"admin.user.password-reset",userId:user.id,username:user.username});res.json({ok:true,user,message:"Password reset. All existing sessions for this user were revoked."})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.delete("/api/v1/admin/sessions/:id",requireAdmin,(req,res)=>{const sess=dbStore.listAllUserSessions().find(x=>x.id===req.params.id);if(!sess)return res.status(404).json({ok:false,error:"Session not found"});const removed=dbStore.deleteUserSession(sess.userId,sess.id);audit({kind:"admin.session.revoke",sessionId:sess.id,userId:sess.userId,removed});res.json({ok:true,removed})});
 app.put("/api/v1/admin/auth-policy",requireAdmin,(req,res)=>{try{const policy=dbStore.setAuthPolicy(req.body||{});audit({kind:"admin.auth-policy.update",policy});res.json({ok:true,policy})}catch(err){res.status(400).json({ok:false,error:err.message})}});
+app.get("/api/v1/admin/privacy-retention",requireAdmin,(_req,res)=>res.json({ok:true,policy:privacyRetentionPolicy()}));
+app.put("/api/v1/admin/privacy-retention",requireAdmin,(req,res)=>{try{const current=privacyRetentionPolicy(),next={browserHistoryHours:Math.max(1,Math.min(24*365,Number(req.body?.browserHistoryHours)||current.browserHistoryHours)),screenshotDays:Math.max(1,Math.min(365,Number(req.body?.screenshotDays)||current.screenshotDays)),alertDays:Math.max(1,Math.min(365,Number(req.body?.alertDays)||current.alertDays)),auditDays:Math.max(7,Math.min(3650,Number(req.body?.auditDays)||current.auditDays))};dbStore.setPreference("privacy.retention",next);applyPrivacyRetentionPolicy();if(req.body?.applyNow===true)pruneStudentData(next);audit({kind:"admin.privacy-retention.update",policy:next,applyNow:req.body?.applyNow===true});res.json({ok:true,policy:next})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.put("/api/v1/admin/setup-state",requireAdmin,(req,res)=>{const completed=dbStore.setSetupCompleted(req.body?.completed!==false);res.json({ok:true,completed})});
 
-// v1.0.0-alpha.66 database-native administration/configuration APIs.
-app.get("/api/v1/admin/health",requireAdmin,(req,res)=>{const u=requestUser(req),db=dbStore.databaseInfo();res.json({ok:true,version:"1.0.0-alpha.66",generatedAt:new Date().toISOString(),auth:{enabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:u?{id:u.id,username:u.username,displayName:u.displayName,role:u.role}:null,policy:dbStore.authPolicy(),activeSessions:dbStore.listAllUserSessions().length},runtime:{room:deviceConfig.room||ROOM_NAME,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError,lastConnectAt:runtime.mqtt.lastConnectAt},websocketClients:runtime.websocketClients,onlineDisplays:Object.values(runtime.displays||{}).filter(x=>x&&x.online).length},database:db});});
+// Database-native administration/configuration APIs.
+app.get("/api/v1/admin/health",requireAdmin,(req,res)=>{const u=requestUser(req),db=dbStore.databaseInfo();res.json({ok:true,version:APPLICATION_VERSION,generatedAt:new Date().toISOString(),auth:{enabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:u?{id:u.id,username:u.username,displayName:u.displayName,role:u.role}:null,policy:dbStore.authPolicy(),activeSessions:dbStore.listAllUserSessions().length},runtime:{room:deviceConfig.room||ROOM_NAME,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError,lastConnectAt:runtime.mqtt.lastConnectAt},websocketClients:runtime.websocketClients,onlineDisplays:Object.values(runtime.displays||{}).filter(x=>x&&x.online).length},database:db});});
 app.get("/api/v1/admin/summary",requireAdmin,(_req,res)=>{
   const cfg=dbStore.getAdminConfig(),db=dbStore.databaseInfo();
   res.json({ok:true,site:cfg.site,database:db,counts:{
@@ -4907,11 +4931,16 @@ function displayCredentialAdminView(){
   return {policy:security.policy,coverage:{enabled:values.filter(d=>d.enabled).length,enrolled:values.filter(d=>d.enabled&&d.credentials.some(c=>!c.revokedAt)).length,unenrolled},displays:values};
 }
 function disconnectRevokedDisplayCredentials(ids){const set=new Set([].concat(ids||[]).map(String));for(const ws of wsClients)if(ws.role==="display"&&set.has(String(ws.displayCredentialId||""))&&ws.readyState===WebSocket.OPEN)ws.close(1008,"Display credential revoked")}
+function disconnectRevokedLabAgentCredentials(ids){const set=new Set([].concat(ids||[]).map(String));for(const ws of wsClients)if(ws.role==="lab-agent"&&set.has(String(ws.labAgentCredentialId||""))&&ws.readyState===WebSocket.OPEN)ws.close(1008,"Lab agent credential revoked")}
 app.get("/api/v1/admin/display-credentials",requireAdmin,(_req,res)=>res.json({ok:true,...displayCredentialAdminView()}));
 app.put("/api/v1/admin/display-credentials/policy",requireAdmin,(req,res)=>{try{const state=displayCredentialAdminView();if(req.body?.legacySharedTokenAllowed===false&&state.coverage.unenrolled.length&&req.body?.confirmDisableWithoutFullEnrollment!==true)return res.status(409).json({ok:false,error:`Enroll every enabled display before disabling legacy access. Missing: ${state.coverage.unenrolled.join(", ")}`,unenrolled:state.coverage.unenrolled});const policy=dbStore.setDisplayCredentialPolicy(req.body||{});audit({kind:"admin.display-credentials.policy",policy});res.json({ok:true,policy})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.post("/api/v1/admin/displays/:id/enrollment",requireAdmin,(req,res)=>{try{const displayId=cleanId(req.params.id),issued=dbStore.createDisplayEnrollment(displayId,{ttlMinutes:req.body?.ttlMinutes});if(req.body?.revokeExisting===true){const active=dbStore.listDisplayCredentials().credentials.filter(x=>x.displayId===displayId&&!x.revokedAt).map(x=>x.id);dbStore.revokeDisplayCredentials(displayId);disconnectRevokedDisplayCredentials(active)}const url=`/display/?id=${encodeURIComponent(displayId)}#enrollmentToken=${encodeURIComponent(issued.token)}`;audit({kind:"admin.display-enrollment.issue",displayId,expiresAt:issued.expiresAt,revokeExisting:req.body?.revokeExisting===true});res.status(201).json({ok:true,enrollment:{id:issued.id,displayId,displayName:issued.displayName,expiresAt:issued.expiresAt,url}})}catch(err){res.status(400).json({ok:false,error:err.message})}});
 app.delete("/api/v1/admin/displays/:id/enrollment",requireAdmin,(req,res)=>{const displayId=cleanId(req.params.id),cancelled=dbStore.cancelDisplayEnrollments(displayId);audit({kind:"admin.display-enrollment.cancel",displayId,cancelled});res.json({ok:true,cancelled})});
 app.delete("/api/v1/admin/display-credentials/:id",requireAdmin,(req,res)=>{const id=String(req.params.id||""),revoked=dbStore.revokeDisplayCredential(id);if(revoked)disconnectRevokedDisplayCredentials([id]);audit({kind:"admin.display-credential.revoke",credentialId:id,revoked});res.status(revoked?200:404).json({ok:revoked,error:revoked?undefined:"Active credential not found"})});
+app.get("/api/v1/admin/lab-agent-credentials",requireAdmin,(_req,res)=>res.json({ok:true,...dbStore.listLabAgentCredentials()}));
+app.put("/api/v1/admin/lab-agent-credentials/policy",requireAdmin,(req,res)=>{try{const policy=dbStore.setLabAgentCredentialPolicy(req.body||{});audit({kind:"admin.lab-agent-credentials.policy",policy});res.json({ok:true,policy})}catch(err){res.status(400).json({ok:false,error:err.message})}});
+app.post("/api/v1/admin/lab-agents/:id/enrollment",requireAdmin,(req,res)=>{try{const agentId=cleanLabAgentId(req.params.id),issued=dbStore.createLabAgentEnrollment(agentId,{ttlMinutes:req.body?.ttlMinutes}),proto=String(req.get("x-forwarded-proto")||req.protocol||"http").split(",")[0],origin=`${proto}://${effectiveHost(req)}`,script=`${origin}/lab-agent/Install-Agent.ps1`,allowHttp=proto==="https"?"":" -AllowHttp",command=`$i=\"$env:TEMP\\Install-ClassroomHubAgent.ps1\"; irm \"${script}\" -OutFile $i; & $i -HubUrl \"${origin}\" -AgentId \"${agentId}\" -EnrollmentToken \"${issued.token}\"${allowHttp}`;audit({kind:"admin.lab-agent-enrollment.issue",agentId,expiresAt:issued.expiresAt});res.status(201).json({ok:true,enrollment:{id:issued.id,agentId,token:issued.token,expiresAt:issued.expiresAt,installerUrl:script,installCommand:command}})}catch(err){res.status(400).json({ok:false,error:err.message})}});
+app.delete("/api/v1/admin/lab-agent-credentials/:id",requireAdmin,(req,res)=>{const id=String(req.params.id||""),revoked=dbStore.revokeLabAgentCredential(id);if(revoked)disconnectRevokedLabAgentCredentials([id]);audit({kind:"admin.lab-agent-credential.revoke",credentialId:id,revoked});res.status(revoked?200:404).json({ok:revoked,error:revoked?undefined:"Active credential not found"})});
 app.put("/api/v1/admin/hardware",requireAdmin,(req,res)=>{
   try{const value=req.body||{};dbStore.writeNormalized("hardware",value);audit({kind:"admin.config.hardware"});res.json({ok:true,hardware:value,restartRecommended:true})}catch(err){res.status(400).json({ok:false,error:err.message})}
 });
@@ -4943,7 +4972,7 @@ app.put("/api/v1/admin/certificates/:name",requireAdmin,(req,res)=>{
 });
 app.get("/api/v1/admin/access-profiles",requireAdmin,(_req,res)=>res.json({ok:true,profiles:dbStore.listAccessProfiles()}));
 app.put("/api/v1/admin/access-profiles/:id",requireAdmin,(req,res)=>{try{const profile=dbStore.putAccessProfile({...req.body,id:req.params.id});audit({kind:"admin.access-profile.update",id:req.params.id,role:profile.role});res.json({ok:true,profile})}catch(err){res.status(400).json({ok:false,error:err.message})}});
-app.delete("/api/v1/admin/access-profiles/:id",requireAdmin,(req,res)=>{dbStore.deleteAccessProfile(req.params.id);audit({kind:"admin.access-profile.delete",id:req.params.id});res.json({ok:true})});
+app.delete("/api/v1/admin/access-profiles/:id",requireAdmin,(req,res)=>{try{dbStore.deleteAccessProfile(req.params.id);audit({kind:"admin.access-profile.delete",id:req.params.id});res.json({ok:true})}catch(err){res.status(409).json({ok:false,error:err.message})}});
 
 
 // Music Assistant integration - server-side token proxy. The long-lived MA token is
@@ -5206,7 +5235,7 @@ app.post("/api/v1/diagnostics/test",requireControl,async(req,res)=>{
     catch(err){results[name]={ok:false,durationMs:Date.now()-started,error:err.message};diagnosticError(err,{component:"diagnostics.test",operation:name})}
   };
 
-  if(test==="all"||test==="hub")await perform("hub",async()=>({version:"1.0.0-alpha.66",uptime:process.uptime()}));
+  if(test==="all"||test==="hub")await perform("hub",async()=>({version:APPLICATION_VERSION,uptime:process.uptime()}));
   if(test==="all"||test==="mqtt")await perform("mqtt",async()=>{
     if(!runtime.mqtt.connected)throw new Error("MQTT is not connected");
     return {connected:true,url:MQTT_URL};
@@ -5576,7 +5605,7 @@ app.get("/api/v1/veyon/computers/:id/info",requireAuthenticated,async(req,res)=>
     res.json({ok:true,computer:await veyonStatusFor(rec,{includeInfo:true})});
   }catch(err){res.status(502).json({ok:false,error:err.message})}
 });
-app.get("/api/v1/veyon/computers/:id/framebuffer",requireAuthenticated,async(req,res)=>{
+app.get("/api/v1/veyon/computers/:id/framebuffer",requireCapability("lab.sensitive.read"),async(req,res)=>{
   try{
     const rec=veyonComputerStore.computers[veyonComputerId(req.params.id)];
     if(!rec)return res.status(404).json({ok:false,error:"Computer not found"});
@@ -5694,8 +5723,8 @@ app.post("/api/v1/veyon/feature",requireControl,async(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers",requireAuthenticated,(_req,res)=>res.json(publicLabInventory()));
-app.get("/api/v1/lab/computers/:id/history",requireAuthenticated,(req,res)=>{
+app.get("/api/v1/lab/computers",requireCapability("lab.read"),(_req,res)=>res.json(publicLabInventory()));
+app.get("/api/v1/lab/computers/:id/history",requireCapability("lab.sensitive.read"),(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id);
     if(!labComputerStore.computers[id])return res.status(404).json({ok:false,error:"Lab computer not found"});
@@ -5704,7 +5733,7 @@ app.get("/api/v1/lab/computers/:id/history",requireAuthenticated,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/history/export",requireAuthenticated,(req,res)=>{
+app.get("/api/v1/lab/computers/:id/history/export",requireCapability("lab.sensitive.read"),(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id);
     if(!labComputerStore.computers[id])return res.status(404).json({ok:false,error:"Lab computer not found"});
@@ -5764,7 +5793,7 @@ function safeScreenshotPath(id,rel){
   return full;
 }
 
-app.get("/api/v1/lab/computers/:id/screenshot",requireAuthenticated,(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshot",requireCapability("lab.sensitive.read"),(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rec=labComputerStore.computers[id];
     if(!rec?.screenshotFile)return res.status(404).json({ok:false,error:"No screenshot available"});
@@ -5775,7 +5804,7 @@ app.get("/api/v1/lab/computers/:id/screenshot",requireAuthenticated,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/screenshot/download",requireAuthenticated,(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshot/download",requireCapability("lab.sensitive.read"),(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rec=labComputerStore.computers[id];
     if(!rec?.screenshotFile)return res.status(404).json({ok:false,error:"No screenshot available"});
@@ -5786,7 +5815,7 @@ app.get("/api/v1/lab/computers/:id/screenshot/download",requireAuthenticated,(re
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/screenshots",requireAuthenticated,(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshots",requireCapability("lab.sensitive.read"),(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rec=labComputerStore.computers[id];
     if(!rec)return res.status(404).json({ok:false,error:"Lab computer not found"});
@@ -5804,7 +5833,7 @@ app.get("/api/v1/lab/computers/:id/screenshots",requireAuthenticated,(req,res)=>
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/screenshots/file",requireAuthenticated,(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshots/file",requireCapability("lab.sensitive.read"),(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rel=String(req.query.file||"");
     const p=safeScreenshotPath(id,rel);
@@ -5814,7 +5843,7 @@ app.get("/api/v1/lab/computers/:id/screenshots/file",requireAuthenticated,(req,r
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/computers/:id/screenshots/download",requireAuthenticated,(req,res)=>{
+app.get("/api/v1/lab/computers/:id/screenshots/download",requireCapability("lab.sensitive.read"),(req,res)=>{
   try{
     const id=cleanLabAgentId(req.params.id),rel=String(req.query.file||"");
     const p=safeScreenshotPath(id,rel);
@@ -5823,7 +5852,7 @@ app.get("/api/v1/lab/computers/:id/screenshots/download",requireAuthenticated,(r
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.get("/api/v1/lab/presets",requireAuthenticated,(_req,res)=>res.json({
+app.get("/api/v1/lab/presets",requireCapability("lab.read"),(_req,res)=>res.json({
   ok:true,
   presets:[
     {id:"gpupdate",name:"Group Policy Update",description:"Runs gpupdate /force"},
@@ -5836,7 +5865,7 @@ app.get("/api/v1/lab/presets",requireAuthenticated,(_req,res)=>res.json({
 }));
 
 
-app.get("/api/v1/lab/ai-monitor",requireAuthenticated,(req,res)=>{
+app.get("/api/v1/lab/ai-monitor",requireCapability("lab.sensitive.read"),(req,res)=>{
   try{
     const status=String(req.query.status||"").trim();
     const profile=String(req.query.profile||"").trim().toLowerCase();
@@ -6356,7 +6385,7 @@ wss.on("connection", (ws, req) => {
           wsSend(ws, {
             type: "hello.ack",
             role: "preview",
-            version: "1.0.0-alpha.66",
+            version: APPLICATION_VERSION,
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
@@ -6397,14 +6426,15 @@ wss.on("connection", (ws, req) => {
           wsSend(ws, {
             type: "hello.ack",
             role: "display",
-            version: "1.0.0-alpha.66",
+            version: APPLICATION_VERSION,
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
             state: persistentState.displays[deviceId] || null,
             authMode,
             credential:issuedCredential?.credential||undefined,
-            credentialId:displayCredential?.id||undefined
+            credentialId:displayCredential?.id||undefined,
+            assetAccessToken:issueAssetAccessToken(deviceId)
           });
 
           // Re-attach persistent Music Assistant browser player bridge after display reconnect/reload.
@@ -6421,11 +6451,11 @@ wss.on("connection", (ws, req) => {
           // Hub upgrade automatically refresh legacy/stale kiosk browsers without requiring
           // a manual visit to every TV.
           const clientVersion=String(msg.clientVersion||msg.meta?.build||"");
-          if(clientVersion!=="1.0.0-alpha.66") {
-            audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:"1.0.0-alpha.66"});
+          if(clientVersion!==APPLICATION_VERSION) {
+            audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:APPLICATION_VERSION});
             setTimeout(()=>{
               if(ws.readyState===WebSocket.OPEN){
-                wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:"1.0.0-alpha.66"}}});
+                wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:APPLICATION_VERSION}}});
               }
             },700);
           }
@@ -6435,16 +6465,19 @@ wss.on("connection", (ws, req) => {
         }
 
         if (role === "lab-agent") {
-          if (!LAB_AGENT_TOKEN) throw new Error("LAB_AGENT_TOKEN is not configured on Classroom Control Hub");
-          if (msg.token !== LAB_AGENT_TOKEN) throw new Error("Unauthorized lab agent");
           const agentId=cleanLabAgentId(msg.agentId||msg.deviceId||msg.hostname);
+          let agentCredential=dbStore.authenticateLabAgent(agentId,msg.credential||""),issuedCredential=null,authMode="credential";
+          if(!agentCredential&&msg.enrollmentToken){issuedCredential=dbStore.consumeLabAgentEnrollment(agentId,msg.enrollmentToken,{label:String(msg.hostname||req.headers["user-agent"]||"Windows classroom agent")});if(issuedCredential)agentCredential={id:issuedCredential.id,agentId}}
+          if(!agentCredential){const policy=dbStore.labAgentCredentialPolicy();if(policy.legacySharedTokenAllowed&&LAB_AGENT_TOKEN&&secureTokenEqual(msg.token,LAB_AGENT_TOKEN))authMode="legacy-shared-token";else throw new Error("Unauthorized lab agent")}
+          else if(issuedCredential)authMode="new-enrollment";
           ws.role="lab-agent";ws.labAgentId=agentId;ws.deviceId=agentId;
+          ws.labAgentCredentialId=agentCredential?.id||"";ws.labAgentAuthMode=authMode;
           clearTimeout(ws.helloTimer);
           const old=labAgentSockets.get(agentId);if(old&&old!==ws&&old.readyState===WebSocket.OPEN){try{old.close(4001,"Replaced by newer agent connection")}catch{}}
           labAgentSockets.set(agentId,ws);
           upsertLabComputer(agentId,{hostname:String(msg.hostname||msg.meta?.hostname||agentId).slice(0,120),agentVersion:String(msg.agentVersion||msg.meta?.agentVersion||"").slice(0,40),
             meta:msg.meta&&typeof msg.meta==="object"?msg.meta:{},connectedAt:new Date().toISOString()});
-          wsSend(ws,{type:"hello.ack",role:"lab-agent",agentId,room:deviceConfig.room||ROOM_NAME,historyRetentionHours:LAB_HISTORY_RETENTION_HOURS,heartbeatSeconds:15,historyPollSeconds:30});
+          wsSend(ws,{type:"hello.ack",role:"lab-agent",agentId,room:deviceConfig.room||ROOM_NAME,historyRetentionHours:LAB_HISTORY_RETENTION_HOURS,heartbeatSeconds:15,historyPollSeconds:30,authMode,credential:issuedCredential?.credential||undefined,credentialId:agentCredential?.id||undefined});
           broadcastControllers({type:"lab.status",computer:publicLabComputer(agentId)});audit({kind:"lab.connected",id:agentId,hostname:msg.hostname||agentId});return;
         }
 
@@ -6511,7 +6544,7 @@ wss.on("connection", (ws, req) => {
 
       if (msg.type === "heartbeat" && ws.role === "display") {
         markDisplaySeen(ws, { meta: msg.meta || {} });
-        return wsSend(ws, { type: "heartbeat.ack", at: Date.now() });
+        return wsSend(ws, { type: "heartbeat.ack", at: Date.now(),assetAccessToken:ws.role==="display"?issueAssetAccessToken(ws.deviceId):undefined });
       }
 
       if (msg.type === "display.state" && ws.role === "display") {
@@ -6768,9 +6801,19 @@ try{
 }catch(err){console.warn(`Legacy audit migration skipped: ${err.message}`)}
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Classroom Control Hub Backend v1.0.0-alpha.66 listening on http://0.0.0.0:${PORT}`);
+  console.log(`Classroom Control Hub Backend v${APPLICATION_VERSION} listening on http://0.0.0.0:${PORT}`);
   console.log(`Scheduler timezone: ${SCHEDULER_TIMEZONE}; local time: ${schedulerLocalTimestamp()}; catch-up: ${SCHEDULER_CATCHUP_MINUTES} minute(s)`);
   console.log(`Room: ${deviceConfig.room || ROOM_NAME}`);
   console.log(`MQTT: ${MQTT_URL || "disabled"}`);
   console.log("Node-RED: not required (v0.8 direct hardware mode)");
-});setInterval(()=>reconcileGoveeDiscovery(),60000);
+});
+const goveeReconcileTimer=setInterval(()=>reconcileGoveeDiscovery(),60000);
+function gracefulShutdown(signal){
+  if(shuttingDown)return;shuttingDown=true;console.log(`${signal} received; draining Classroom Control Hub`);
+  clearInterval(heartbeatTimer);clearInterval(veyonPoolTimer);clearInterval(goveeReconcileTimer);clearInterval(automaticUpdateTimer);clearInterval(updateJobSyncTimer);clearInterval(studentDataPruneTimer);
+  for(const ws of wsClients)try{ws.close(1001,"Server shutting down")}catch{};
+  try{wss.close()}catch{};try{maSendspinProxyWss.close()}catch{};try{musicAssistantApiClose("server shutdown")}catch{};try{if(mqttClient)mqttClient.end(true)}catch{};
+  const force=setTimeout(()=>process.exit(1),10000);force.unref();
+  server.close(()=>{try{dbStore.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");dbStore.db.close()}catch{};clearTimeout(force);process.exit(0)});
+}
+process.once("SIGTERM",()=>gracefulShutdown("SIGTERM"));process.once("SIGINT",()=>gracefulShutdown("SIGINT"));

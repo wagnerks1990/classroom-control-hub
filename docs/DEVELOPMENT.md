@@ -35,7 +35,7 @@ Production runtime `.env`, databases, data, uploads, backups, master keys, priva
 
 ### Keep deployment-specific values out of source
 
-Do not hard-code real organization domains, internal addresses, credentials, stream IDs, schedules, device identifiers, or tokens into reusable public source.
+Do not hard-code real school/district domains, internal addresses, credentials, stream IDs, schedules, device identifiers, or tokens into reusable public source.
 
 ### Keep manual and automatic behavior consistent
 
@@ -95,7 +95,7 @@ Verify:
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.66` is the known-good production baseline. It includes HLS Morning Announcements detection/playback/audio control and post-announcement failsafe scheduler resync.
+At the time this document was updated, `1.0.0-alpha.67` is the known-good production baseline. It includes HLS Morning Announcements behavior plus the dependency, API privacy, capability, agent-enrollment, updater, and maintenance-plane hardening described in the changelog.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 

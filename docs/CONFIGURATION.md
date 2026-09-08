@@ -35,11 +35,10 @@ Store separate generated values in `SETUP_TOKEN`, `DISPLAY_TOKEN`, and
 `SETUP_TOKEN` in the `X-Setup-Token` header; the token is never accepted in a
 query string. Authentication remains enabled after bootstrap.
 
-The stabilization defaults intentionally disable the privileged maintenance
-proxy, anonymous classroom participation, shell access, and legacy source-ZIP
-updates. Do not enable `MAINTENANCE_PROXY_ENABLED` on an untrusted network.
-`MAINTENANCE_ALLOW_UNSAFE_SOURCE_UPDATES` exists only as a temporary legacy
-escape hatch and must remain `false` in production.
+The stabilization defaults intentionally disable anonymous classroom
+participation. Direct shell execution, source-ZIP updates, browser editing of
+`.env`, and arbitrary host-file mutation have been removed. Do not enable
+`MAINTENANCE_PROXY_ENABLED` on an untrusted network.
 
 Typical categories include:
 
@@ -49,6 +48,17 @@ Typical categories include:
 - authentication/security options.
 
 Legacy integration values in `.env` are used as initial fallbacks. Once MQTT/Govee, Pluto, or Veyon connection settings are saved under **Settings → Integrations & Hardware**, the database values become authoritative and are applied live. MQTT passwords and Veyon private keys are stored encrypted and are never returned to the browser.
+
+Access profiles are also stored in SQLite. Assign every user the least-privilege
+profile that fits their classroom role. Viewing browser history, screenshots,
+Veyon framebuffers, and monitoring alerts requires `lab.sensitive.read` even
+when the user can operate ordinary classroom devices.
+
+Student-data retention is configured under **Settings → Student Data
+Retention**. Browser history is measured in hours; screenshots, monitoring
+alerts, and audit records are measured in days. Saving a policy changes future
+cleanup behavior. Selecting **Apply now** also prunes records older than the new
+limits immediately.
 
 Cross-origin API access is disabled unless an exact origin is listed in the
 comma-separated `CORS_ALLOWED_ORIGINS` setting. Same-origin browser use needs

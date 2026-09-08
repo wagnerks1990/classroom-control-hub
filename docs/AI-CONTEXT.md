@@ -35,7 +35,7 @@ A Git update must preserve them.
 
 ## Current known-good baseline
 
-`1.0.0-alpha.66` is the current known-good production baseline at the time this document was created.
+`1.0.0-alpha.67` is the current known-good production baseline.
 
 Verified behaviors:
 

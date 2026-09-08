@@ -66,6 +66,7 @@ function rejectedDisplayHello(payload){
     ws.on("error",()=>{});
   });
 }
+function labAgentHello(payload){return new Promise((resolve,reject)=>{const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}}),timeout=setTimeout(()=>{ws.terminate();reject(new Error("Lab agent WebSocket timed out"))},3000);ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"lab-agent",agentId:"lab-pc-01",hostname:"LAB-PC-01",agentVersion:"1.0.0-alpha.67",...payload})));ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);resolve({ws,ack:msg})}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});ws.on("error",reject)})}
 
 test.before(async()=>{
   tempDir=fs.mkdtempSync(path.join(os.tmpdir(),"classroom-hub-test-"));
@@ -240,6 +241,32 @@ test("classroom displays use one-time enrollment and individually revocable cred
   await rejectedDisplayHello({credential});
 });
 
+test("Windows lab agents use one-time enrollment and revocable per-computer credentials",async()=>{
+  let result=await request("/api/v1/admin/lab-agents/lab-pc-01/enrollment",{method:"POST",authenticated:true,body:{ttlMinutes:15}});
+  assert.equal(result.response.status,201,JSON.stringify(result.json));
+  const enrollmentToken=result.json.enrollment.token;
+  assert.ok(enrollmentToken.length>=40);
+  assert.match(result.json.enrollment.installCommand,/Install-ClassroomHubAgent/);
+  const enrolled=await labAgentHello({enrollmentToken});
+  assert.equal(enrolled.ack.authMode,"new-enrollment");
+  const credential=enrolled.ack.credential,credentialId=enrolled.ack.credentialId;
+  assert.ok(credential.length>=40);enrolled.ws.close();
+  result=await request("/api/v1/admin/lab-agent-credentials",{authenticated:true});
+  assert.equal(result.response.status,200);assert.equal(result.json.credentials[0].agentId,"lab-pc-01");
+  assert.equal(JSON.stringify(result.json).includes(credential),false);
+  const reconnected=await labAgentHello({credential});assert.equal(reconnected.ack.authMode,"credential");
+  const closed=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error("Revoked lab agent stayed connected")),3000);reconnected.ws.on("close",code=>{clearTimeout(timer);try{assert.equal(code,1008);resolve()}catch(e){reject(e)}})});
+  result=await request(`/api/v1/admin/lab-agent-credentials/${credentialId}`,{method:"DELETE",authenticated:true});assert.equal(result.response.status,200);await closed;
+  await assert.rejects(()=>labAgentHello({credential}),/Unauthorized lab agent/);
+});
+
+test("capability profiles keep read-only users out of sensitive student data",async()=>{
+  let result=await request("/api/v1/admin/users",{method:"POST",authenticated:true,body:{username:"viewer-test",displayName:"Read Only Test",role:"viewer",profileId:"read-only",password:"viewer-test-password",enabled:true}});assert.equal(result.response.status,200,JSON.stringify(result.json));
+  result=await request("/api/v1/auth/login",{method:"POST",body:{username:"viewer-test",password:"viewer-test-password"}});assert.equal(result.response.status,200,JSON.stringify(result.json));const viewerCookie=String(result.response.headers.get("set-cookie")||"").split(";")[0];
+  result=await request("/api/v1/status",{headers:{cookie:viewerCookie}});assert.equal(result.response.status,200);
+  result=await request("/api/v1/lab/computers/lab-pc-01/history",{headers:{cookie:viewerCookie}});assert.equal(result.response.status,403);assert.match(result.json.error,/lab\.sensitive\.read/);
+});
+
 test("Kyle Wagner attribution is installed on every current site surface",()=>{
   const surfaces=[
     "public/controller/index.html","public/controller/display.html","public/controller/lab.html",
@@ -339,13 +366,33 @@ test("classroom integration connections are GUI-managed, database-backed, and se
   assert.equal(result.response.status,400);
 });
 
+test("student-data retention is administrator-only, bounded, and database-backed",async()=>{
+  let result=await request("/api/v1/admin/privacy-retention");
+  assert.equal(result.response.status,403);
+  result=await request("/api/v1/admin/privacy-retention",{method:"PUT",authenticated:true,body:{browserHistoryHours:48,screenshotDays:5,alertDays:14,auditDays:90,applyNow:true}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.deepEqual(result.json.policy,{browserHistoryHours:48,screenshotDays:5,alertDays:14,auditDays:90});
+  result=await request("/api/v1/admin/privacy-retention",{authenticated:true});
+  assert.deepEqual(result.json.policy,{browserHistoryHours:48,screenshotDays:5,alertDays:14,auditDays:90});
+  const db=new DatabaseSync(path.join(tempDir,"hub.db"),{readOnly:true});
+  const stored=JSON.parse(db.prepare("SELECT value_json FROM system_preferences WHERE key='privacy.retention'").get().value_json);
+  db.close();
+  assert.equal(stored.screenshotDays,5);
+});
+
 test("maintenance agent does not own SQLite and restore includes verified rollback",()=>{
   const source=fs.readFileSync(path.join(projectRoot,"maintenance-agent/server.js"),"utf8");
+  const host=fs.readFileSync(path.join(projectRoot,"host-agent/server.py"),"utf8");
+  const compose=fs.readFileSync(path.join(projectRoot,"docker-compose.yml"),"utf8");
   assert.doesNotMatch(source,/ClassroomHubStorage|\bdbStore\b/);
   assert.match(source,/MANAGED_APP_CONTAINER\|\|"classroom-control-hub"/);
   assert.match(source,/PRAGMA quick_check/);
   assert.match(source,/rollback\.attempted=true/);
   assert.match(source,/waitForMainApplication/);
+  assert.doesNotMatch(compose,/\/var\/run\/docker\.sock/);
+  assert.match(source,/\/docker\/exec/);
+  assert.match(host,/MANAGED_IMAGES/);
+  assert.match(host,/hmac\.compare_digest/);
 });
 
 test("application update policy and GitHub token are stored in the database",async()=>{
@@ -370,6 +417,8 @@ test("verified application updater has a durable host job and GUI rollback contr
   assert.match(host,/REVERT_RELEASE/);
   assert.match(runner,/git fetch --force --prune --tags origin/);
   assert.match(runner,/Only semantic-version release tags are accepted/);
+  assert.match(runner,/merge-base --is-ancestor/);
+  assert.match(runner,/docker compose port classroom-hub 3000/);
   assert.match(runner,/restore_safety_backup/);
   assert.match(controller,/Revert Last Upgrade/);
   assert.match(controller,/Automatically install approved releases/);
