@@ -2,6 +2,7 @@
   "name": "classroom-control-hub-maintenance-agent",
   "version": "1.0.0-alpha.67",
   "private": true,
+  "license": "MIT",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

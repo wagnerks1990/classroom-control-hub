@@ -16,6 +16,9 @@
 
 ## Unreleased
 
+### Licensing
+- Released Classroom Control Hub under the MIT License with copyright held by Kyle Wagner.
+
 ### Individually enrolled classroom displays
 - Replaced the normal shared display-token workflow with one-time, expiring enrollment links and a unique revocable credential for each display browser.
 - Added controller coverage reporting, enrollment-link creation/cancellation, credential rotation/revocation, and a guarded switch for disabling legacy shared-token access.

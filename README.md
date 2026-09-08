@@ -135,4 +135,6 @@ This repository is currently alpha software. Production deployments should pin a
 
 ## License
 
-No public license has been selected yet. Until a license is added, normal copyright rules apply.
+Classroom Control Hub is licensed under the [MIT License](LICENSE).
+
+Copyright © 2026 [Kyle Wagner](https://github.com/wagnerks1990).
