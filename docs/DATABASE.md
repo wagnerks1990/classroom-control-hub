@@ -35,11 +35,29 @@ compatibility rows are then removed so the relational tables become authoritativ
 The application continues to consume the same JSON-shaped objects through the
 storage abstraction, so existing controller/API behavior is preserved.
 
+The storage abstraction also makes non-normalized application namespaces database-backed. A path such as `data/veyon-computers.json` is a legacy namespace identifier, not an instruction to use a JSON file at runtime. With `LEGACY_JSON_MIRROR=false` (the production default), reads and writes use SQLite `object_store` and do not maintain JSON mirrors.
+
+### Veyon state
+
+Veyon application state is database-authoritative:
+
+- computer inventory, IP addresses, hostnames, names, roles, discovery timestamps and related metadata are stored under the SQLite `veyon-computers` namespace;
+- WebAPI URL, key name, scan range, connection pool and retry settings are stored in database-backed integration settings/preferences;
+- the Veyon private authentication key is stored encrypted in `secret_store` as `veyon.private-key`;
+- optional Windows/domain and Linux/SSH endpoint-deployment credentials are encrypted integration secrets;
+- the Veyon public key and non-secret endpoint-deployment metadata may be stored as managed-integration configuration.
+
+For upgrades from older releases, `data/veyon-computers.json` is imported and merged into SQLite during startup recovery. The import is verified before the active legacy JSON file is removed. Migration history records the conversion. Existing rollback/migration backups remain the safety copy.
+
+Native Veyon itself may still require key files under its operating-system directories. Those files are generated/imported runtime material for Veyon, not the Classroom Control Hub source of truth. The Hub's authoritative private key remains the encrypted database value. During the migration window, the legacy host key mount may remain available only as one-time import compatibility.
+
 ## Encryption
 
 Secret values are encrypted with AES-256-GCM. The master key remains outside the
 database at `/etc/classroom-control-hub/master.key` and is mounted read-only into the
 containers. A database backup without the master key cannot decrypt stored secrets.
+
+Veyon private keys, Music Assistant long-lived access tokens, MQTT passwords, and optional endpoint deployment credentials follow this same encrypted-secret model. Secrets are never returned to normal controller views; masked placeholders mean the encrypted value is retained unless explicitly replaced.
 
 ## Schema version 3
 Alpha 4 adds `access_profiles` and `system_preferences`, retires the legacy runtime-config display overlay, and exposes the normalized configuration through supported administration APIs. The web controller is now the preferred configuration surface; direct SQLite edits are unsupported.

@@ -194,3 +194,12 @@ The web-managed updater uses GitHub releases and a native systemd job. It must v
 - `wiki/` — Git-tracked mirror of GitHub Wiki pages
 
 Update documentation in the same change whenever behavior or operational procedures change.
+
+
+## Automation execution contract (alpha.72)
+
+- Automation persistence is SQLite-authoritative even though compatibility helpers still use JSON-like file keys. Stale `data/automations.json` files are not authoritative when `LEGACY_JSON_MIRROR=false`.
+- `Test Now` is an execution test, not a calendar eligibility test. It may use a linked class as a synthetic manual context when that class is not scheduled on the current day. The real scheduler continues to enforce school-cycle/date eligibility.
+- Class-default display targets are a display-domain policy. They apply to primary display actions, display actions embedded in lighting/TV-led automations, and timer overlays. They never become lighting targets.
+- Timer overlay failures and action failures must be returned and persisted with actionable details rather than only the generic `Completed with action errors` status.
+- Alternating automations use the authoritative school-cycle anchor from the configured schedule profile; the controller must not depend on an editor-only anchor field.

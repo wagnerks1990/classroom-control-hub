@@ -19,7 +19,7 @@ test("installer backs up every SQLite database and canonicalizes the configured 
 
 test("startup recovery restores missing built-in capabilities before the application starts",()=>{
   const recovery=read("src/startup-recovery.js"),dockerfile=read("Dockerfile");
-  assert.match(dockerfile,/CMD \["node", "src\/startup-recovery\.js"\]/);
+  assert.match(dockerfile,/CMD \["node",(?:\s*"--require",\s*"\.\/src\/direct-display-compat\.js",)?\s*"src\/startup-recovery\.js"\]/);
   assert.match(recovery,/administrator:[\s\S]*?capabilities:\["\*"\]/);
   assert.match(recovery,/if\(validCapabilityArray\(config\.capabilities\)\)continue/);
   assert.match(recovery,/UPDATE access_profiles SET config_json=\?,updated_at=\?/);

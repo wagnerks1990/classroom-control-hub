@@ -1211,7 +1211,7 @@ async function runSingleAutomationAction(event,{manual=false,skipOverlay=false,s
   }else if(action==="display.timer.class-end"){
     const ts=automationDisplayTargets(event.targets),cls=event._class||activeAutomationClassAt(event,new Date())||classScheduleById(event.classId)||activeClassAt(new Date());
     if(!cls)throw new Error("No class schedule is available for the class-end timer");
-    const now=new Date();if(!classScheduleMatchesDate(cls,now))throw new Error(`${cls.name} is not scheduled today`);
+    const now=new Date();if(!manual&&!classScheduleMatchesDate(cls,now))throw new Error(`${cls.name} is not scheduled today`);
     const chain=timerLinkedClassChain(event,cls,now,{followLinkedClasses:true,followGapMinutes:15});
     const endAt=chain.endAt||resolvedOccurrenceEndDate(event,cls,now),remaining=Math.max(0,Math.floor((endAt-Date.now())/1000));
     if(remaining<=0)throw new Error(`${cls.name} has already ended`);
@@ -1389,15 +1389,16 @@ function timerLinkedClassChain(event,baseClass,now=new Date(),timerOverlay={}){
   };
 }
 
-async function runAutomationTimerOverlay(event){
+async function runAutomationTimerOverlay(event,{manual=false}={}){
   const timerOverlay=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
   if(!timerOverlay?.enabled)return {ok:true,skipped:true,reason:"disabled"};
 
-  const timerTargets=automationDisplayTargets(
-    timerOverlay.useEventTargets!==false
+  const timerTargetSource=(event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length)
+    ? event._classDefaultTargets
+    : (timerOverlay.useEventTargets!==false
       ? event.targets
-      : (Array.isArray(timerOverlay.targets)&&timerOverlay.targets.length?timerOverlay.targets:event.targets)
-  );
+      : (Array.isArray(timerOverlay.targets)&&timerOverlay.targets.length?timerOverlay.targets:event.targets));
+  const timerTargets=automationDisplayTargets(timerTargetSource);
   if(!timerTargets.length)throw new Error("Timer overlay has no display targets");
 
   const now=new Date();
@@ -1417,7 +1418,7 @@ async function runAutomationTimerOverlay(event){
     if(!cls){
       throw new Error("Timer overlay is set to Linked Class End Time, but no timer class is selected, the event is not linked to a class, and no class is currently active.");
     }
-    if(!classScheduleMatchesDate(cls,now)){
+    if(!manual&&!classScheduleMatchesDate(cls,now)){
       throw new Error(`Timer class "${cls.name}" is not scheduled today.`);
     }
 
@@ -1479,6 +1480,14 @@ async function runAutomationTimerOverlay(event){
   return {ok:true,classId:cls?.id||null,className:cls?.name||null,remainingSeconds,endAt:endAt.toISOString(),result};
 }
 
+function automationRunFailures(result={}){
+  const failures=(Array.isArray(result.steps)?result.steps:[])
+    .filter(step=>step?.ok===false)
+    .map(step=>({kind:"action",index:step.index??null,action:step.action||"unknown",error:step.error||"Action failed"}));
+  if(result.timerOverlay?.ok===false)failures.push({kind:"timer-overlay",action:"display.timer",error:result.timerOverlay.error||"Timer overlay failed"});
+  return failures;
+}
+
 async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPriority=false}={}){
   if(morningAnnouncementsRuntime.active&&!bypassAnnouncementPriority){const err=new Error("Morning Announcements have priority; automation is blocked until announcements end");err.code="ANNOUNCEMENTS_PRIORITY_ACTIVE";throw err}
   const additional=Array.isArray(event.actions)?event.actions:[];
@@ -1509,9 +1518,11 @@ async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPrio
       for(const id of automationDisplayTargets(normalized))displayScope.add(id);
     }
     const timer=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
-    if(timer?.enabled!==false){
-      const tt=Array.isArray(timer?.targets)&&timer.targets.length?timer.targets:null;
-      if(tt)for(const id of automationDisplayTargets(tt))displayScope.add(id);
+    if(timer?.enabled){
+      const tt=(event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length)
+        ? event._classDefaultTargets
+        : (timer.useEventTargets!==false?event.targets:(Array.isArray(timer.targets)&&timer.targets.length?timer.targets:event.targets));
+      for(const id of automationDisplayTargets(tt||[]))displayScope.add(id);
     }
     const clearTargets=displayScope.size?[...displayScope]:["all"];
     const clearResult=await runSingleAutomationAction({
@@ -1542,6 +1553,11 @@ async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPrio
     let resolvedTargets;
     if(step.useEventTargets!==false && stepDomain===eventDomain){
       resolvedTargets=event.targets;
+    }else if(stepDomain==="display"&&event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length){
+      // Class-default display targets are a display-domain policy, not a property
+      // of the primary action. This also applies to display steps inside lighting-
+      // led or TV-power automations.
+      resolvedTargets=event._classDefaultTargets;
     }else if(explicitTargets.length){
       resolvedTargets=explicitTargets;
     }else if(stepDomain==="display"){
@@ -1567,7 +1583,7 @@ async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPrio
 
   if(event.timerOverlay?.enabled){
     try{
-      combined.timerOverlay=await runAutomationTimerOverlay(event);
+      combined.timerOverlay=await runAutomationTimerOverlay(event,{manual});
       if(combined.timerOverlay?.result)combined.results.push(combined.timerOverlay.result);
     }catch(err){
       combined.ok=false;
@@ -2217,7 +2233,7 @@ function resolveAutomationForClass(event,classId,date=new Date()){
   const dayOffset=Math.floor(rawMinutes/1440),mins=((rawMinutes%1440)+1440)%1440;
   const scheduledDate=new Date(date);scheduledDate.setDate(scheduledDate.getDate()+dayOffset);
   const occurrenceStart=classStartDate(cls,date),occurrenceEnd=classEndDate(cls,date);
-  return {...event,classId:cls.id,time:`${String(Math.floor(mins/60)).padStart(2,"0")}:${String(mins%60).padStart(2,"0")}`,days:[...(cls.days||[])],scheduleMode:cls.scheduleMode||"schoolcycle",alternatePhase:cls.alternatePhase||"A",anchorDate:cls.anchorDate||schoolCycleAnchor(),dayType:cls.dayType||"Any",cycleDays:[...(cls.cycleDays||periodDefaultCycleDays(cls.period))],period:cls.period||"",includeDates:[...(cls.includeDates||[])],targets:(event.useClassTargets!==false&&automationTargetDomain(event.action)==="display"&&cls.defaultTargets?.length)?[...cls.defaultTargets]:(event.targets||[]),_class:cls,_automationClassIds:automationClassIds(event),_classStartAt:occurrenceStart?.getTime()||null,_classEndAt:occurrenceEnd?.getTime()||null,_classIsTransition:isTransitionClass(cls),_sourceDateMatched:true,_scheduledDateKey:localDateKey(scheduledDate)};
+  return {...event,classId:cls.id,time:`${String(Math.floor(mins/60)).padStart(2,"0")}:${String(mins%60).padStart(2,"0")}`,days:[...(cls.days||[])],scheduleMode:cls.scheduleMode||"schoolcycle",alternatePhase:cls.alternatePhase||"A",anchorDate:cls.anchorDate||schoolCycleAnchor(),dayType:cls.dayType||"Any",cycleDays:[...(cls.cycleDays||periodDefaultCycleDays(cls.period))],period:cls.period||"",includeDates:[...(cls.includeDates||[])],targets:(event.useClassTargets!==false&&automationTargetDomain(event.action)==="display"&&cls.defaultTargets?.length)?[...cls.defaultTargets]:(event.targets||[]),_class:cls,_classDefaultTargets:[...(cls.defaultTargets||[])],_automationClassIds:automationClassIds(event),_classStartAt:occurrenceStart?.getTime()||null,_classEndAt:occurrenceEnd?.getTime()||null,_classIsTransition:isTransitionClass(cls),_sourceDateMatched:true,_scheduledDateKey:localDateKey(scheduledDate)};
 }
 function resolveAutomationOccurrences(event,date=new Date()){
   const ids=automationClassIds(event);
@@ -2234,6 +2250,28 @@ function resolveAutomationFromClass(event,date=new Date()){
     if(resolved)return resolved;
   }
   return resolveAutomationOccurrences(event,date)[0]||event;
+}
+function resolveAutomationForManualTest(event,date=new Date()){
+  const resolved=resolveAutomationFromClass(event,date);
+  if(resolved?._class||!automationClassIds(event).length)return resolved;
+  // Test Now must remain useful on a day when none of the linked classes is
+  // scheduled. Use the first enabled linked class as a deterministic test
+  // context without weakening the real scheduler's date/cycle checks.
+  const cls=automationClassIds(event).map(classScheduleById).find(c=>c&&c.enabled!==false);
+  if(!cls)return resolved;
+  const occurrenceStart=classStartDate(cls,date),occurrenceEnd=classEndDate(cls,date);
+  return {
+    ...event,
+    classId:cls.id,
+    targets:(event.useClassTargets!==false&&automationTargetDomain(event.action)==="display"&&cls.defaultTargets?.length)?[...cls.defaultTargets]:(event.targets||[]),
+    _class:cls,
+    _classDefaultTargets:[...(cls.defaultTargets||[])],
+    _automationClassIds:automationClassIds(event),
+    _classStartAt:occurrenceStart?.getTime()||null,
+    _classEndAt:occurrenceEnd?.getTime()||null,
+    _classIsTransition:isTransitionClass(cls),
+    _manualTestOccurrence:true
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -4791,8 +4829,8 @@ app.post("/api/v1/automations/:id/run",requireControl,async(req,res)=>{
     const id=cleanId(req.params.id);event=classroomAutomations.events.find(x=>x.id===id);
     if(!event)return res.status(404).json({ok:false,error:"Automation not found"});
     if(morningAnnouncementsRuntime.active)return res.status(409).json({ok:false,error:"Morning Announcements have priority. Stop announcements before running an automation manually."});
-    const result=await runClassroomAutomation(resolveAutomationFromClass(event),{manual:true});
-    event.lastRun={at:new Date().toISOString(),ok:result.ok!==false,manual:true,message:result.ok===false?"Completed with action errors":"Completed",resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets}};event.updatedAt=new Date().toISOString();persistAutomations();
+    const result=await runClassroomAutomation(resolveAutomationForManualTest(event),{manual:true});
+    event.lastRun={at:new Date().toISOString(),ok:result.ok!==false,manual:true,message:result.ok===false?"Completed with action errors":"Completed",resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets,failures:automationRunFailures(result)}};event.updatedAt=new Date().toISOString();persistAutomations();
     res.json(result);
   }catch(err){if(event){event.lastRun={at:new Date().toISOString(),ok:false,manual:true,message:err.message};event.updatedAt=new Date().toISOString();persistAutomations()}res.status(500).json({ok:false,error:err.message})}
 });
@@ -6879,7 +6917,7 @@ setInterval(async()=>{
       storedEvent.lastExec=scheduledMinuteKey;changed=true;
       try{
         const runResult=await runClassroomAutomation(event);
-        storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:`${dateKey} ${event.time}`,resolvedClassId:event.classId||null,delayMinutes:deltaMinutes,ok:runResult.ok!==false,message:runResult.ok===false?"Completed with action errors":(deltaMinutes>0?`Completed (${deltaMinutes} min catch-up)`:"Completed"),resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets}};
+        storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:`${dateKey} ${event.time}`,resolvedClassId:event.classId||null,delayMinutes:deltaMinutes,ok:runResult.ok!==false,message:runResult.ok===false?"Completed with action errors":(deltaMinutes>0?`Completed (${deltaMinutes} min catch-up)`:"Completed"),resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets,failures:automationRunFailures(runResult)}};
       }catch(err){
         storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:`${dateKey} ${event.time}`,resolvedClassId:event.classId||null,delayMinutes:deltaMinutes,ok:false,message:err.message};
         audit({kind:"automation.error",automationId:storedEvent.id,name:storedEvent.name,error:err.message});
