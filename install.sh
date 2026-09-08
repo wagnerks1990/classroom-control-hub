@@ -70,7 +70,6 @@ if [[ -f "$TARGET/.env" || -d "$TARGET/data" ]]; then
 fi
 
 mkdir -p "$TARGET"
-# Preserve current runtime data, site hardware mappings, and secrets.
 if [[ "$SOURCE_REAL" != "$TARGET_REAL" ]]; then
   rsync -a --delete \
     --exclude data/ \
@@ -84,14 +83,10 @@ fi
 
 mkdir -p "$TARGET/data/backups" "$TARGET/config/schema"
 touch "$TARGET/.classroom-hub-installation"
-# App files are owned by the non-root application account. The shared data root
-# remains root-owned with group access so the hardened maintenance container can
-# traverse it while the application cannot chmod the shared root back to 0700.
 chown -R 10001:10001 "$TARGET/data"
 chown root:10001 "$TARGET/data" "$TARGET/data/backups"
 chmod 0770 "$TARGET/data"
 chmod 0700 "$TARGET/data/backups"
-# New schema/catalog files are safe to merge into existing site configuration.
 if [[ "$SOURCE_REAL" != "$TARGET_REAL" ]]; then
   if [[ -d "$SOURCE/config/schema" ]]; then rsync -a "$SOURCE/config/schema/" "$TARGET/config/schema/"; fi
   if [[ -f "$SOURCE/config/integrations.catalog.json" ]]; then cp -f "$SOURCE/config/integrations.catalog.json" "$TARGET/config/"; fi
@@ -99,9 +94,7 @@ if [[ "$SOURCE_REAL" != "$TARGET_REAL" ]]; then
   if [[ ! -f "$TARGET/config/hardware.json" && -f "$SOURCE/config/hardware.json" ]]; then cp "$SOURCE/config/hardware.json" "$TARGET/config/"; fi
 fi
 
-if [[ ! -f "$TARGET/.env" ]]; then
-  cp "$TARGET/.env.example" "$TARGET/.env"
-fi
+if [[ ! -f "$TARGET/.env" ]]; then cp "$TARGET/.env.example" "$TARGET/.env"; fi
 random_token(){ openssl rand -hex 32; }
 ensure_secret(){
   local name="$1" value
@@ -125,50 +118,50 @@ set_env_path(){
 set_env_path HOST_CLASSROOM_HUB_DIR "$TARGET"
 set_env_path HOST_SERVICES_DIR "$SERVICES"
 set_env_path HOST_BACKUP_DIR "$BACKUP_ROOT"
-# HTTP is the supported deployment mode for now. Remove stale Caddy/TLS settings
-# from existing installations so Compose cannot accidentally reuse them.
 sed -i '/^HUB_TLS_HOST=/d;/^HUB_HTTPS_PORT=/d;/^HUB_HTTP_PORT=/d' "$TARGET/.env"
 CURRENT_BIND="$(sed -n 's/^HUB_BIND_ADDRESS=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -z "$CURRENT_BIND" || "$CURRENT_BIND" == "127.0.0.1" ]]; then set_env_path HUB_BIND_ADDRESS "0.0.0.0"; fi
 set_env_path TRUST_PROXY_HOPS "0"
+
+# Preserve an explicitly configured database. If alpha.70 left both database
+# filenames behind without DATABASE_FILE, prefer classroom-hub.db because that
+# was the active live-test database; otherwise preserve the only existing file.
+CURRENT_DATABASE="$(sed -n 's/^DATABASE_FILE=//p' "$TARGET/.env" | tail -n 1)"
+if [[ -z "$CURRENT_DATABASE" ]]; then
+  if [[ -f "$TARGET/data/classroom-hub.db" ]]; then
+    CURRENT_DATABASE=/app/data/classroom-hub.db
+  elif [[ -f "$TARGET/data/classroom-control-hub.db" ]]; then
+    CURRENT_DATABASE=/app/data/classroom-control-hub.db
+  else
+    CURRENT_DATABASE=/app/data/classroom-hub.db
+  fi
+  set_env_path DATABASE_FILE "$CURRENT_DATABASE"
+fi
+case "$CURRENT_DATABASE" in /app/data/*.db) ;; *) fail "DATABASE_FILE must identify a .db file beneath /app/data";; esac
+printf 'Using persistent database: %s\n' "$CURRENT_DATABASE"
 chmod 600 "$TARGET/.env"
 
-# Master encryption key stays outside the application/database. Preserve the
-# pre-alpha.70 key location when upgrading instead of silently rotating secrets.
 mkdir -p /etc/classroom-control-hub
 if [[ ! -s /etc/classroom-control-hub/master.key && -s /etc/classroom-hub/master.key ]]; then
   install -m 0640 -o root -g 10001 /etc/classroom-hub/master.key /etc/classroom-control-hub/master.key
 fi
-if [[ ! -s /etc/classroom-control-hub/master.key ]]; then
-  openssl rand -hex 32 > /etc/classroom-control-hub/master.key
-fi
+if [[ ! -s /etc/classroom-control-hub/master.key ]]; then openssl rand -hex 32 > /etc/classroom-control-hub/master.key; fi
 chown root:10001 /etc/classroom-control-hub/master.key
 chmod 640 /etc/classroom-control-hub/master.key
 if ! grep -q '^CLASSROOM_HUB_MASTER_KEY_FILE=' "$TARGET/.env"; then echo 'CLASSROOM_HUB_MASTER_KEY_FILE=/etc/classroom-control-hub/master.key' >> "$TARGET/.env"; fi
-if ! grep -q '^DATABASE_FILE=' "$TARGET/.env"; then echo 'DATABASE_FILE=/app/data/classroom-control-hub.db' >> "$TARGET/.env"; fi
 
-# Docker treats a missing bind-mounted file as a directory. Keep a secure empty
-# migration placeholder until a Veyon key is saved through the controller.
 install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub/veyon
 if [[ -d /etc/classroom-control-hub/veyon/private.pem ]]; then
   rmdir /etc/classroom-control-hub/veyon/private.pem 2>/dev/null || fail "Veyon key path is unexpectedly a non-empty directory"
 fi
-if [[ ! -e /etc/classroom-control-hub/veyon/private.pem ]]; then
-  install -m 0640 -o root -g 10001 /dev/null /etc/classroom-control-hub/veyon/private.pem
-fi
+if [[ ! -e /etc/classroom-control-hub/veyon/private.pem ]]; then install -m 0640 -o root -g 10001 /dev/null /etc/classroom-control-hub/veyon/private.pem; fi
 
-# Install the native host agent. It is intentionally outside Docker so systemd,
-# journal and host filesystem inventory do not require privileged containers or
-# namespace entry. Communication is local-only over /run/classroom-control-hub.
 command -v python3 >/dev/null 2>&1 || { apt-get update && apt-get install -y python3; }
 install -D -m 0644 "$TARGET/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-hub-host-agent.service
-if [[ "$TARGET" != "/opt/classroom-hub" ]]; then
-  sed -i "s#/opt/classroom-hub#$TARGET#g" /etc/systemd/system/classroom-hub-host-agent.service
-fi
+if [[ "$TARGET" != "/opt/classroom-hub" ]]; then sed -i "s#/opt/classroom-hub#$TARGET#g" /etc/systemd/system/classroom-hub-host-agent.service; fi
 python3 -m py_compile "$TARGET/host-agent/server.py"
 install -d -m 0750 /run/classroom-control-hub
-chmod 0755 "$TARGET/host-agent/update-runner.sh"
-chmod 0755 "$TARGET/host-agent/app-update-runner.sh"
+chmod 0755 "$TARGET/host-agent/update-runner.sh" "$TARGET/host-agent/app-update-runner.sh"
 install -D -m 0755 "$TARGET/host-agent/update-runner.sh" /usr/local/libexec/classroom-control-hub/update-runner.sh
 install -D -m 0755 "$TARGET/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
 cat >/etc/systemd/system/classroom-hub-update.service <<UNIT
@@ -231,6 +224,7 @@ AVAILABLE_KB="$(df -Pk "$TARGET" | awk 'NR==2 {print $4}')"
 echo "Validating source for $EXPECTED_VERSION ..."
 docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/server.js
 docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/storage.js
+docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/startup-recovery.js
 docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check maintenance-agent/server.js
 docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node tools/validate-controller.js public/controller/index.html
 python3 -m py_compile host-agent/server.py
@@ -238,8 +232,6 @@ python3 -m py_compile host-agent/server.py
 echo "Building Classroom Control Hub appliance components ..."
 docker compose build classroom-hub maintenance-agent
 
-# Recreate maintenance after the native Host Agent is online so the bind mount
-# sees the live Unix socket even on upgrades from older socket lifecycles.
 echo "Starting maintenance layer ..."
 docker compose up -d --force-recreate maintenance-agent
 for _ in $(seq 1 30); do
