@@ -1,0 +1,257 @@
+from pathlib import Path
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected exactly one match, found {count}")
+    return text.replace(old, new, 1)
+
+
+server_path = Path("src/server.js")
+server = server_path.read_text()
+
+server = replace_once(
+    server,
+    'const now=new Date();if(!classScheduleMatchesDate(cls,now))throw new Error(`${cls.name} is not scheduled today`);',
+    'const now=new Date();if(!manual&&!classScheduleMatchesDate(cls,now))throw new Error(`${cls.name} is not scheduled today`);',
+    "standalone class-end timer manual guard",
+)
+server = replace_once(
+    server,
+    "async function runAutomationTimerOverlay(event){",
+    "async function runAutomationTimerOverlay(event,{manual=false}={}){",
+    "timer overlay signature",
+)
+server = replace_once(
+    server,
+    '    if(!classScheduleMatchesDate(cls,now)){\n      throw new Error(`Timer class "${cls.name}" is not scheduled today.`);\n    }',
+    '    if(!manual&&!classScheduleMatchesDate(cls,now)){\n      throw new Error(`Timer class "${cls.name}" is not scheduled today.`);\n    }',
+    "timer overlay manual date guard",
+)
+server = replace_once(
+    server,
+    "      combined.timerOverlay=await runAutomationTimerOverlay(event);",
+    "      combined.timerOverlay=await runAutomationTimerOverlay(event,{manual});",
+    "timer overlay manual propagation",
+)
+server = replace_once(
+    server,
+    "_class:cls,_automationClassIds:automationClassIds(event),",
+    "_class:cls,_classDefaultTargets:[...(cls.defaultTargets||[])],_automationClassIds:automationClassIds(event),",
+    "resolved class default targets",
+)
+
+old_resolver = '''function resolveAutomationFromClass(event,date=new Date()){
+  // Manual/Test Now execution must follow the selected class occurrence that is
+  // actually active now. Falling straight to the first configured class makes
+  // multi-class automations resolve an already-ended period and yields 00:00.
+  const active=activeAutomationClassAt(event,date);
+  if(active){
+    const resolved=resolveAutomationForClass(event,active.id,date);
+    if(resolved)return resolved;
+  }
+  return resolveAutomationOccurrences(event,date)[0]||event;
+}'''
+new_resolver = old_resolver + '''
+function resolveAutomationForManualTest(event,date=new Date()){
+  const resolved=resolveAutomationFromClass(event,date);
+  if(resolved?._class||!automationClassIds(event).length)return resolved;
+  // Test Now must remain useful on a day when none of the linked classes is
+  // scheduled. Use the first enabled linked class as a deterministic test
+  // context without weakening the real scheduler's date/cycle checks.
+  const cls=automationClassIds(event).map(classScheduleById).find(c=>c&&c.enabled!==false);
+  if(!cls)return resolved;
+  const occurrenceStart=classStartDate(cls,date),occurrenceEnd=classEndDate(cls,date);
+  return {
+    ...event,
+    classId:cls.id,
+    targets:(event.useClassTargets!==false&&automationTargetDomain(event.action)==="display"&&cls.defaultTargets?.length)?[...cls.defaultTargets]:(event.targets||[]),
+    _class:cls,
+    _classDefaultTargets:[...(cls.defaultTargets||[])],
+    _automationClassIds:automationClassIds(event),
+    _classStartAt:occurrenceStart?.getTime()||null,
+    _classEndAt:occurrenceEnd?.getTime()||null,
+    _classIsTransition:isTransitionClass(cls),
+    _manualTestOccurrence:true
+  };
+}'''
+server = replace_once(server, old_resolver, new_resolver, "manual test class resolver")
+
+old_target_resolution = '''    if(step.useEventTargets!==false && stepDomain===eventDomain){
+      resolvedTargets=event.targets;
+    }else if(explicitTargets.length){
+      resolvedTargets=explicitTargets;
+    }else if(stepDomain==="display"){
+      // Safe default for legacy cross-domain actions created before alpha.17.
+      resolvedTargets=["all"];
+    }else if(stepDomain==="lighting"){'''
+new_target_resolution = '''    if(step.useEventTargets!==false && stepDomain===eventDomain){
+      resolvedTargets=event.targets;
+    }else if(stepDomain==="display"&&event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length){
+      // Class-default display targets are a display-domain policy, not a property
+      // of the primary action. This also applies to display steps inside lighting-
+      // led or TV-power automations.
+      resolvedTargets=event._classDefaultTargets;
+    }else if(explicitTargets.length){
+      resolvedTargets=explicitTargets;
+    }else if(stepDomain==="display"){
+      // Safe default for legacy cross-domain actions created before alpha.17.
+      resolvedTargets=["all"];
+    }else if(stepDomain==="lighting"){'''
+server = replace_once(server, old_target_resolution, new_target_resolution, "cross-domain class display targets")
+
+old_timer_targets = '''  const timerTargets=automationDisplayTargets(
+    timerOverlay.useEventTargets!==false
+      ? event.targets
+      : (Array.isArray(timerOverlay.targets)&&timerOverlay.targets.length?timerOverlay.targets:event.targets)
+  );'''
+new_timer_targets = '''  const timerTargetSource=(event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length)
+    ? event._classDefaultTargets
+    : (timerOverlay.useEventTargets!==false
+      ? event.targets
+      : (Array.isArray(timerOverlay.targets)&&timerOverlay.targets.length?timerOverlay.targets:event.targets));
+  const timerTargets=automationDisplayTargets(timerTargetSource);'''
+server = replace_once(server, old_timer_targets, new_timer_targets, "timer class display targets")
+
+old_preclear_timer = '''    const timer=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
+    if(timer?.enabled!==false){
+      const tt=Array.isArray(timer?.targets)&&timer.targets.length?timer.targets:null;
+      if(tt)for(const id of automationDisplayTargets(tt))displayScope.add(id);
+    }'''
+new_preclear_timer = '''    const timer=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
+    if(timer?.enabled){
+      const tt=(event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length)
+        ? event._classDefaultTargets
+        : (timer.useEventTargets!==false?event.targets:(Array.isArray(timer.targets)&&timer.targets.length?timer.targets:event.targets));
+      for(const id of automationDisplayTargets(tt||[]))displayScope.add(id);
+    }'''
+server = replace_once(server, old_preclear_timer, new_preclear_timer, "timer pre-clear display scope")
+
+helper_anchor = "async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPriority=false}={}){"
+helper = '''function automationRunFailures(result={}){
+  const failures=(Array.isArray(result.steps)?result.steps:[])
+    .filter(step=>step?.ok===false)
+    .map(step=>({kind:"action",index:step.index??null,action:step.action||"unknown",error:step.error||"Action failed"}));
+  if(result.timerOverlay?.ok===false)failures.push({kind:"timer-overlay",action:"display.timer",error:result.timerOverlay.error||"Timer overlay failed"});
+  return failures;
+}
+
+'''
+if helper_anchor not in server:
+    raise SystemExit("automation failure helper anchor not found")
+server = server.replace(helper_anchor, helper + helper_anchor, 1)
+
+server = replace_once(
+    server,
+    "const result=await runClassroomAutomation(resolveAutomationFromClass(event),{manual:true});",
+    "const result=await runClassroomAutomation(resolveAutomationForManualTest(event),{manual:true});",
+    "manual endpoint resolved class context",
+)
+server = replace_once(
+    server,
+    "resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets}",
+    "resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets,failures:automationRunFailures(result)}",
+    "manual result failure details",
+)
+server = replace_once(
+    server,
+    "resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets}};",
+    "resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets,failures:automationRunFailures(runResult)}};",
+    "scheduled result failure details",
+)
+server_path.write_text(server)
+
+controller_path = Path("public/controller/app.js")
+controller = controller_path.read_text()
+controller = replace_once(
+    controller,
+    "anchorDate:mode==='alternating'?(document.getElementById('autoAnchorDate')?.value||''):'',",
+    "anchorDate:mode==='alternating'?(S.scheduleProfile?.anchorDate||currentScheduleData.anchorDate||''):'',",
+    "automation authoritative cycle anchor",
+)
+controller = replace_once(
+    controller,
+    'useClassTargets:(!String(autoAction.value||"").startsWith("govee."))&&autoUseClassTargets.checked,',
+    "useClassTargets:autoUseClassTargets.checked,",
+    "class target save persistence",
+)
+controller = replace_once(
+    controller,
+    'autoUseClassTargets.checked=!String(e.action||"").startsWith("govee.")&&e.useClassTargets!==false;',
+    "autoUseClassTargets.checked=e.useClassTargets!==false;",
+    "class target edit persistence",
+)
+old_run = '''async function runAutomation(id){
+  try{await jpost('/api/v1/automations/'+encodeURIComponent(id)+'/run',{});await loadSchedules()}catch(e){alert(e.message)}
+}'''
+new_run = '''function automationRunFailureSummary(result={}){
+  const failures=(result.steps||[]).filter(x=>x?.ok===false).map(x=>`${automationActionLabel(x.action)}: ${x.error||'failed'}`);
+  if(result.timerOverlay?.ok===false)failures.push(`Timer Overlay: ${result.timerOverlay.error||'failed'}`);
+  return failures;
+}
+async function runAutomation(id){
+  const msg=document.getElementById('autoEditorMsg');
+  try{
+    const result=await jpost('/api/v1/automations/'+encodeURIComponent(id)+'/run',{});
+    const failures=automationRunFailureSummary(result);
+    await loadSchedules();
+    if(msg)msg.textContent=failures.length?`Test completed with errors: ${failures.join(' • ')}`:'Test completed successfully.';
+    if(failures.length)console.warn('Automation Test Now failures',failures,result);
+    return result;
+  }catch(e){
+    if(msg)msg.textContent=e.message;
+    alert(e.message);
+    throw e;
+  }
+}'''
+controller = replace_once(controller, old_run, new_run, "generic Test Now failure reporting")
+controller_path.write_text(controller)
+
+Path("test/automation-framework-manual.test.js").write_text(r'''"use strict";
+const test=require("node:test");
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const server=fs.readFileSync("src/server.js","utf8");
+const controller=fs.readFileSync("public/controller/app.js","utf8");
+
+test("manual automation tests do not weaken scheduled class-date enforcement",()=>{
+  assert.match(server,/async function runAutomationTimerOverlay\(event,\{manual=false\}=\{\}\)/);
+  assert.match(server,/if\(!manual&&!classScheduleMatchesDate\(cls,now\)\)/);
+  assert.match(server,/runAutomationTimerOverlay\(event,\{manual\}\)/);
+  assert.match(server,/resolveAutomationForManualTest\(event\)/);
+});
+
+test("class default display targets are framework-level and cross-domain",()=>{
+  assert.match(server,/_classDefaultTargets:\[\.\.\.\(cls\.defaultTargets\|\|\[\]\)\]/);
+  assert.match(server,/stepDomain==="display"&&event\.useClassTargets!==false&&Array\.isArray\(event\._classDefaultTargets\)/);
+  assert.match(server,/const timerTargetSource=\(event\.useClassTargets!==false&&Array\.isArray\(event\._classDefaultTargets\)/);
+  assert.match(controller,/useClassTargets:autoUseClassTargets\.checked/);
+  assert.match(controller,/autoUseClassTargets\.checked=e\.useClassTargets!==false/);
+});
+
+test("alternating automation anchor follows the authoritative school profile",()=>{
+  assert.match(controller,/anchorDate:mode==='alternating'\?\(S\.scheduleProfile\?\.anchorDate\|\|currentScheduleData\.anchorDate\|\|''\):''/);
+  assert.doesNotMatch(controller,/getElementById\('autoAnchorDate'\)/);
+});
+
+test("Test Now and persisted run summaries expose action-level failures",()=>{
+  assert.match(server,/function automationRunFailures\(result=\{\}\)/);
+  assert.match(server,/failures:automationRunFailures\(result\)/);
+  assert.match(server,/failures:automationRunFailures\(runResult\)/);
+  assert.match(controller,/function automationRunFailureSummary\(result=\{\}\)/);
+  assert.match(controller,/Test completed with errors:/);
+});
+''')
+
+docs_path = Path("docs/AI-CONTEXT.md")
+docs = docs_path.read_text()
+if "## Automation execution contract (alpha.72)" not in docs:
+    docs += '''\n\n## Automation execution contract (alpha.72)\n\n- Automation persistence is SQLite-authoritative even though compatibility helpers still use JSON-like file keys. Stale `data/automations.json` files are not authoritative when `LEGACY_JSON_MIRROR=false`.\n- `Test Now` is an execution test, not a calendar eligibility test. It may use a linked class as a synthetic manual context when that class is not scheduled on the current day. The real scheduler continues to enforce school-cycle/date eligibility.\n- Class-default display targets are a display-domain policy. They apply to primary display actions, display actions embedded in lighting/TV-led automations, and timer overlays. They never become lighting targets.\n- Timer overlay failures and action failures must be returned and persisted with actionable details rather than only the generic `Completed with action errors` status.\n- Alternating automations use the authoritative school-cycle anchor from the configured schedule profile; the controller must not depend on an editor-only anchor field.\n'''
+    docs_path.write_text(docs)
+
+wiki_path = Path("wiki/Automation-Display-Media.md")
+wiki = wiki_path.read_text()
+if "## Test Now and linked-class behavior" not in wiki:
+    wiki += '''\n\n## Test Now and linked-class behavior\n\n`Test Now` executes every action in order and reports the exact action or timer overlay that failed. When a linked class is not scheduled today, manual testing still uses that class as a deterministic context so display text/media/targets and timer rendering can be validated. This exception applies only to manual testing; scheduled execution still requires the linked class and school cycle to match the actual date.\n\nWhen **Use class default display targets** is enabled, the class display targets apply to every display-domain action in the automation, including display actions added to a lighting-led event and the timer overlay. Lighting targets remain separate.\n\nAlternating-day automations inherit the configured school-cycle anchor. Phase A/B remains the stored phase identity even when the school profile gives those phases friendly labels such as Green Days or Group B Days.\n'''
+    wiki_path.write_text(wiki)
