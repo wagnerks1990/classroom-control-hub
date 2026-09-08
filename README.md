@@ -135,4 +135,11 @@ This repository is currently alpha software. Production deployments should pin a
 
 ## License
 
-No public license has been selected yet. Until a license is added, normal copyright rules apply.
+Classroom Control Hub is source-available under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). Educational institutions,
+government institutions, charities, public research organizations, and
+individuals acting for noncommercial purposes may use and modify it under
+those terms. Commercial use requires a separate written license from the
+copyright holder; see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+
+Copyright © 2026 [Kyle Wagner](https://github.com/wagnerks1990).

@@ -16,6 +16,9 @@
 
 ## Unreleased
 
+### Licensing
+- Made Classroom Control Hub source-available under PolyForm Noncommercial 1.0.0 with copyright held by Kyle Wagner, required attribution, and separate commercial licensing.
+
 ### Individually enrolled classroom displays
 - Replaced the normal shared display-token workflow with one-time, expiring enrollment links and a unique revocable credential for each display browser.
 - Added controller coverage reporting, enrollment-link creation/cancellation, credential rotation/revocation, and a guarded switch for disabling legacy shared-token access.
