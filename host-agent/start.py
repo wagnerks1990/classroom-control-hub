@@ -3,6 +3,8 @@ import os, threading
 from pathlib import Path
 import server as core
 
+core.VERSION='1.0.0-alpha.71'
+
 # Supported first-class add-ons. Existing containers outside this set can still
 # be adopted for inspect/log/start/stop/restart; creation remains restricted.
 core.MANAGED_CONTAINERS.update({
