@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# GitHub/bootstrap source retrieval remains HTTPS; this does not enable appliance TLS.
+# https://github.com/wagnerks1990/classroom-control-hub
 TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
 SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"
 SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -244,7 +246,6 @@ docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/h
 
 echo "Starting Classroom Control Hub backend (HTTP) ..."
 docker compose up -d --force-recreate --remove-orphans classroom-hub
-# Remove the legacy TLS gateway from installations upgraded from Caddy releases.
 docker rm -f classroom-control-hub-tls >/dev/null 2>&1 || true
 
 echo "Waiting for Classroom Control Hub health ..."
