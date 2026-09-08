@@ -41,7 +41,8 @@ services:
       LEGACY_JSON_MIRROR: ${LEGACY_JSON_MIRROR:-false}
       MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-}
       VEYON_WEBAPI_URL: ${VEYON_WEBAPI_URL:-http://host.docker.internal:11080}
-      VEYON_KEY_NAME: ${VEYON_KEY_NAME:-ClassroomControlHub}
+      VEYON_KEY_NAME: ${VEYON_KEY_NAME:-master}
+      VEYON_KEY_NAME_FILE: /run/secrets/veyon-key-name
       VEYON_PRIVATE_KEY_FILE: ${VEYON_PRIVATE_KEY_FILE:-/run/secrets/veyon-private-key}
       VEYON_SCAN_SUBNET: ${VEYON_SCAN_SUBNET:-}
       VEYON_SCAN_START: ${VEYON_SCAN_START:-1}
@@ -62,6 +63,7 @@ services:
       - ./data:/app/data
       - ./config:/app/config:ro
       - ${VEYON_HOST_PRIVATE_KEY_FILE:-/etc/classroom-control-hub/veyon/private.pem}:/run/secrets/veyon-private-key:ro
+      - ${VEYON_HOST_KEY_NAME_FILE:-/etc/classroom-control-hub/veyon/key-name}:/run/secrets/veyon-key-name:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     depends_on:
       maintenance-agent:
@@ -106,8 +108,14 @@ services:
       - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}:/managed/classroom-hub:ro
       - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}/data:/managed/classroom-hub/data
       - ${HOST_SERVICES_DIR:-/opt/services}:/managed/services:ro
+      # Keep the services root read-only and grant write access only to reviewed
+      # managed integration directories. This preserves the maintenance-agent
+      # filesystem boundary while allowing supported add-ons to persist state.
       - ${HOST_SERVICES_DIR:-/opt/services}/mosquitto:/managed/services/mosquitto
       - ${HOST_SERVICES_DIR:-/opt/services}/nodered:/managed/services/nodered
+      - ${HOST_SERVICES_DIR:-/opt/services}/govee2mqtt:/managed/services/govee2mqtt
+      - ${HOST_SERVICES_DIR:-/opt/services}/music-assistant:/managed/services/music-assistant
+      - ${HOST_SERVICES_DIR:-/opt/services}/veyon-webapi:/managed/services/veyon-webapi
       - ${HOST_BACKUP_DIR:-/opt/classroom-hub-backups}:/host-backups:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     healthcheck:

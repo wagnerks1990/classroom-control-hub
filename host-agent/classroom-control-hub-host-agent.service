@@ -14,6 +14,7 @@ Environment=CLASSROOM_HUB_HOST_AGENT_SOCKET=/run/classroom-control-hub/host-agen
 RuntimeDirectory=classroom-control-hub
 RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes
+ExecStartPre=/bin/bash /opt/classroom-hub/host-agent/sync-veyon-key.sh
 ExecStart=/usr/bin/python3 /opt/classroom-hub/host-agent/start.py
 Restart=always
 RestartSec=2
@@ -21,7 +22,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-ReadWritePaths=/run/classroom-control-hub /opt
+ReadWritePaths=/run/classroom-control-hub /opt /etc/classroom-control-hub
 
 [Install]
 WantedBy=multi-user.target

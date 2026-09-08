@@ -23,16 +23,11 @@ Administrators configure MQTT/Govee, Pluto AV matrix, and Veyon classroom-comput
 
 Environment values remain first-start and migration fallbacks. Once the form is saved, its database record is authoritative. Host/container boundary settings and bootstrap credentials remain outside this screen because they are required before the application can safely open its database and serve the controller.
 
-## Classroom display enrollment
+## Classroom display URLs
 
-Administrators enroll receivers under **Admin → Settings → Classroom Display
-Enrollment** (or **Settings** in classic layout). The panel reports enabled/enrolled coverage, creates an expiring
-one-use link, cancels an unused link, revokes an individual browser credential,
-or rotates every credential for one display. Raw credentials are never listed.
+Current main uses **Admin → Settings → Classroom Display URLs** (or **Settings** in classic layout). Open or copy the stable `/display/<id>` URL for each enabled receiver. The earlier display-enrollment UI remains in static HTML for compatibility, but the current branding/controller integration replaces it with direct display URLs. Do not instruct operators to rotate enrollment links for this direct-display flow.
 
-Keep legacy shared-token access enabled only while migrating existing displays.
-After every enabled display is enrolled, turn it off in the same panel. The
-controller refuses to disable the migration path while coverage is incomplete.
+This model assumes the trusted classroom network and does not make display URLs suitable for public exposure. Administrator APIs remain authenticated. Windows lab-agent enrollment remains separate and credentialed. See [DISPLAY-ACCESS.md](DISPLAY-ACCESS.md) for the current access model; the workspace preserves it rather than implementing a new authentication scheme.
 
 ## Cross-domain scheduled actions (alpha.17)
 

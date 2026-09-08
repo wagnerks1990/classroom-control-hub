@@ -1,6 +1,6 @@
 # Task-focused operator workspace
 
-Status: development UI rebuild based on `1.0.0-alpha.71`, after the native Veyon adoption fix. This is not a release or a deployment confirmation. It replaces the controller's navigation and page hierarchy through a shared enhancement layer, while retaining the existing feature editors and device-control implementation.
+Status: development UI rebuild, reconciled with main commit `9e0cacd` (Veyon, Music Assistant, direct display URLs, and automation fixes). This is not a release or a deployment confirmation. It replaces the controller's navigation and page hierarchy through a shared enhancement layer, while retaining the existing feature editors and device-control implementation.
 
 ## Everyday navigation
 
@@ -13,7 +13,7 @@ Status: development UI rebuild based on `1.0.0-alpha.71`, after the native Veyon
 | Plan | Classes & schedule, Automations | `classes`, `schedules` |
 | Admin | Settings, Diagnostics, System & recovery | `settings`, `diagnostics`, `system` |
 
-All thirteen existing pages remain available according to the signed-in account's permissions. A workspace shows only its relevant secondary navigation. During a browser session, returning to a workspace reopens the last tool used in that workspace. The remembered tool is not stored across logins or reloads.
+All thirteen existing pages remain available according to the signed-in account's permissions. A workspace shows only its relevant secondary navigation. During a browser session, returning to a workspace reopens the last tool used in that workspace. The remembered tool is held only in page memory, not persisted in browser storage or across reloads.
 
 **Find a tool** searches a small, static navigation catalog. Press Ctrl+K or Command+K; type a name such as timer, Veyon, lights, PowerPoint, or backups. Use arrow keys and Enter, or choose a result with the pointer. Escape closes search and restores focus. Search indexes tool names and synonyms, not student data, page content, passwords, configuration fields, or logs. Search results navigate; they never execute a device command.
 
@@ -47,7 +47,7 @@ At narrow widths, the primary workspaces collapse behind a **Workspaces** button
 
 `public/shared/branding.js` loads `workspace.js` only on an explicit controller/setup path allowlist. `workspace.js` waits for its stylesheet to load before enhancing the DOM. Failed enhancement assets leave the original interface available. `workspace.css` is scoped to `html.hub-ui`.
 
-The workspace delegates to the original `showPage` and `showWorkspace` functions. It does not wrap or replace the server APIs, enrollment model, scheduler, media delivery, or authentication. It observes selected page/auth attributes instead of adding a new status polling loop. Native Veyon adoption, stable receiver IDs, priority announcements, timer continuation, background-music recovery, and database/update safety are outside this change and must remain intact.
+The workspace delegates to the original `showPage` and `showWorkspace` functions. It does not wrap or replace the server APIs, display-access model, scheduler, media delivery, or authentication. It observes selected page/auth attributes instead of adding a new status polling loop. Native Veyon adoption, stable receiver IDs, priority announcements, timer continuation, background-music recovery, and database/update safety are outside this change and must remain intact.
 
 Visibility uses the signed-in user, original page authorization attributes, and original navigation hidden state. Visibility is not a security boundary: existing server authorization remains mandatory. New navigation is built with text nodes, not injected HTML or evaluation. No credentials or live classroom data are introduced into public defaults or fixtures. Kyle Wagner attribution remains in the original pages.
 
@@ -76,7 +76,7 @@ python tools/test-workspace-ui.py
 
 During development, Chromium URL navigation was restricted in the execution environment. The browser behavior checks passed through an offline `set_content` adapter using those fixtures and the actual workspace JS/CSS. The conventional HTTP fixture runner and full application integration are separate verification steps, not implied by that result. Local Node checks passed, with the canonical real-markup check skipped where the full checkout was unavailable; that check runs under normal repository tests.
 
-Before merging/releasing, inspect CI and exercise the actual application with administrator, teacher, and read-only accounts. Test screen selection, content send/clear, presentations, Veyon and Windows consoles, lighting, AV routing, priority announcements and music recovery, class timers, configuration saves, and enrollment. Review large rosters, no devices, offline integrations, custom branding, keyboard-only use, and 200% zoom. Retain the existing install/update backup procedures. Do not claim live-device verification or every-editor usability review based on fixture tests.
+Before merging/releasing, inspect CI and exercise the actual application with administrator, teacher, and read-only accounts. Test screen selection, content send/clear, presentations, Veyon and Windows consoles, lighting, AV routing, priority announcements and music recovery, class timers, configuration saves, direct display URLs, and Windows-agent enrollment. Review large rosters, no devices, offline integrations, custom branding, keyboard-only use, and 200% zoom. Retain the existing install/update backup procedures. Do not claim live-device verification or every-editor usability review based on fixture tests.
 
 ## Follow-on work and AI contributors
 

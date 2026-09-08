@@ -1500,11 +1500,11 @@ function editorEvent(){
     days:daysSelected,
     scheduleMode:mode,
     alternatePhase:mode==='alternating'?(document.getElementById('autoAlternatePhase')?.value||'A'):'A',
-    anchorDate:mode==='alternating'?(document.getElementById('autoAnchorDate')?.value||''):'',
+    anchorDate:mode==='alternating'?(S.scheduleProfile?.anchorDate||currentScheduleData.anchorDate||''):'',
     includeDates:mode==='dates'?parseDateLines(document.getElementById('autoIncludeDates')?.value||''):[],
     dayType:mode==='schoolcycle'?(document.getElementById('autoDayType')?.value||'Any'):'Any',
     cycleDays:mode==='schoolcycle'?[...document.querySelectorAll('[data-autocycle]:checked')].map(x=>x.dataset.autocycle):[],
-    classIds:selectedAutomationClassIds(),classId:selectedAutomationClassIds()[0]||'',classTimeReference:autoClassRef.value,classTimeOffsetMinutes:Number(autoClassOffset.value||0),useClassTargets:(!String(autoAction.value||"").startsWith("govee."))&&autoUseClassTargets.checked,
+    classIds:selectedAutomationClassIds(),classId:selectedAutomationClassIds()[0]||'',classTimeReference:autoClassRef.value,classTimeOffsetMinutes:Number(autoClassOffset.value||0),useClassTargets:autoUseClassTargets.checked,
     action:autoAction.value,
     targets:[...autoTargets.querySelectorAll('[data-autotarget]:checked')].map(x=>x.dataset.autotarget),
     payload:readAutoPayload(),actions:readAutomationSteps(),timerOverlay:readTimerOverlay()
@@ -1525,8 +1525,25 @@ async function deleteAutomation(id,name){
   if(!confirm(`Delete scheduled event "${name}"?`))return;
   await api('/api/v1/automations/'+encodeURIComponent(id),{method:'DELETE'});loadSchedules();newAutomation();
 }
+function automationRunFailureSummary(result={}){
+  const failures=(result.steps||[]).filter(x=>x?.ok===false).map(x=>`${automationActionLabel(x.action)}: ${x.error||'failed'}`);
+  if(result.timerOverlay?.ok===false)failures.push(`Timer Overlay: ${result.timerOverlay.error||'failed'}`);
+  return failures;
+}
 async function runAutomation(id){
-  try{await jpost('/api/v1/automations/'+encodeURIComponent(id)+'/run',{});await loadSchedules()}catch(e){alert(e.message)}
+  const msg=document.getElementById('autoEditorMsg');
+  try{
+    const result=await jpost('/api/v1/automations/'+encodeURIComponent(id)+'/run',{});
+    const failures=automationRunFailureSummary(result);
+    await loadSchedules();
+    if(msg)msg.textContent=failures.length?`Test completed with errors: ${failures.join(' • ')}`:'Test completed successfully.';
+    if(failures.length)console.warn('Automation Test Now failures',failures,result);
+    return result;
+  }catch(e){
+    if(msg)msg.textContent=e.message;
+    alert(e.message);
+    throw e;
+  }
 }
 async function testAutomationEditor(){
   try{
@@ -1548,7 +1565,7 @@ async function duplicateAutomation(id){
 
 function editAutomation(id){
   const e=S.automations.find(x=>x.id===id);if(!e)return;
-  autoId.value=e.id;autoName.value=e.name||'';autoTime.value=e.time;autoAction.value=e.action;autoEnabled.value=e.enabled?'1':'0';populateAutomationClassSelect(Array.isArray(e.classIds)&&e.classIds.length?e.classIds:[e.classId].filter(Boolean));autoClassRef.value=e.classTimeReference||'start';autoClassOffset.value=String(e.classTimeOffsetMinutes||0);autoUseClassTargets.checked=!String(e.action||"").startsWith("govee.")&&e.useClassTargets!==false;
+  autoId.value=e.id;autoName.value=e.name||'';autoTime.value=e.time;autoAction.value=e.action;autoEnabled.value=e.enabled?'1':'0';populateAutomationClassSelect(Array.isArray(e.classIds)&&e.classIds.length?e.classIds:[e.classId].filter(Boolean));autoClassRef.value=e.classTimeReference||'start';autoClassOffset.value=String(e.classTimeOffsetMinutes||0);autoUseClassTargets.checked=e.useClassTargets!==false;
   currentEditTargets=[...(e.targets||[])];
   currentScheduleData={days:e.days||[1,2,3,4,5],scheduleMode:e.scheduleMode||'weekly',alternatePhase:e.alternatePhase||'A',anchorDate:e.anchorDate||'',includeDates:e.includeDates||[],dayType:e.dayType||'Any',cycleDays:e.cycleDays||[]};
   autoScheduleMode.value=currentScheduleData.scheduleMode;renderScheduleModeFields(currentScheduleData);renderAutomationFields(e.payload||{});renderAutomationClassBinding();renderTimerOverlayFields(e.timerOverlay||null);autoSteps=Array.isArray(e.actions)?JSON.parse(JSON.stringify(e.actions)):[];renderAutomationSteps();

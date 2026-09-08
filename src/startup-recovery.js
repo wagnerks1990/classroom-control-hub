@@ -39,10 +39,100 @@ function reconcileBuiltInProfiles(db){
   }
 }
 
+function veyonInventory(value){
+  if(!value||typeof value!=="object")return {version:2,computers:{}};
+  const computers=value.computers&&typeof value.computers==="object"?value.computers:{};
+  return {version:Math.max(2,Number(value.version)||2),computers};
+}
+
+function migrateLegacyVeyonInventory(db,dbFile){
+  const legacy=path.join(path.dirname(dbFile),"veyon-computers.json");
+  if(!fs.existsSync(legacy))return;
+  const hasObjectStore=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='object_store'").get();
+  if(!hasObjectStore)return;
+  let legacyValue;
+  try{legacyValue=veyonInventory(JSON.parse(fs.readFileSync(legacy,"utf8")))}catch(error){console.warn(`Legacy Veyon inventory was not migrated: ${error.message}`);return}
+  const existing=db.prepare("SELECT value_json FROM object_store WHERE namespace='veyon-computers'").get();
+  let databaseValue={version:2,computers:{}};
+  if(existing?.value_json){try{databaseValue=veyonInventory(JSON.parse(existing.value_json))}catch{}}
+  const merged={version:2,computers:{...legacyValue.computers,...databaseValue.computers}};
+  const now=new Date().toISOString();
+  db.prepare(`INSERT INTO object_store(namespace,value_json,source_file,created_at,updated_at)
+    VALUES('veyon-computers',?,?,?,?)
+    ON CONFLICT(namespace) DO UPDATE SET value_json=excluded.value_json,source_file=NULL,updated_at=excluded.updated_at`)
+    .run(JSON.stringify(merged),null,now,now);
+  const verified=veyonInventory(JSON.parse(db.prepare("SELECT value_json FROM object_store WHERE namespace='veyon-computers'").get().value_json));
+  const expectedCount=Object.keys(merged.computers).length,actualCount=Object.keys(verified.computers).length;
+  if(actualCount!==expectedCount)throw Error(`Veyon inventory migration verification failed (${actualCount}/${expectedCount})`);
+  if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='migration_history'").get()){
+    const already=db.prepare("SELECT 1 FROM migration_history WHERE source=? AND target=? LIMIT 1").get(legacy,"sqlite:object_store/veyon-computers");
+    if(!already)db.prepare("INSERT INTO migration_history(source,target,records,details_json,migrated_at) VALUES(?,?,?,?,?)")
+      .run(legacy,"sqlite:object_store/veyon-computers",actualCount,JSON.stringify({type:"json",authoritative:"sqlite",legacyFileRemoved:true}),now);
+  }
+  fs.rmSync(legacy,{force:true});
+  console.warn(`Startup recovery migrated ${actualCount} Veyon computers into SQLite and retired the legacy JSON file.`);
+}
+
+function adoptSynchronizedVeyonKeyName(){
+  const marker=String(process.env.VEYON_KEY_NAME_FILE||"").trim();
+  if(!marker||!fs.existsSync(marker))return;
+  let keyName="";
+  try{keyName=fs.readFileSync(marker,"utf8").trim()}catch(error){console.warn(`Synchronized Veyon key-name marker could not be read: ${error.message}`);return}
+  if(!/^[A-Za-z][A-Za-z0-9._-]*$/.test(keyName)){
+    console.warn("Synchronized Veyon key-name marker was ignored because it is invalid.");
+    return;
+  }
+  const previous=String(process.env.VEYON_KEY_NAME||"").trim();
+  process.env.VEYON_KEY_NAME=keyName;
+  if(previous&&previous!==keyName)console.warn(`Startup recovery adopted synchronized Veyon key '${keyName}' instead of stale configured key '${previous}'.`);
+}
+
+function reconcileVeyonSecretMetadata(db){
+  const keyName=String(process.env.VEYON_KEY_NAME||"").trim();
+  if(!keyName)return;
+  const hasSecretStore=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='secret_store'").get();
+  if(!hasSecretStore)return;
+  const row=db.prepare("SELECT metadata_json FROM secret_store WHERE name='veyon.private-key'").get();
+  if(!row)return;
+  let metadata={};try{metadata=JSON.parse(row.metadata_json||"{}")||{}}catch{}
+  if(metadata.keyName===keyName)return;
+  metadata={...metadata,type:metadata.type||"private-key",integration:"veyon",keyName};
+  db.prepare("UPDATE secret_store SET metadata_json=?,updated_at=? WHERE name='veyon.private-key'")
+    .run(JSON.stringify(metadata),new Date().toISOString());
+  console.warn(`Startup recovery reconciled Veyon private-key metadata to '${keyName}'.`);
+}
+
+function enableDirectDisplayAccess(){
+  const {ClassroomHubStorage}=require("./storage");
+  const previous=ClassroomHubStorage.prototype.authenticateDisplay;
+  if(previous?.__directDisplayAccess)return;
+  function authenticateConfiguredDisplay(displayId){
+    const id=String(displayId||"").trim();
+    if(!id)return null;
+    const row=this.db.prepare("SELECT id,enabled FROM display_devices WHERE id=? LIMIT 1").get(id);
+    if(!row||Number(row.enabled)===0)return null;
+    return {id:`direct:${id}`,displayId:id,label:"Configured display URL",direct:true};
+  }
+  authenticateConfiguredDisplay.__directDisplayAccess=true;
+  ClassroomHubStorage.prototype.authenticateDisplay=authenticateConfiguredDisplay;
+  console.warn("Direct display URL access enabled: configured displays authenticate by stable display ID; enrollment credentials are no longer required.");
+}
+
+adoptSynchronizedVeyonKeyName();
 const dbFile=canonicalDatabaseFile();
 process.env.DATABASE_FILE=dbFile;
 if(fs.existsSync(dbFile)){
   const db=new DatabaseSync(dbFile);
-  try{reconcileBuiltInProfiles(db)}finally{db.close()}
+  try{
+    reconcileBuiltInProfiles(db);
+    migrateLegacyVeyonInventory(db,dbFile);
+    reconcileVeyonSecretMetadata(db);
+  }finally{db.close()}
 }
+
+enableDirectDisplayAccess();
+// Register scoped maintenance-agent route mirrors before server.js creates the
+// Express routes. Database writes and secret encryption still execute inside
+// server.js handlers; the bridge only supplies maintenance-token authorization.
+require("./maintenance-route-bridge");
 require("./server");

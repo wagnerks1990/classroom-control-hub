@@ -67,10 +67,16 @@ test('branding loads workspace only on the operator allowlist', () => {
     const document = {
       documentElement: { lang: 'en', dataset: {} },
       querySelector: () => null,
-      createElement: () => ({}),
+      querySelectorAll: () => [],
+      getElementById: () => null,
+      createElement: () => ({ dataset: {} }),
       head: { append: node => loaded.push(node.src) }
     };
     vm.runInNewContext(source, { document, location: { pathname }, window: {}, fetch: () => new Promise(() => {}) });
-    assert.deepEqual(loaded, ui.supports(pathname) ? ['/shared/workspace.js'] : [], pathname);
+    assert.deepEqual(loaded.filter(src => src === '/shared/workspace.js'), ui.supports(pathname) ? ['/shared/workspace.js'] : [], pathname);
+    if (pathname === '/controller/') {
+      assert.ok(loaded.includes('/shared/integration-setup.js'));
+      assert.ok(loaded.includes('/shared/automation-hotfix.js'));
+    }
   }
 });
