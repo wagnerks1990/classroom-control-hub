@@ -38,13 +38,13 @@
   }
   function veyonFields(cfg,scope){
     return `<div class="integration-guided-fields" style="grid-column:1/-1">
-      <div class="muted" style="margin-bottom:8px">The native Veyon services remain host-managed, but Classroom Control Hub owns their application configuration. Veyon control authentication uses the Veyon key pair. Windows/domain and Linux/SSH credentials below are optional deployment credentials and are not used for normal Veyon control authentication.</div>
+      <div class="muted" style="margin-bottom:8px">The native Veyon services remain host-managed, but Classroom Control Hub owns their application configuration. This appliance is standardized on Veyon key-file authentication with the matching <b>master</b> key pair. Domain credentials and Linux SSH credentials below are optional endpoint-deployment credentials, not normal Veyon control authentication.</div>
       <h4 style="margin:10px 0 4px">Veyon WebAPI & Authentication</h4>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
         ${field({key:"url",label:"WebAPI URL",value:cfg.url||"http://host.docker.internal:11080",placeholder:"http://host.docker.internal:11080",scope})}
-        ${field({key:"keyName",label:"Authentication key name",value:cfg.keyName||"LAB",placeholder:"LAB",help:"Must match the public authentication key deployed to Veyon clients.",scope})}
-        ${field({key:"privateKey",label:"Veyon private key (PEM)",value:cfg.privateKey||"",placeholder:"Stored encrypted — paste only to replace/import",help:"Authoritative copy is encrypted in SQLite. Host key files are migration/runtime material only.",secret:true,textarea:true,scope})}
-        ${field({key:"publicKey",label:"Veyon public key (PEM)",value:cfg.publicKey||"",placeholder:"Public key used for endpoint deployment",help:"Stored in the database and safe to distribute to managed Veyon endpoints.",textarea:true,scope})}
+        ${field({key:"keyName",label:"Authentication key name",value:cfg.keyName||"master",placeholder:"master",help:"Must match the public authentication key deployed to Veyon clients. The appliance default is master.",scope})}
+        ${field({key:"privateKey",label:"Veyon private key (PEM)",value:cfg.privateKey||"",placeholder:"Imported automatically from native master key when available",help:"Authoritative copy is encrypted in SQLite. Paste only to explicitly replace/import the key.",secret:true,textarea:true,scope})}
+        ${field({key:"publicKey",label:"Veyon public key (PEM)",value:cfg.publicKey||"",placeholder:"Public master key used for endpoint deployment",help:"Stored as non-secret integration metadata and safe to distribute to managed Veyon endpoints.",textarea:true,scope})}
       </div>
       <h4 style="margin:14px 0 4px">Computer Discovery & Connection Pool</h4>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
