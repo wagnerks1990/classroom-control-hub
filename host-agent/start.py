@@ -6,7 +6,8 @@ import server as core
 core.VERSION='1.0.0-alpha.71'
 
 # Supported first-class add-ons. Existing containers outside this set can still
-# be adopted for inspect/log/start/stop/restart; creation remains restricted.
+# be adopted for inspect/log/start/stop/restart; creation and removal remain
+# restricted to reviewed managed containers and images.
 core.MANAGED_CONTAINERS.update({
     'mosquitto','govee2mqtt','music-assistant-server','veyon-webapi'
 })
@@ -35,8 +36,6 @@ def managed_docker(args,cwd=''):
         if verb in ('start','stop','restart','kill','inspect') and len(args)>=2:
             _adopt_existing(args[-1])
         elif verb=='logs' and len(args)>=2:
-            _adopt_existing(args[-1])
-        elif verb=='rm' and len(args)>=2:
             _adopt_existing(args[-1])
     return _original_managed_docker(args,cwd)
 
