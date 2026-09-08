@@ -34,6 +34,7 @@ test("native Veyon WebAPI is host-managed but remains fully configurable",()=>{
   const ext=read("maintenance-agent/extensions.js");
   const hostServer=read("host-agent/server.py");
   const bridge=read("src/maintenance-route-bridge.js");
+  const ui=read("public/shared/integration-setup.js");
   assert.match(hostServer,/"veyon\.service"/);
   assert.match(hostServer,/"veyon-webapi\.service"/);
   assert.match(ext,/NATIVE_VEYON_URL="http:\/\/host\.docker\.internal:11080"/);
@@ -43,8 +44,8 @@ test("native Veyon WebAPI is host-managed but remains fully configurable",()=>{
   assert.match(ext,/externalOnly:false/);
   assert.match(ext,/saveVeyonSettings/);
   assert.match(ext,/internal\/maintenance\/integration-connections/);
-  assert.match(ext,/windowsCredentialPassword/);
-  assert.match(ext,/linuxSshCredentialPrivateKey/);
+  assert.match(ui,/windowsCredentialPassword/);
+  assert.match(ui,/linuxSshCredentialPrivateKey/);
   assert.match(bridge,/internal\/maintenance\/veyon\/computers/);
   assert.match(bridge,/internal\/maintenance\/integration-connections/);
 });
@@ -66,6 +67,7 @@ test("Music Assistant setup requires a validated long-lived token and exposes gu
   const bridge=read("src/maintenance-route-bridge.js");
   const ui=read("public/shared/integration-setup.js");
   const branding=read("public/shared/branding.js");
+  assert.doesNotThrow(()=>new Function(ui),"guided integration setup JavaScript must parse");
   assert.match(ext,/Music Assistant access token is required/);
   assert.match(ext,/API authentication failed/);
   assert.match(ext,/setupRequired:true/);
