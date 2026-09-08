@@ -20,6 +20,20 @@ jobs:
           ref: fix/veyon-db-music-setup
           fetch-depth: 0
 
+      - name: Scope migration selector to manual result record
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/apply_automation_framework_fixes.py')
+          s=p.read_text()
+          old='''server = replace_once(\n    server,\n    "resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets}",\n    "resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets,failures:automationRunFailures(result)}",\n    "manual result failure details",\n)'''
+          new='''server = replace_once(\n    server,\n    'event.lastRun={at:new Date().toISOString(),ok:result.ok!==false,manual:true,message:result.ok===false?"Completed with action errors":"Completed",resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets}};',\n    'event.lastRun={at:new Date().toISOString(),ok:result.ok!==false,manual:true,message:result.ok===false?"Completed with action errors":"Completed",resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets,failures:automationRunFailures(result)}};',\n    "manual result failure details",\n)'''
+          if old not in s:
+              raise SystemExit('manual migration selector block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+
       - name: Apply framework fixes
         run: python3 .github/scripts/apply_automation_framework_fixes.py
 
