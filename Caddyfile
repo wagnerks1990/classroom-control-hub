@@ -1,9 +1,0 @@
-http://:8080 {
-  redir https://{$HUB_TLS_HOST:localhost}:{$HUB_HTTPS_PORT:443}{uri} permanent
-}
-
-https://{$HUB_TLS_HOST:localhost}:8443 {
-  tls internal
-  encode zstd gzip
-  reverse_proxy classroom-hub:3000
-}

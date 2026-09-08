@@ -20,6 +20,14 @@ Ubuntu host
 
 The main application must not receive broad host privileges. Host-level operations are delegated through the maintenance service to the native host agent over the Unix socket.
 
+### Current network exposure
+
+The appliance is intentionally **HTTP-only for the current development/live-test phase**. The main application publishes port `3000` directly, with `HUB_BIND_ADDRESS=0.0.0.0` by default so trusted classroom/admin LAN clients can reach it. Caddy and the built-in HTTPS/TLS gateway were removed after alpha.70 deployment failures and will be redesigned later.
+
+Do not assume an HTTPS reverse proxy exists. Do not add Caddy/TLS dependencies, certificate checks, `HUB_TLS_HOST`, `HUB_HTTP_PORT`, or `HUB_HTTPS_PORT` back into deployment/update health gates unless HTTPS is being deliberately reintroduced as a separate reviewed feature. With no reverse proxy, `TRUST_PROXY_HOPS` must default to `0`.
+
+HTTP is a temporary trusted-network deployment mode, not a statement that transport encryption is unnecessary. Avoid exposing the appliance directly to untrusted networks or the public Internet. Windows lab-agent HTTP enrollment keeps an explicit `-AllowHttp` acknowledgement until TLS returns.
+
 ## Persistent state
 
 Treat these as runtime state, not replaceable source:
@@ -33,9 +41,13 @@ Treat these as runtime state, not replaceable source:
 
 A Git update must preserve them.
 
+The shared `data/` root is intentionally root-owned with group `10001` access so both the non-root application and hardened maintenance container can traverse it. Application-owned files remain UID/GID `10001:10001`; `data/backups` is maintained by the maintenance layer. Do not reintroduce code that chmods the entire shared data root to `0700`.
+
+The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades from older installations must preserve `/etc/classroom-hub/master.key` by migrating it rather than silently generating a replacement.
+
 ## Current known-good baseline
 
-`1.0.0-alpha.70` is the current live-test candidate baseline.
+`1.0.0-alpha.70` is the current live-test candidate baseline, but its deployment path exposed upgrade defects. The next release must preserve the recovery invariants captured here: Host Agent version convergence, non-empty maintenance token, writable database/shared data layout, scheduler validation, and HTTP-only deployment without a TLS gateway dependency.
 
 Verified behaviors:
 
@@ -55,6 +67,8 @@ If `VERSION` is newer, use the newer release as the version source while retaini
 School calendar state affects scheduled operations. No-school days suppress scheduled classroom operations. Remote days advance the cycle but suppress scheduled classroom operations while manual controls remain available. Delay and half-day rules affect schedule resolution.
 
 Morning Announcements override conflicting display automation. On release, do not restore stale snapshots. Re-evaluate the current schedule and select the newest currently applicable automation for each display target.
+
+Scheduler readiness validates stored class and automation data. Invalid class times such as an end time before the start time must be rejected or repaired before migration is committed; health diagnostics should identify invalid record IDs rather than returning only `scheduler.ok=false`.
 
 ## Integration model
 
@@ -98,7 +112,7 @@ shared `DISPLAY_TOKEN` exists only as a controlled migration fallback.
 
 `main` is the source branch used by the current production Git workflow. Before changing source, inspect the latest branch head and relevant files. Do not overwrite runtime state when updating source.
 
-Normal production update:
+Normal HTTP-only update validation:
 
 ```bash
 cd /opt/classroom-hub
@@ -106,17 +120,19 @@ git fetch origin
 git pull --ff-only origin main
 cat VERSION
 docker compose build --no-cache
-docker compose up -d
+docker compose up -d --remove-orphans
 docker compose ps
-curl -fsS http://localhost:3000/health
+curl -fsS http://127.0.0.1:3000/health
 ```
 
 The web-managed updater uses GitHub releases and a native systemd job. Update
 policy and history are database-backed; a private-repository read token is kept
 in the encrypted secret store. The host job accepts semantic-version tags,
-creates/uses a matching operational backup, verifies the expected version after
-Compose recreation, and automatically restores the prior commit and backup on
-failure. Do not reintroduce arbitrary source-ZIP deployment as the normal path.
+creates/uses a matching operational backup, verifies backend, maintenance, Host
+Agent, database/scheduler health, and version convergence after Compose recreation,
+and automatically restores the prior commit and backup on failure. TLS/Caddy is
+not currently a release-health dependency. Do not reintroduce arbitrary source-ZIP
+deployment as the normal path.
 
 ## Documentation map
 

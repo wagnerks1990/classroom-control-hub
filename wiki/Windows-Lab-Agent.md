@@ -19,13 +19,22 @@ As of alpha.70, the pending enrollment code is DPAPI-protected too, configuratio
 writes are atomic and restricted to System/Administrators, and the agent reports
 its supported capabilities during connection.
 
-Use HTTPS/WSS in production. Plain HTTP requires the explicit `-AllowHttp`
-installer option and is intended only for trusted setup networks.
+## Current HTTP-only transport
 
-The default appliance certificate is issued by Caddy's internal CA. Install its
-root certificate in **Local Computer → Trusted Root Certification Authorities**
-before enrollment. The installer will not bypass an untrusted certificate. A
-publicly trusted Hub certificate does not require this step.
+The Classroom Control Hub appliance currently exposes HTTP directly on port
+`3000`; the previous Caddy/TLS gateway has been removed while HTTPS is redesigned.
+Plain HTTP still requires the explicit `-AllowHttp` installer option so an
+administrator consciously acknowledges the unencrypted transport.
+
+Use this only on a trusted, isolated classroom/admin network. Example:
+
+```powershell
+.\Install-Agent.ps1 -HubUrl http://172.16.127.5:3000 -AllowHttp
+```
+
+There is no Caddy root CA to deploy in the current architecture. When HTTPS/WSS
+returns, update this page with the new certificate trust/distribution process and
+remove the need for `-AllowHttp` on normal deployments.
 
 Repository scripts are not Authenticode signed by default. A school can sign
 the three scripts with its code-signing certificate and provide that publisher

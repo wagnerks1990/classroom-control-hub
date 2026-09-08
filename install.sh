@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# GitHub/bootstrap source retrieval remains HTTPS; this does not enable appliance TLS.
+# https://github.com/wagnerks1990/classroom-control-hub
 TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
 SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"
 SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +80,13 @@ fi
 
 mkdir -p "$TARGET/data/backups" "$TARGET/config/schema"
 touch "$TARGET/.classroom-hub-installation"
+# App files are owned by the non-root application account. The shared data root
+# remains root-owned with group access so the hardened maintenance container can
+# traverse it while the application cannot chmod the shared root back to 0700.
 chown -R 10001:10001 "$TARGET/data"
+chown root:10001 "$TARGET/data" "$TARGET/data/backups"
+chmod 0770 "$TARGET/data"
+chmod 0700 "$TARGET/data/backups"
 # New schema/catalog files are safe to merge into existing site configuration.
 if [[ "$SOURCE_REAL" != "$TARGET_REAL" ]]; then
   if [[ -d "$SOURCE/config/schema" ]]; then rsync -a "$SOURCE/config/schema/" "$TARGET/config/schema/"; fi
@@ -106,16 +114,6 @@ ensure_secret LAB_AGENT_TOKEN
 ensure_secret MAINTENANCE_TOKEN
 APPLIANCE_ADDRESS="$(hostname -I | awk '{print $1}')"
 [[ -n "$APPLIANCE_ADDRESS" ]] || APPLIANCE_ADDRESS="$(hostname -f)"
-CONFIGURED_TLS_HOST="$(sed -n 's/^HUB_TLS_HOST=//p' "$TARGET/.env" | tail -n 1)"
-if [[ -z "$CONFIGURED_TLS_HOST" || "$CONFIGURED_TLS_HOST" == "localhost" ]]; then
-  CONFIGURED_TLS_HOST="$APPLIANCE_ADDRESS"
-  if grep -q '^HUB_TLS_HOST=' "$TARGET/.env"; then
-    sed -i "s/^HUB_TLS_HOST=.*/HUB_TLS_HOST=${CONFIGURED_TLS_HOST}/" "$TARGET/.env"
-  else
-    echo "HUB_TLS_HOST=$CONFIGURED_TLS_HOST" >> "$TARGET/.env"
-  fi
-fi
-[[ "$CONFIGURED_TLS_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || fail "HUB_TLS_HOST must be a DNS hostname or IPv4 address"
 set_env_path(){
   local name="$1" value="$2"
   if grep -q "^${name}=" "$TARGET/.env"; then sed -i "s#^${name}=.*#${name}=${value}#" "$TARGET/.env"; else echo "${name}=${value}" >> "$TARGET/.env"; fi
@@ -123,11 +121,20 @@ set_env_path(){
 set_env_path HOST_CLASSROOM_HUB_DIR "$TARGET"
 set_env_path HOST_SERVICES_DIR "$SERVICES"
 set_env_path HOST_BACKUP_DIR "$BACKUP_ROOT"
+# HTTP is the supported deployment mode for now. Remove stale Caddy/TLS settings
+# from existing installations so Compose cannot accidentally reuse them.
+sed -i '/^HUB_TLS_HOST=/d;/^HUB_HTTPS_PORT=/d;/^HUB_HTTP_PORT=/d' "$TARGET/.env"
+CURRENT_BIND="$(sed -n 's/^HUB_BIND_ADDRESS=//p' "$TARGET/.env" | tail -n 1)"
+if [[ -z "$CURRENT_BIND" || "$CURRENT_BIND" == "127.0.0.1" ]]; then set_env_path HUB_BIND_ADDRESS "0.0.0.0"; fi
+set_env_path TRUST_PROXY_HOPS "0"
 chmod 600 "$TARGET/.env"
 
-# Master encryption key stays outside the application/database. It encrypts private
-# keys and integration secrets stored in SQLite.
+# Master encryption key stays outside the application/database. Preserve the
+# pre-alpha.70 key location when upgrading instead of silently rotating secrets.
 mkdir -p /etc/classroom-control-hub
+if [[ ! -s /etc/classroom-control-hub/master.key && -s /etc/classroom-hub/master.key ]]; then
+  install -m 0640 -o root -g 10001 /etc/classroom-hub/master.key /etc/classroom-control-hub/master.key
+fi
 if [[ ! -s /etc/classroom-control-hub/master.key ]]; then
   openssl rand -hex 32 > /etc/classroom-control-hub/master.key
 fi
@@ -155,8 +162,6 @@ if [[ "$TARGET" != "/opt/classroom-hub" ]]; then
   sed -i "s#/opt/classroom-hub#$TARGET#g" /etc/systemd/system/classroom-hub-host-agent.service
 fi
 python3 -m py_compile "$TARGET/host-agent/server.py"
-# Keep the runtime directory inode stable because it is bind-mounted into the
-# maintenance container. The Host Agent recreates only the socket file.
 install -d -m 0750 /run/classroom-control-hub
 chmod 0755 "$TARGET/host-agent/update-runner.sh"
 chmod 0755 "$TARGET/host-agent/app-update-runner.sh"
@@ -214,14 +219,7 @@ cd "$TARGET"
 EXPECTED_VERSION="$(tr -d '\r\n' < VERSION)"
 CONFIGURED_HUB_PORT="$(sed -n 's/^HUB_PORT=//p' "$TARGET/.env" | tail -n 1)"
 HUB_PORT_VALUE="${HUB_PORT:-${CONFIGURED_HUB_PORT:-3000}}"
-CONFIGURED_HTTPS_PORT="$(sed -n 's/^HUB_HTTPS_PORT=//p' "$TARGET/.env" | tail -n 1)"
-HUB_HTTPS_PORT_VALUE="${HUB_HTTPS_PORT:-${CONFIGURED_HTTPS_PORT:-443}}"
-CONFIGURED_HTTP_PORT="$(sed -n 's/^HUB_HTTP_PORT=//p' "$TARGET/.env" | tail -n 1)"
-HUB_HTTP_PORT_VALUE="${HUB_HTTP_PORT:-${CONFIGURED_HTTP_PORT:-80}}"
 [[ "$HUB_PORT_VALUE" =~ ^[0-9]+$ && "$HUB_PORT_VALUE" -ge 1 && "$HUB_PORT_VALUE" -le 65535 ]] || fail "HUB_PORT must be between 1 and 65535"
-[[ "$HUB_HTTPS_PORT_VALUE" =~ ^[0-9]+$ && "$HUB_HTTPS_PORT_VALUE" -ge 1 && "$HUB_HTTPS_PORT_VALUE" -le 65535 ]] || fail "HUB_HTTPS_PORT must be between 1 and 65535"
-[[ "$HUB_HTTP_PORT_VALUE" =~ ^[0-9]+$ && "$HUB_HTTP_PORT_VALUE" -ge 1 && "$HUB_HTTP_PORT_VALUE" -le 65535 ]] || fail "HUB_HTTP_PORT must be between 1 and 65535"
-[[ "$HUB_PORT_VALUE" != "$HUB_HTTPS_PORT_VALUE" && "$HUB_PORT_VALUE" != "$HUB_HTTP_PORT_VALUE" && "$HUB_HTTP_PORT_VALUE" != "$HUB_HTTPS_PORT_VALUE" ]] || fail "HUB_PORT, HUB_HTTP_PORT, and HUB_HTTPS_PORT must be unique"
 MIN_FREE_GB="${CLASSROOM_HUB_MIN_FREE_GB:-4}"
 [[ "$MIN_FREE_GB" =~ ^[0-9]+$ ]] || fail "CLASSROOM_HUB_MIN_FREE_GB must be a non-negative integer"
 AVAILABLE_KB="$(df -Pk "$TARGET" | awk 'NR==2 {print $4}')"
@@ -246,8 +244,9 @@ for _ in $(seq 1 30); do
 done
 docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok||!j.hostAgent?.ok){console.error(JSON.stringify(j));process.exit(1)}})" || { echo "Maintenance-to-Host-Agent verification failed." >&2; exit 1; }
 
-echo "Starting Classroom Control Hub backend and HTTPS gateway ..."
-docker compose up -d --force-recreate classroom-hub caddy
+echo "Starting Classroom Control Hub backend (HTTP) ..."
+docker compose up -d --force-recreate --remove-orphans classroom-hub
+docker rm -f classroom-control-hub-tls >/dev/null 2>&1 || true
 
 echo "Waiting for Classroom Control Hub health ..."
 for _ in $(seq 1 90); do
@@ -256,7 +255,6 @@ for _ in $(seq 1 90); do
 done
 
 MAIN_VERSION="$(curl -fsS "http://127.0.0.1:${HUB_PORT_VALUE}/health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))')" || { echo "Health check failed. Previous files are retained at $BACKUP" >&2; exit 1; }
-curl -kfsS --max-time 15 --resolve "${CONFIGURED_TLS_HOST}:${HUB_HTTPS_PORT_VALUE}:127.0.0.1" "https://${CONFIGURED_TLS_HOST}:${HUB_HTTPS_PORT_VALUE}/health" >/dev/null || { echo "HTTPS gateway health check failed. Previous files are retained at $BACKUP" >&2; docker compose ps; exit 1; }
 MAINT_VERSIONS="$(docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>console.log((j.version||'')+' '+(j.hostAgent?.version||'')))")"
 MAINT_VERSION="${MAINT_VERSIONS%% *}"
 HOST_VERSION="${MAINT_VERSIONS##* }"
@@ -267,11 +265,11 @@ fi
 echo "Verified component convergence: $EXPECTED_VERSION (backend, maintenance, host agent)"
 echo
 echo "Classroom Control Hub migration completed."
-echo "Controller: https://${CONFIGURED_TLS_HOST}:${HUB_HTTPS_PORT_VALUE}/controller/"
+echo "Controller: http://${APPLIANCE_ADDRESS}:${HUB_PORT_VALUE}/controller/"
 SETUP_TOKEN_VALUE="$(sed -n 's/^SETUP_TOKEN=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -n "$SETUP_TOKEN_VALUE" ]]; then
-  echo "First-time setup: https://${CONFIGURED_TLS_HOST}:${HUB_HTTPS_PORT_VALUE}/setup/#token=$SETUP_TOKEN_VALUE"
+  echo "First-time setup: http://${APPLIANCE_ADDRESS}:${HUB_PORT_VALUE}/setup/#token=$SETUP_TOKEN_VALUE"
   echo "Treat the setup URL as a temporary administrator secret. It becomes unusable after the first administrator is created."
 fi
-echo "Local HTTPS uses an appliance-owned CA. Export it with: cd $TARGET && docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./classroom-hub-root-ca.crt"
+echo "TLS/HTTPS is intentionally deferred. Restrict HTTP access to the trusted classroom/admin network."
 [[ -d "$BACKUP" ]] && echo "Rollback snapshot: $BACKUP"

@@ -60,14 +60,7 @@ appliance_health_check(){
   health_check "$expected" || return 1
   docker compose ps --status running --services | grep -qx classroom-hub || return 1
   docker compose ps --status running --services | grep -qx maintenance-agent || return 1
-  docker compose ps --status running --services | grep -qx caddy || return 1
   docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:3010/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok||j.version!==process.argv[1]||!j.hostAgent?.ok||j.hostAgent.version!==process.argv[1])process.exit(1)}).catch(()=>process.exit(1))" "$expected" || return 1
-  local https_port tls_host
-  https_port="$(sed -n 's/^[[:space:]]*HUB_HTTPS_PORT[[:space:]]*=[[:space:]]*//p' .env | tail -n 1 | tr -d '\r' | tr -d "\"'" || true)"
-  tls_host="$(sed -n 's/^[[:space:]]*HUB_TLS_HOST[[:space:]]*=[[:space:]]*//p' .env | tail -n 1 | tr -d '\r' | tr -d "\"'" || true)"
-  [[ "$https_port" =~ ^[0-9]+$ ]] || https_port=443
-  [[ -n "$tls_host" ]] || tls_host=localhost
-  curl -kfsS --max-time 15 --resolve "${tls_host}:${https_port}:127.0.0.1" "https://${tls_host}:${https_port}/health" >/dev/null || return 1
 }
 
 capture_recovery_image(){
@@ -86,6 +79,31 @@ activate_image_id(){
   ref="$(SERVICE="$service" docker compose config --format json | python3 -c 'import json,os,sys; print(json.load(sys.stdin)["services"][os.environ["SERVICE"]]["image"])')"
   [[ -n "$ref" ]] || return 1
   docker image tag "$id" "$ref"
+}
+
+ensure_runtime_layout(){
+  local value
+  install -d -m 0770 -o root -g 10001 "$HUB_ROOT/data"
+  install -d -m 0700 -o root -g 10001 "$HUB_ROOT/data/backups"
+  [[ -f .env ]] || cp .env.example .env
+  value="$(sed -n 's/^MAINTENANCE_TOKEN=//p' .env | tail -n 1)"
+  if [[ -z "$value" ]]; then
+    value="$(openssl rand -hex 32)"
+    if grep -q '^MAINTENANCE_TOKEN=' .env; then sed -i "s/^MAINTENANCE_TOKEN=.*/MAINTENANCE_TOKEN=${value}/" .env; else printf 'MAINTENANCE_TOKEN=%s\n' "$value" >> .env; fi
+  fi
+  sed -i '/^HUB_TLS_HOST=/d;/^HUB_HTTPS_PORT=/d;/^HUB_HTTP_PORT=/d' .env
+  if grep -q '^HUB_BIND_ADDRESS=' .env; then sed -i 's/^HUB_BIND_ADDRESS=.*/HUB_BIND_ADDRESS=0.0.0.0/' .env; else echo 'HUB_BIND_ADDRESS=0.0.0.0' >> .env; fi
+  if grep -q '^TRUST_PROXY_HOPS=' .env; then sed -i 's/^TRUST_PROXY_HOPS=.*/TRUST_PROXY_HOPS=0/' .env; else echo 'TRUST_PROXY_HOPS=0' >> .env; fi
+  chmod 0600 .env
+  install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub
+  if [[ ! -s /etc/classroom-control-hub/master.key && -s /etc/classroom-hub/master.key ]]; then
+    install -m 0640 -o root -g 10001 /etc/classroom-hub/master.key /etc/classroom-control-hub/master.key
+  fi
+  if [[ ! -s /etc/classroom-control-hub/master.key ]]; then
+    openssl rand -hex 32 > /etc/classroom-control-hub/master.key
+    chown root:10001 /etc/classroom-control-hub/master.key
+    chmod 0640 /etc/classroom-control-hub/master.key
+  fi
 }
 
 refresh_host_agent(){
@@ -150,6 +168,7 @@ rollback(){
   write_state rollback "Update failed; restoring the previous source and matching safety backup." null
   local rollback_ok=true
   git checkout --detach "$CURRENT_COMMIT" || rollback_ok=false
+  ensure_runtime_layout || rollback_ok=false
   refresh_host_agent || rollback_ok=false
   activate_image_id "$CURRENT_HUB_IMAGE" classroom-hub || rollback_ok=false
   activate_image_id "$CURRENT_MAINTENANCE_IMAGE" maintenance-agent || rollback_ok=false
@@ -202,6 +221,7 @@ write_state switching "Switching the appliance source to the selected release." 
 git checkout --detach "$RESOLVED"
 ACTUAL_VERSION="$(tr -d '\r\n' < VERSION)"
 [[ -z "$EXPECTEDVERSION" || "$ACTUAL_VERSION" == "$EXPECTEDVERSION" ]] || { echo "Release VERSION does not match GitHub metadata"; exit 35; }
+ensure_runtime_layout
 refresh_host_agent
 
 if [[ "$ACTION" == revert && -n "$PREVIOUSHUBIMAGE" && -n "$PREVIOUSMAINTENANCEIMAGE" ]]; then
@@ -218,9 +238,11 @@ if [[ "$ACTION" == revert ]]; then
   docker compose up --no-start --no-deps --force-recreate classroom-hub
   restore_safety_backup "$BACKUPNAME" "$BACKUPSHA256"
 fi
-write_state deploying "Recreating appliance containers while preserving persistent state." null
+write_state deploying "Recreating HTTP appliance containers while preserving persistent state." null
 docker compose up -d --no-build --remove-orphans
-write_state verifying "Waiting for backend, HTTPS, maintenance, Host Agent, and version convergence." null
+# Remove the legacy Caddy container from releases that included the TLS gateway.
+docker rm -f classroom-control-hub-tls >/dev/null 2>&1 || true
+write_state verifying "Waiting for backend HTTP, maintenance, Host Agent, and version convergence." null
 appliance_health_check "$ACTUAL_VERSION"
 
 trap - ERR
@@ -232,4 +254,4 @@ fi
 install -D -m 0755 "$HUB_ROOT/host-agent/update-runner.sh" /usr/local/libexec/classroom-control-hub/update-runner.sh
 install -D -m 0755 "$HUB_ROOT/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
 rm -f "$REQUEST_FILE"
-write_state completed "Classroom Control Hub $ACTUAL_VERSION deployed and verified successfully." true
+write_state completed "Classroom Control Hub $ACTUAL_VERSION deployed and verified successfully over HTTP." true

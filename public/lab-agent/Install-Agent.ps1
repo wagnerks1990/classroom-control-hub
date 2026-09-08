@@ -7,7 +7,7 @@ param(
   [switch]$AllowHttp
 )
 $ErrorActionPreference='Stop'
-if($HubUrl.Scheme -ne 'https' -and !$AllowHttp){throw 'HTTPS is required. Use -AllowHttp only on an isolated trusted classroom network.'}
+if($HubUrl.Scheme -ne 'https' -and !$AllowHttp){throw 'HTTP enrollment requires explicit -AllowHttp acknowledgement and must be limited to an isolated trusted classroom network.'}
 if(!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run this installer in an elevated PowerShell window.'}
 $root=Join-Path $env:ProgramData 'ClassroomControlHub';New-Item $root -ItemType Directory -Force|Out-Null
 & icacls.exe $root /inheritance:r /grant:r 'SYSTEM:(OI)(CI)(F)' 'Administrators:(OI)(CI)(F)' | Out-Null
@@ -17,8 +17,8 @@ $origin=$HubUrl.GetLeftPart([UriPartial]::Authority)
 try{$manifest=Invoke-RestMethod ($origin+'/api/v1/lab-agent/manifest') -TimeoutSec 20}
 catch{
   $detail=$_.Exception.Message
-  if($HubUrl.Scheme -eq 'https'){$detail+=" Verify the Hub certificate first. For the default Caddy certificate, install the Hub Caddy root CA in Local Computer > Trusted Root Certification Authorities."}
-  throw "Classroom Control Hub TLS/package preflight failed: $detail"
+  if($HubUrl.Scheme -eq 'https'){$detail+=' Verify that the Hub certificate is trusted by this computer.'}
+  throw "Classroom Control Hub package preflight failed: $detail"
 }
 if(!$manifest.sha256 -or $manifest.sha256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'Hub returned an invalid lab-agent manifest'}
 $stage=Join-Path $root ('ClassroomHubAgent.'+[Guid]::NewGuid().ToString('N')+'.download.ps1')
