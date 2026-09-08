@@ -36,7 +36,7 @@ services:
       MAINTENANCE_PROXY_ENABLED: ${MAINTENANCE_PROXY_ENABLED:-true}
       MAINTENANCE_URL: http://maintenance-agent:3010
       MUSIC_ASSISTANT_URL: ${MUSIC_ASSISTANT_URL:-http://host.docker.internal:8095}
-      DATABASE_FILE: ${DATABASE_FILE:-/app/data/classroom-control-hub.db}
+      DATABASE_FILE: ${DATABASE_FILE:-/app/data/classroom-hub.db}
       MASTER_KEY_FILE: ${MASTER_KEY_FILE:-/run/secrets/classroom-control-hub-master-key}
       LEGACY_JSON_MIRROR: ${LEGACY_JSON_MIRROR:-false}
       MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-}
