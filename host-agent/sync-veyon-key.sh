@@ -35,13 +35,15 @@ fi
 
 install -d -m 0750 "$TARGET_DIR"
 # GNU chown accepts a numeric group ID even when there is no /etc/group entry.
-# Prefixing the GID with ':' avoids the install(1) named-group failure seen on
-# existing appliances.
 chown "root:${APP_GID}" "$TARGET_DIR"
 
-private_tmp="$(mktemp "$TARGET_DIR/.private.XXXXXX")"
-public_tmp="$(mktemp "$TARGET_DIR/.public.XXXXXX")"
-cleanup(){ rm -f "$private_tmp" "$public_tmp"; }
+# veyon-cli authkeys export refuses to overwrite an existing file. Use a private
+# temporary directory, but let the export targets themselves remain nonexistent
+# until veyon-cli creates them.
+tmp_dir="$(mktemp -d "$TARGET_DIR/.sync.XXXXXX")"
+private_tmp="$tmp_dir/private.pem"
+public_tmp="$tmp_dir/public.pem"
+cleanup(){ rm -rf "$tmp_dir"; }
 trap cleanup EXIT
 
 veyon-cli authkeys export "$KEY_NAME/private" "$private_tmp" >/dev/null
@@ -59,6 +61,7 @@ chown root:root "$public_tmp"
 # Atomic replacement also eliminates zero-byte files left by older installers.
 mv -f "$private_tmp" "$PRIVATE_TARGET"
 mv -f "$public_tmp" "$PUBLIC_TARGET"
+rmdir "$tmp_dir"
 trap - EXIT
 
 # Record the native key name without copying secret material. The application
