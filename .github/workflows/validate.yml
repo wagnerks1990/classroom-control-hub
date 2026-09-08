@@ -94,17 +94,17 @@ jobs:
           docker compose up -d --no-deps classroom-hub caddy
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/health >/dev/null && break; sleep 2; done
           curl -fsS http://127.0.0.1:3000/health | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{const j=JSON.parse(s);if(!j.ok)process.exit(1)})'
-          for i in $(seq 1 30); do curl -kfsS -H 'Host: localhost:443' https://127.0.0.1/health >/dev/null && break; sleep 1; done
-          curl -kfsS -H 'Host: localhost:443' https://127.0.0.1/health >/dev/null
+          for i in $(seq 1 30); do curl -kfsS --resolve localhost:443:127.0.0.1 https://localhost/health >/dev/null && break; sleep 1; done
+          curl -kfsS --resolve localhost:443:127.0.0.1 https://localhost/health >/dev/null
           cookie_jar="$RUNNER_TEMP/classroom-hub.cookies"
-          curl -kfsS -c "$cookie_jar" -H 'Host: localhost:443' -H 'X-Setup-Token: ci-setup-token' -H 'Content-Type: application/json' \
+          curl -kfsS --resolve localhost:443:127.0.0.1 -c "$cookie_jar" -H 'X-Setup-Token: ci-setup-token' -H 'Content-Type: application/json' \
             --data '{"username":"ci-admin","displayName":"CI Administrator","password":"CI-Live-Test-Password-Alpha69!"}' \
-            https://127.0.0.1/api/v1/setup/administrator >/dev/null
-          curl -kfsS -b "$cookie_jar" -H 'Host: localhost:443' -H 'Content-Type: application/json' -X PUT \
-            --data '{"completed":true}' https://127.0.0.1/api/v1/admin/setup-state >/dev/null
+            https://localhost/api/v1/setup/administrator >/dev/null
+          curl -kfsS --resolve localhost:443:127.0.0.1 -b "$cookie_jar" -H 'Content-Type: application/json' -X PUT \
+            --data '{"completed":true}' https://localhost/api/v1/admin/setup-state >/dev/null
           docker compose restart classroom-hub
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/health >/dev/null && break; sleep 1; done
-          curl -kfsS -b "$cookie_jar" -H 'Host: localhost:443' https://127.0.0.1/api/v1/admin/health \
+          curl -kfsS --resolve localhost:443:127.0.0.1 -b "$cookie_jar" https://localhost/api/v1/admin/health \
             | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{const j=JSON.parse(s);if(!j.ok||j.database.normalized.users!==1)process.exit(1)})'
 
   windows-agent:
