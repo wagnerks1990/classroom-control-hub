@@ -35,9 +35,13 @@ test("setup wizard keeps receiver IDs editable and removes stale group members",
   assert.match(setup,/groups\.all=\[\.\.\.ids\]/);
 });
 
-test("setup wizard treats externally managed Music Assistant as detected without recreate",()=>{
+test("setup wizard supports adopt, install, and recreate actions returned by module capabilities",()=>{
   const setup=read("public/setup/index.html");
-  assert.match(setup,/m\.externalOnly===true&&m\.state!==['"]not-installed['"]/);
-  assert.match(setup,/Existing external service detected; monitored without recreation/);
+  assert.match(setup,/Adopt Existing/);
+  assert.match(setup,/Install/);
+  assert.match(setup,/Save & Recreate/);
   assert.match(setup,/m\.canDeploy!==false/);
+  const extension=read("maintenance-agent/extensions.js");
+  assert.match(extension,/musicassistant:[\s\S]*?externalOnly:false/);
+  assert.match(extension,/Existing container adopted by Classroom Control Hub without recreation/);
 });
