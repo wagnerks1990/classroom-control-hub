@@ -21,6 +21,15 @@ COPY src ./src
 COPY config ./config
 COPY public ./public
 
+# Stamp independently loaded client/runtime surfaces from the single release
+# VERSION file. This prevents backend/display/controller/agent drift when a new
+# alpha is cut and keeps version convergence mechanically testable.
+RUN RELEASE_VERSION="$(cat VERSION)" \
+ && sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+/${RELEASE_VERSION}/g" \
+      public/controller/app.js \
+      public/display/index.html \
+      public/lab-agent/ClassroomHubAgent.ps1
+
 RUN npx esbuild public/display/sendspin-entry.js --bundle --format=esm --target=es2022 --outfile=public/display/sendspin.bundle.js
 
 RUN groupadd --gid 10001 classroom-hub \
