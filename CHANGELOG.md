@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.0.0-alpha.71 - 2026-09-08
+
+### Added
+
+- Appliance-wide Docker discovery/lifecycle control for containers already present on the host while keeping new `docker run` operations restricted to reviewed integration images.
+- First-class optional managed add-ons for Mosquitto (`eclipse-mosquitto:latest`), Govee2MQTT (`ghcr.io/wez/govee2mqtt:latest`), Music Assistant (`ghcr.io/music-assistant/server:latest`), and Veyon WebAPI (`veyon/webapi-proxy:latest`).
+- Adopt-without-recreate, explicit deploy/recreate, and managed removal paths that preserve supported integration data outside container writable layers.
+- Startup recovery for built-in access profiles whose capability arrays were lost during migration; Administrator is restored to `capabilities:["*"]` without overwriting valid non-empty custom capability lists.
+- Regression coverage for punctuation-heavy passwords, active-database recovery, managed add-on contracts, setup receiver reconciliation, and maintenance startup ordering.
+- Build-time release stamping for large controller/display/Windows-agent runtime surfaces and maintenance runtime diagnostics.
+
+### Changed
+
+- Removed the Caddy/TLS gateway from the active appliance architecture and standardized the current live-test deployment on direct HTTP port 3000 for trusted classroom/admin networks.
+- Maintenance Compose health now validates the native Host Agent directly instead of calling a readiness path that could wait on the main application and deadlock startup.
+- Host Agent startup now extends safe lifecycle/log/inspect control to Docker containers that already exist on the appliance while preserving an allowlist for new integration images.
+- Music Assistant is no longer treated as permanently external-only: an existing container can be adopted in place or deliberately promoted to a Hub-managed deployment.
+- Setup Wizard receiver IDs are editable, unique, and authoritative instead of being a disabled `tv1..tvN` preview.
+- Production installation/update documentation now directs established appliances through `install.sh` so secrets, permissions, Host Agent code, database identity, and migration state are reconciled before container recreation.
+
+### Fixed
+
+- Prevented alpha.70 container recreation from silently switching between `classroom-hub.db` and `classroom-control-hub.db`; installer migration now snapshots every `data/*.db`, preserves the configured active database, validates migrated copies with `PRAGMA quick_check`, and retains old files for rollback.
+- Repaired the alpha.70 Administrator profile that could exist/enabled with no capabilities and therefore authenticate successfully while receiving no authorization.
+- Confirmed and regression-tested passwords containing shell-significant punctuation such as `!` and `#`; application JSON/scrypt handling treats them as opaque password characters while shell troubleshooting uses safe quoting.
+- Fixed Setup Wizard display-count reductions leaving stale display-group members such as a group referencing a removed `tv3` receiver.
+- Fixed Setup Wizard offering an adoption action for Music Assistant that called a backend path which rejected external-only integrations.
+- Preserved the legacy master-key path during migration, generated missing maintenance secrets before recreation, and established shared data-root ownership compatible with both the non-root application and hardened maintenance container.
+- Removed the legacy TLS container/orphan during migration and removed TLS/Caddy from update health gates.
+
 ## 1.0.0-alpha.70 - 2026-09-08
 
 ### Added
