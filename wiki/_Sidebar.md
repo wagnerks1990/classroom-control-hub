@@ -4,6 +4,7 @@
 - [Architecture](Architecture)
 - [Installation and Deployment](Installation-and-Deployment)
 - [Configuration](Configuration)
+- [Veyon and Music Assistant](Veyon-and-Music-Assistant)
 - [Operations](Operations)
 - [Troubleshooting](Troubleshooting)
 - [Development](Development)
