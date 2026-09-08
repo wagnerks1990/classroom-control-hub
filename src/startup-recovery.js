@@ -8,10 +8,10 @@ function canonicalDatabaseFile(){
   const configured=String(process.env.DATABASE_FILE||"").trim();
   if(configured)return configured;
   const dataDir=path.resolve(process.env.DATA_DIR||path.join(__dirname,"..","data"));
-  const canonical=path.join(dataDir,"classroom-hub.db");
-  const legacy=path.join(dataDir,"classroom-control-hub.db");
+  const canonical=path.join(dataDir,"classroom-control-hub.db");
+  const alpha70=path.join(dataDir,"classroom-hub.db");
   if(fs.existsSync(canonical))return canonical;
-  if(fs.existsSync(legacy))return legacy;
+  if(fs.existsSync(alpha70))return alpha70;
   return canonical;
 }
 
@@ -21,16 +21,15 @@ function reconcileBuiltInProfiles(db){
   const table=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='access_profiles'").get();
   if(!table)return;
   const defaults={
-    administrator:{name:"Administrator",role:"admin",description:"Full Classroom Hub administration and system management.",capabilities:["*"]},
-    technician:{name:"Technician",role:"operator",description:"Classroom operations, student-computer diagnostics and integrations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","lab.sensitive.read","diagnostics.read","diagnostics.run"]},
-    teacher:{name:"Teacher",role:"operator",description:"Daily classroom, display, lighting, AV and schedule operations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","diagnostics.read"]},
-    "read-only":{name:"Read Only",role:"viewer",description:"View classroom status without student browsing history or screenshots.",capabilities:["classroom.read"]}
+    administrator:{description:"Full Classroom Hub administration and system management.",capabilities:["*"]},
+    technician:{description:"Classroom operations, student-computer diagnostics and integrations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","lab.sensitive.read","diagnostics.read","diagnostics.run"]},
+    teacher:{description:"Daily classroom, display, lighting, AV and schedule operations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","diagnostics.read"]},
+    "read-only":{description:"View classroom status without student browsing history or screenshots.",capabilities:["classroom.read"]}
   };
-  const select=db.prepare("SELECT id,name,role,enabled,config_json FROM access_profiles WHERE id=?");
+  const select=db.prepare("SELECT id,config_json FROM access_profiles WHERE id=?");
   const update=db.prepare("UPDATE access_profiles SET config_json=?,updated_at=? WHERE id=?");
   for(const [id,def] of Object.entries(defaults)){
-    const row=select.get(id);
-    if(!row)continue;
+    const row=select.get(id);if(!row)continue;
     let config={};try{config=JSON.parse(row.config_json||"{}")||{}}catch{}
     if(validCapabilityArray(config.capabilities))continue;
     config.description=String(config.description||def.description);
