@@ -269,7 +269,7 @@ nav button{min-width:135px}
       </div>
       <div>
         <div class="brand" id="brandProductName">Classroom <span class="green">Hub</span></div>
-        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.69</span></div>
+        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.70</span></div>
         <div class="brandStatus">
           <div id="brandDateTime">Loading date/time…</div>
           <div id="brandCycle">Loading school cycle…</div>
@@ -533,7 +533,7 @@ nav button{min-width:135px}
 </section>
 
 <section id="lab" class="page">
-  <div class="top"><h1>Lab Computers</h1><span class="muted">Veyon-powered live monitoring and classroom control.</span></div>
+  <div class="top"><h1>Lab Computers</h1><span class="muted">Choose Veyon monitoring or the enrolled Windows classroom agent.</span></div>
   <details class="panel advanced">
     <summary><b>Windows Agent Enrollment</b> <span class="muted">individual, revocable computer credentials</span></summary>
     <div class="toolbar" style="margin-top:12px"><input id="labEnrollmentId" placeholder="computer-id"><input id="labEnrollmentTtl" type="number" min="5" max="60" value="15" title="Enrollment lifetime in minutes"><button class="primary" onclick="createLabAgentEnrollment()">Create One-Time Installer</button><button onclick="loadLabAgentCredentials()">Refresh</button></div>
@@ -541,7 +541,15 @@ nav button{min-width:135px}
     <div id="labEnrollmentResult" class="card" style="display:none;box-shadow:none;margin-top:10px"></div>
     <div id="labAgentCredentials" class="scroll" style="margin-top:10px">Loading agent security…</div>
   </details>
-  <iframe data-lazy-src="/controller/veyon.html" title="Veyon classroom computer controls"></iframe>
+  <div class="panel">
+    <div class="toolbar" role="tablist" aria-label="Lab computer control method">
+      <button id="labVeyonTab" type="button" role="tab" aria-selected="true" aria-controls="labVeyonFrame" class="primary" onclick="showLabConsole('veyon')">Veyon</button>
+      <button id="labWindowsTab" type="button" role="tab" aria-selected="false" aria-controls="labWindowsFrame" onclick="showLabConsole('windows')">Windows Agent</button>
+    </div>
+    <p id="labConsoleHelp" class="muted">Veyon monitoring uses the configured Veyon WebAPI integration.</p>
+  </div>
+  <iframe id="labVeyonFrame" data-lazy-src="/controller/veyon.html" title="Veyon classroom computer controls"></iframe>
+  <iframe id="labWindowsFrame" data-lazy-src="/controller/lab.html" title="Windows classroom agent controls" hidden></iframe>
 </section>
 
 <section id="media" class="page">
@@ -557,7 +565,7 @@ nav button{min-width:135px}
   </div>
   <div class="panel">
     <div class="toolbar">
-      <label>Target <select id="mediaTarget"><option>tv1</option><option>tv2</option><option>tv3</option><option>tv4</option><option>tv5</option><option>tv6</option><option>tv7</option><option>tv8</option></select></label>
+      <label>Target <select id="mediaTarget" aria-label="Media display target"></select></label>
       <label>Slide/Page seconds <input id="mediaSeconds" type="number" min="0" max="300" value="10" style="width:80px"></label>
       <label><input id="mediaLoop" type="checkbox" checked> Loop document/slides</label>
     </div>
@@ -1021,7 +1029,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   <div class="panel">
     <h2 class="sectionTitle">Student Data Retention</h2>
     <div class="muted">Set explicit limits for browser history, screenshots, monitoring alerts, and administrative audit records. Shorter limits reduce retained student data.</div>
-    <div class="formGrid" style="margin-top:10px"><label>Browser history (hours)<input id="privacyHistoryHours" type="number" min="1" max="8760"></label><label>Screenshots (days)<input id="privacyScreenshotDays" type="number" min="1" max="365"></label><label>Monitoring alerts (days)<input id="privacyAlertDays" type="number" min="1" max="365"></label><label>Audit records (days)<input id="privacyAuditDays" type="number" min="7" max="3650"></label><button class="primary" onclick="savePrivacyRetention()">Save & Apply Retention</button></div>
+    <div class="formGrid" style="margin-top:10px"><label class="pill"><input id="privacyHistoryEnabled" type="checkbox" onchange="privacyHistoryHours.disabled=!this.checked"> Collect student browser history (explicit opt-in)</label><label>Browser history (hours; 0 disables)<input id="privacyHistoryHours" type="number" min="0" max="8760"></label><label>Screenshots (days)<input id="privacyScreenshotDays" type="number" min="1" max="365"></label><label>Monitoring alerts (days)<input id="privacyAlertDays" type="number" min="1" max="365"></label><label>Audit records (days)<input id="privacyAuditDays" type="number" min="7" max="3650"></label><button class="primary" onclick="savePrivacyRetention()">Save & Apply Retention</button></div>
   </div>
 
   <details class="panel advanced">
@@ -1125,7 +1133,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
         <label>Maintenance Window End<input id="appUpdateEnd" type="time" value="04:00"></label>
       </div>
       <label class="pill" style="margin:10px 0"><input id="appUpdateAutomatic" type="checkbox"> Automatically install approved releases during the maintenance window</label>
-      <div class="toolbar"><button onclick="saveAppUpdateSettings()">Save Settings</button><button onclick="checkAppUpdate()">Check GitHub</button><button id="installAppUpdateBtn" class="primary" onclick="installAppUpdate()" disabled>Install Available Release</button><button id="revertAppUpdateBtn" class="danger" onclick="revertAppUpdate()" disabled>Revert Last Upgrade</button></div>
+      <div class="toolbar"><button onclick="saveAppUpdateSettings()">Save Settings</button><button onclick="clearAppUpdateToken()">Clear Stored Token</button><button onclick="checkAppUpdate()">Check GitHub</button><button id="installAppUpdateBtn" class="primary" onclick="installAppUpdate()" disabled>Install Available Release</button><button id="revertAppUpdateBtn" class="danger" onclick="revertAppUpdate()" disabled>Revert Last Upgrade</button></div>
       <pre id="updateOutput" class="raw">Loading release status…</pre>
       <div id="appUpdateHistory" class="scroll" style="margin-top:10px"></div>
     </div>
@@ -1138,7 +1146,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 </section>
 <div class="footerBrand" data-kyle-attribution="true">
-  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.69</span>
+  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.70</span>
   <span>CLASSROOM READY</span>
   <span>Built by <a href="https://github.com/wagnerks1990" target="_blank" rel="author noopener noreferrer">Kyle Wagner</a></span>
 </div>

@@ -4,6 +4,8 @@ set -Eeuo pipefail
 REPOSITORY_URL="${CLASSROOM_HUB_REPOSITORY_URL:-https://github.com/wagnerks1990/classroom-control-hub.git}"
 REPOSITORY_REF="${CLASSROOM_HUB_REF:-main}"
 TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
+SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"
+BACKUPS="${CLASSROOM_HUB_BACKUP_DIR:-/opt/classroom-hub-backups}"
 STAGE=""
 
 fail(){ echo "Classroom Control Hub bootstrap failed: $*" >&2; exit 1; }
@@ -55,10 +57,12 @@ echo "Downloading Classroom Control Hub ${REPOSITORY_REF} ..."
 git clone --filter=blob:none --branch "$REPOSITORY_REF" --single-branch "$REPOSITORY_URL" "$STAGE/source"
 
 echo "Installing the classroom appliance into $TARGET ..."
-CLASSROOM_HUB_DIR="$TARGET" bash "$STAGE/source/install.sh"
+CLASSROOM_HUB_DIR="$TARGET" CLASSROOM_HUB_SERVICES_DIR="$SERVICES" CLASSROOM_HUB_BACKUP_DIR="$BACKUPS" bash "$STAGE/source/install.sh"
 
 echo
 echo "One-command appliance deployment completed."
 echo "Repository: $REPOSITORY_URL"
 echo "Source ref: $REPOSITORY_REF"
 echo "Installation: $TARGET"
+echo "Services: $SERVICES"
+echo "Migration backups: $BACKUPS"

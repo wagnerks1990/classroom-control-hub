@@ -2,11 +2,14 @@
 param([string]$ConfigPath="$env:ProgramData\ClassroomControlHub\lab-agent.json")
 
 $ErrorActionPreference='Stop'
-$AgentVersion='1.0.0-alpha.69'
+$AgentVersion='1.0.0-alpha.70'
 $script:ExitForUpdate=$false
 $script:Socket=$null
 $script:NextHeartbeat=[DateTime]::UtcNow
 $script:NextHistoryPoll=[DateTime]::MaxValue
+$script:UpdateInProgress=$false
+$AgentCapabilities=@()
+$NetworkTelemetry=@{ipv4=@();interactiveSession=$false;sqliteHistory=$false}
 [void][Reflection.Assembly]::LoadWithPartialName('System.Security')
 
 function Protect-Secret([string]$Value){
@@ -44,11 +47,15 @@ function Send-Heartbeat{
   if(!$script:Socket -or $script:Socket.State -ne [Net.WebSockets.WebSocketState]::Open){return}
   $os=Get-CimInstance Win32_OperatingSystem;$computer=Get-CimInstance Win32_ComputerSystem
   $uptime=[int](((Get-Date)-$os.LastBootUpTime).TotalSeconds)
-  Send-Json $script:Socket @{type='heartbeat';hostname=$env:COMPUTERNAME;user=$computer.UserName;agentVersion=$AgentVersion;uptimeSeconds=$uptime;meta=@{os=[Environment]::OSVersion.VersionString}}
+  Send-Json $script:Socket @{type='heartbeat';hostname=$env:COMPUTERNAME;user=$computer.UserName;agentVersion=$AgentVersion;uptimeSeconds=$uptime;capabilities=$AgentCapabilities;meta=@{os=[Environment]::OSVersion.VersionString;ipv4=$NetworkTelemetry.ipv4;interactiveSession=$NetworkTelemetry.interactiveSession;sqliteHistory=$NetworkTelemetry.sqliteHistory}}
   $script:NextHeartbeat=[DateTime]::UtcNow.AddSeconds(15)
 }
 function Command-Result($Socket,$Command,[bool]$Ok,[string]$Message,$Result=$null){
   Send-Json $Socket @{type='lab.command.result';commandId=$Command.id;action=$Command.action;ok=$Ok;message=$Message;result=$Result}
+}
+function Send-AgentEvent([string]$Category,[string]$Message,[string]$Severity='info',$Details=$null){
+  if(!$script:Socket -or $script:Socket.State -ne [Net.WebSockets.WebSocketState]::Open){return}
+  try{Send-Json $script:Socket @{type='lab.agent.event';category=$Category;severity=$Severity;message=$Message;details=$Details;occurredAt=[DateTime]::UtcNow.ToString('o')}}catch{}
 }
 function Quote-NativeArgument([string]$Value){
   if($Value -notmatch '[\s"]'){return $Value}
@@ -75,10 +82,26 @@ function Invoke-NativeBounded([string]$FilePath,[string[]]$Arguments=@(),[int]$T
   }finally{$process.Dispose()}
 }
 function Get-InteractiveUser{
-  $p=Get-CimInstance Win32_Process -Filter "Name='explorer.exe'"|Where-Object{$_.SessionId -gt 0}|Sort-Object SessionId|Select-Object -First 1
-  if(!$p){return $null};$owner=Invoke-CimMethod -InputObject $p -MethodName GetOwner
-  if(!$owner.User){return $null};$account=if($owner.Domain){$owner.Domain+'\'+$owner.User}else{$owner.User}
-  return @{account=$account;sessionId=[int]$p.SessionId}
+  # Prefer the console/RDP session Windows itself reports as Active. Explorer.exe is
+  # only a fallback because it may be absent, duplicated, or left behind at logoff.
+  try{
+    $lines=& "$env:SystemRoot\System32\quser.exe" 2>$null
+    if($LASTEXITCODE -eq 0){
+      foreach($line in @($lines|Select-Object -Skip 1)){
+        $clean=([string]$line).TrimStart('>',' ')
+        if($clean -match '^([^\s]+)\s+(?:[^\s]+\s+)?(\d+)\s+Active(?:\s|$)'){
+          $account=$Matches[1];$sid=[int]$Matches[2]
+          $p=Get-CimInstance Win32_Process -Filter "Name='explorer.exe'"|Where-Object{$_.SessionId -eq $sid}|Select-Object -First 1
+          if($p){$owner=Invoke-CimMethod -InputObject $p -MethodName GetOwner;if($owner.User){$account=if($owner.Domain){$owner.Domain+'\'+$owner.User}else{$owner.User}}}
+          return @{account=$account;sessionId=$sid}
+        }
+      }
+    }
+  }catch{}
+  foreach($p in @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'"|Where-Object{$_.SessionId -gt 0}|Sort-Object SessionId -Descending)){
+    try{$owner=Invoke-CimMethod -InputObject $p -MethodName GetOwner;if($owner.User){$account=if($owner.Domain){$owner.Domain+'\'+$owner.User}else{$owner.User};return @{account=$account;sessionId=[int]$p.SessionId}}}catch{}
+  }
+  return $null
 }
 function Invoke-InteractiveTask([string]$Executable,[string]$Arguments,[int]$TimeoutSeconds=30){
   $user=Get-InteractiveUser;if(!$user){throw 'No interactive Windows user session is available'}
@@ -87,7 +110,8 @@ function Invoke-InteractiveTask([string]$Executable,[string]$Arguments,[int]$Tim
   $action=New-ScheduledTaskAction -Execute $Executable -Argument $Arguments
   $principal=New-ScheduledTaskPrincipal -UserId $user.account -LogonType Interactive -RunLevel Limited
   try{
-    Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Force|Out-Null;Start-ScheduledTask -TaskName $name
+    $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -Force|Out-Null;Start-ScheduledTask -TaskName $name
     $deadline=[DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     do{Start-Sleep -Milliseconds 250;$task=Get-ScheduledTask -TaskName $name;if([DateTime]::UtcNow -ge $script:NextHeartbeat){Send-Heartbeat};if([DateTime]::UtcNow -ge $deadline){Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;throw "Interactive task timed out after $TimeoutSeconds seconds"}}while($task.State -eq 'Running' -or $task.State -eq 'Queued')
     $info=Get-ScheduledTaskInfo -TaskName $name
@@ -136,9 +160,15 @@ function Collect-BrowserHistory([int]$Limit=500){
     )
     foreach($source in $sources){foreach($db in Get-ChildItem -Path $source.pattern -File -ErrorAction SilentlyContinue){
       $copy=Join-Path $tempDir ([Guid]::NewGuid().ToString('N')+'.sqlite')
-      try{Copy-Item $db.FullName $copy -Force;$run=Invoke-NativeBounded $sqlite @('-readonly',$copy,$source.query) 20
+      try{
+        Copy-Item $db.FullName $copy -Force
+        # Chromium and Firefox may have committed rows in WAL while the browser is
+        # open. Copy sidecars beside the snapshot so sqlite3 sees a consistent view.
+        foreach($suffix in @('-wal','-shm')){if(Test-Path -LiteralPath ($db.FullName+$suffix)){Copy-Item -LiteralPath ($db.FullName+$suffix) -Destination ($copy+$suffix) -Force}}
+        $run=Invoke-NativeBounded $sqlite @('-readonly',$copy,$source.query) 20
         foreach($line in ($run.stdout -split "`r?`n")){if(!$line.Trim()){continue};try{$row=$line|ConvertFrom-Json;$items.Add(@{id="$($source.browser)-$($profile.SID)-$($row.recordId)";url=[string]$row.url;title=[string]$row.title;visitTime=[string]$row.visitTime;visitCount=[int]$row.visitCount;typedCount=[int]$row.typedCount;browser=$source.browser;profile=[IO.Path]::GetFileName($profile.LocalPath);browserProfile=$db.Directory.Name;historyFile=$db.FullName;recordId=[string]$row.recordId})}catch{}}
-      }finally{Remove-Item $copy -Force -ErrorAction SilentlyContinue}
+      }catch{Send-AgentEvent 'browser-history' "Could not read $($source.browser) history for profile $([IO.Path]::GetFileName($profile.LocalPath)): $($_.Exception.Message)" 'warning'}
+      finally{Remove-Item $copy,($copy+'-wal'),($copy+'-shm') -Force -ErrorAction SilentlyContinue}
     }}
   }
   return @($items|Sort-Object visitTime -Descending|Select-Object -First $Limit)
@@ -148,7 +178,16 @@ function Get-AgentCapabilities{
   $caps=@('message','restart','shutdown','cancel-shutdown','run-preset','update-agent')
   if(Get-InteractiveUser){$caps+=@('lock','logoff','screenshot','instructor-lock')};if(Find-Sqlite3){$caps+=@('refresh-history','browser-history')};return $caps
 }
+function Get-NetworkTelemetry{
+  $addresses=@()
+  try{$addresses=@(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop|Where-Object{$_.IPAddress -and $_.IPAddress -notlike '127.*' -and $_.AddressState -eq 'Preferred'}|Sort-Object InterfaceMetric|Select-Object -ExpandProperty IPAddress -Unique)}catch{
+    try{$addresses=@([Net.Dns]::GetHostAddresses($env:COMPUTERNAME)|Where-Object{$_.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork -and !$_.IPAddressToString.StartsWith('127.')}|ForEach-Object{$_.IPAddressToString})}catch{}
+  }
+  return @{ipv4=$addresses;interactiveSession=[bool](Get-InteractiveUser);sqliteHistory=[bool](Find-Sqlite3)}
+}
 function Start-AgentUpdate($Manifest,$Stage){
+  if($script:UpdateInProgress){throw 'An agent update is already in progress'}
+  $script:UpdateInProgress=$true
   $root=Split-Path -Parent $ConfigPath;$updateDir=Join-Path $root 'updates'
   if(!(Test-Path $updateDir)){New-Item $updateDir -ItemType Directory -Force|Out-Null};Set-PrivateAcl $updateDir $true
   $staged=Join-Path $updateDir ('ClassroomHubAgent.'+[Guid]::NewGuid().ToString('N')+'.ps1');Move-Item $Stage $staged -Force;Set-PrivateAcl $staged
@@ -157,10 +196,11 @@ function Start-AgentUpdate($Manifest,$Stage){
   $updater=@"
 `$ErrorActionPreference='Stop';`$v=@('$($values -join "','")')|ForEach-Object{[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String(`$_))}
 `$pidToWait=[int]`$v[0];`$stage=`$v[1];`$target=`$v[2];`$marker=`$v[3];`$hash=`$v[4].ToUpperInvariant();`$version=`$v[5];`$backup=`$target+'.previous'
-try{for(`$i=0;`$i -lt 120 -and (Get-Process -Id `$pidToWait -ErrorAction SilentlyContinue);`$i++){Start-Sleep -Milliseconds 250};if(Get-Process -Id `$pidToWait -ErrorAction SilentlyContinue){throw 'Previous agent process did not exit'};if((Get-FileHash `$stage -Algorithm SHA256).Hash -ne `$hash){throw 'Staged agent hash changed'};Remove-Item `$backup -Force -ErrorAction SilentlyContinue;[IO.File]::Replace(`$stage,`$target,`$backup,`$true);& schtasks.exe /Run /TN 'Classroom Control Hub Agent'|Out-Null;`$ok=`$false;for(`$i=0;`$i -lt 60;`$i++){Start-Sleep 1;try{`$h=Get-Content `$marker -Raw|ConvertFrom-Json;if(`$h.version -eq `$version){`$ok=`$true;break}}catch{}};if(!`$ok){Copy-Item `$backup `$target -Force;& schtasks.exe /End /TN 'Classroom Control Hub Agent' 2>`$null;& schtasks.exe /Run /TN 'Classroom Control Hub Agent'|Out-Null}}finally{Remove-Item `$stage -Force -ErrorAction SilentlyContinue}
+try{for(`$i=0;`$i -lt 120 -and (Get-Process -Id `$pidToWait -ErrorAction SilentlyContinue);`$i++){Start-Sleep -Milliseconds 250};if(Get-Process -Id `$pidToWait -ErrorAction SilentlyContinue){throw 'Previous agent process did not exit'};if((Get-FileHash `$stage -Algorithm SHA256).Hash -ne `$hash){throw 'Staged agent hash changed'};Remove-Item `$backup -Force -ErrorAction SilentlyContinue;[IO.File]::Replace(`$stage,`$target,`$backup,`$true);& schtasks.exe /Run /TN 'Classroom Control Hub Agent'|Out-Null;if(`$LASTEXITCODE -ne 0){throw "Updated agent task failed to start (exit code `$LASTEXITCODE)"};`$ok=`$false;for(`$i=0;`$i -lt 60;`$i++){Start-Sleep 1;try{`$h=Get-Content `$marker -Raw|ConvertFrom-Json;if(`$h.version -eq `$version){`$ok=`$true;break}}catch{}};if(!`$ok){Copy-Item `$backup `$target -Force;& schtasks.exe /End /TN 'Classroom Control Hub Agent' 2>`$null;& schtasks.exe /Run /TN 'Classroom Control Hub Agent'|Out-Null;if(`$LASTEXITCODE -ne 0){throw "Rollback agent task failed to start (exit code `$LASTEXITCODE)"};throw 'Updated agent failed its health check and was rolled back'}}catch{Write-EventLog -LogName Application -Source 'ClassroomHubAgent' -EntryType Error -EventId 1002 -Message ("Agent update failed: "+`$_.Exception.Message) -ErrorAction SilentlyContinue}finally{Remove-Item `$stage -Force -ErrorAction SilentlyContinue}
 "@
   $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($updater))
-  Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded" -WindowStyle Hidden
+  try{Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded" -WindowStyle Hidden -ErrorAction Stop|Out-Null}
+  catch{$script:UpdateInProgress=$false;throw}
 }
 function Invoke-AgentCommand($Socket,$Command,$Config){
   try{
@@ -182,6 +222,7 @@ function Invoke-AgentCommand($Socket,$Command,$Config){
         Command-Result $Socket $Command $true (($r.stdout+$r.stderr).Trim())
       }
       'update-agent' {
+        if($script:UpdateInProgress){throw 'An agent update is already in progress'}
         $origin=([uri]$Config.hubUrl).GetLeftPart([UriPartial]::Authority)
         try{$manifest=Invoke-RestMethod ($origin+'/api/v1/lab-agent/manifest') -TimeoutSec 20}catch{throw "Could not retrieve the agent manifest over trusted TLS: $($_.Exception.Message)"}
         if(!$manifest.sha256 -or $manifest.sha256 -notmatch '^[a-fA-F0-9]{64}$' -or [string]$manifest.version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$'){throw 'Hub returned an invalid lab-agent manifest'}
@@ -190,9 +231,10 @@ function Invoke-AgentCommand($Socket,$Command,$Config){
           if($actualHash -ne ([string]$manifest.sha256).ToUpperInvariant()){throw 'Agent update failed SHA-256 verification'}
           $signature=Get-AuthenticodeSignature $temp
           if($Config.trustedPublisherThumbprint -and (!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $Config.trustedPublisherThumbprint -or $signature.Status -ne 'Valid')){throw 'Agent update does not have the required valid publisher signature'}
+          Send-AgentEvent 'agent-update' "Agent update to $($manifest.version) verified and is being staged" 'info'
           Start-AgentUpdate $manifest $temp;$script:ExitForUpdate=$true
           try{Command-Result $Socket $Command $true "Agent update to $($manifest.version) staged; restarting"}catch{}
-        }catch{Remove-Item $temp -Force -ErrorAction SilentlyContinue;throw}
+        }catch{$script:UpdateInProgress=$false;Remove-Item $temp -Force -ErrorAction SilentlyContinue;Send-AgentEvent 'agent-update' $_.Exception.Message 'error';throw}
       }
       default {throw 'Command is not supported by this signed agent build'}
     }
@@ -211,7 +253,8 @@ while($true){
     $socket=[Net.WebSockets.ClientWebSocket]::new();$script:Socket=$socket;$socket.Options.KeepAliveInterval=[TimeSpan]::FromSeconds(15)
     $socket.ConnectAsync([uri]$wsUri,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
     $AgentCapabilities=Get-AgentCapabilities
-    Send-Json $socket @{type='hello';role='lab-agent';agentId=$config.agentId;hostname=$env:COMPUTERNAME;agentVersion=$AgentVersion;credential=$credential;enrollmentToken=$enrollment;capabilities=$AgentCapabilities;meta=@{os=[Environment]::OSVersion.VersionString}}
+    $NetworkTelemetry=Get-NetworkTelemetry
+    Send-Json $socket @{type='hello';role='lab-agent';agentId=$config.agentId;hostname=$env:COMPUTERNAME;agentVersion=$AgentVersion;credential=$credential;enrollmentToken=$enrollment;capabilities=$AgentCapabilities;meta=@{os=[Environment]::OSVersion.VersionString;ipv4=$NetworkTelemetry.ipv4;interactiveSession=$NetworkTelemetry.interactiveSession;sqliteHistory=$NetworkTelemetry.sqliteHistory}}
     $script:NextHeartbeat=[DateTime]::UtcNow.AddSeconds(15);$buffer=New-Object byte[] 1048576
     while($socket.State -eq [Net.WebSockets.WebSocketState]::Open){
       $segment=[ArraySegment[byte]]::new($buffer);$receive=$socket.ReceiveAsync($segment,[Threading.CancellationToken]::None)
@@ -221,7 +264,7 @@ while($true){
       try{$message.Write($buffer,0,$result.Count);while(!$result.EndOfMessage){if($message.Length -ge 4MB){throw 'WebSocket message exceeds 4 MB'};$segment=[ArraySegment[byte]]::new($buffer);$result=$socket.ReceiveAsync($segment,[Threading.CancellationToken]::None).GetAwaiter().GetResult();if($result.MessageType -eq [Net.WebSockets.WebSocketMessageType]::Close){break};if($message.Length+$result.Count -gt 4MB){throw 'WebSocket message exceeds 4 MB'};$message.Write($buffer,0,$result.Count)};if($result.MessageType -eq [Net.WebSockets.WebSocketMessageType]::Close){break};$json=[Text.Encoding]::UTF8.GetString($message.ToArray())|ConvertFrom-Json}finally{$message.Dispose()}
       if($json.type -eq 'hello.ack'){
         if($json.credential){$config.credentialProtected=Protect-Secret ([string]$json.credential);$config.enrollmentToken='';$config.enrollmentTokenProtected='';Save-Config $config}
-        $poll=[Math]::Max(30,[int]($json.historyPollSeconds));$script:NextHistoryPoll=if(Find-Sqlite3){[DateTime]::UtcNow.AddSeconds($poll)}else{[DateTime]::MaxValue}
+        $poll=[Math]::Max(30,[int]($json.historyPollSeconds));$script:NextHistoryPoll=if($json.historyEnabled -eq $false -or !(Find-Sqlite3)){[DateTime]::MaxValue}else{[DateTime]::UtcNow.AddSeconds($poll)}
         Write-AtomicUtf8 (Join-Path (Split-Path -Parent $ConfigPath) 'agent-health.json') (@{version=$AgentVersion;connectedAt=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json)
       }
       if($json.type -eq 'lab.command'){Invoke-AgentCommand $socket $json.command $config;if($script:ExitForUpdate){return}}

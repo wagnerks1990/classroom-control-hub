@@ -4,6 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Classroom Control Hub — Lab Computers</title>
 <link rel="stylesheet" href="/shared/attribution.css">
+<script src="/shared/branding.js" defer></script>
 <script src="/shared/attribution.js" defer></script>
 <style>
 :root{--bg:var(--brand-background,#0b0f12);--panel:var(--brand-surface,#11171c);--card:color-mix(in srgb,var(--brand-surface,#151d23) 88%,white);--border:#2a3640;--text:var(--brand-text,#eef4f7);--muted:#aab8c1;--green:var(--brand-primary,#39e58c);--red:#ff6b6b;--amber:#ffc857;--blue:#66b3ff}
@@ -69,7 +70,7 @@ dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1
 
   <div id="computerGrid" class="grid"><div class="muted">Loading…</div></div>
 
-  <dialog id="aiAlertDialog">
+  <dialog id="aiAlertDialog" aria-label="AI usage alerts">
     <div class="top">
       <div><h2>AI Usage Alerts</h2><div id="aiAlertMeta" class="muted"></div></div>
       <button onclick="aiAlertDialog.close()">Close</button>
@@ -85,7 +86,7 @@ dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1
     <div id="aiAlertList" class="grid"></div>
   </dialog>
 
-  <dialog id="screenDialog">
+  <dialog id="screenDialog" aria-label="Computer screenshot">
     <div class="top">
       <div>
         <h2 id="screenTitle">Screen View</h2>
@@ -108,12 +109,12 @@ dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1
     </div>
   </dialog>
 
-  <dialog id="presetDialog">
+  <dialog id="presetDialog" aria-label="PowerShell administrative presets">
     <div class="top"><div><h2>PowerShell / Admin Presets</h2><div class="muted">Allowlisted administrative actions only.</div></div><button onclick="presetDialog.close()">Close</button></div>
     <div id="presetList" class="grid"></div>
   </dialog>
 
-  <dialog id="instructorLockDialog">
+  <dialog id="instructorLockDialog" aria-label="Instructor lock settings">
     <div class="top">
       <div><h2>Instructor Lock</h2><div class="muted">Blocks normal keyboard/mouse input and displays a full-screen instructor message.</div></div>
       <button onclick="instructorLockDialog.close()">Close</button>
@@ -145,7 +146,7 @@ dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1
     </div>
   </dialog>
 
-  <dialog id="appLockDialog">
+  <dialog id="appLockDialog" aria-label="Application and site lock settings">
     <div class="top">
       <div><h2>Application / Site Lock</h2><div class="muted">Restricts the interactive session to one application, or opens a browser in kiosk mode at one approved site.</div></div>
       <button onclick="appLockDialog.close()">Close</button>
@@ -206,7 +207,7 @@ dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1
     </div>
   </dialog>
 
-  <dialog id="commandResultDialog">
+  <dialog id="commandResultDialog" aria-label="Command results">
     <div class="top">
       <div><h2 id="commandResultTitle">Command Result</h2><div id="commandResultMeta" class="muted"></div></div>
       <button onclick="commandResultDialog.close()">Close</button>
@@ -216,7 +217,7 @@ dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1
     </div>
   </dialog>
 
-  <dialog id="historyDialog">
+  <dialog id="historyDialog" aria-label="Browser history">
     <div class="top">
       <div><h2 id="historyTitle">Browser History</h2><div id="historyMeta" class="muted"></div></div>
       <div class="toolbar">

@@ -147,7 +147,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
   <div class="top">
     <div>
       <h1>Classroom Control Hub Controller</h1>
-      <div class="muted">Classroom Control Hub • v1.0.0-alpha.69 • multi-display controller</div>
+      <div class="muted">Classroom Control Hub • v1.0.0-alpha.70 • multi-display controller</div>
     </div>
     <div id="conn" class="muted">Connecting…</div>
   </div>
@@ -422,10 +422,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <div class="grid2">
             <div>
               <label>Target</label>
-              <select id="lightTarget">
-                <option>tvs</option><option>all</option><option>hallway</option><option>strip</option>
-                <option>tv1</option><option>tv2</option><option>tv3</option><option>tv4</option><option>tv5</option><option>tv6</option>
-              </select>
+              <select id="lightTarget" aria-label="Lighting target"><option value="all">All configured lights</option></select>
             </div>
             <div>
               <label>Brightness</label>
@@ -514,7 +511,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
 import {wsUrl,api} from '/shared/common.js';
 window.el=id=>document.getElementById(id);
 
-let ws,devices={},groups={},selected=new Set(['tv1']),lastRaw=null;
+let ws,devices={},groups={},selected=new Set(),lastRaw=null;
 window._status={};
 
 function ageText(iso){
@@ -569,7 +566,7 @@ let previewLogicalWidth=1920,previewLogicalHeight=1080;
 function setupPreview(){
   const s=el('previewSelect'),cur=s.value;s.innerHTML='';
   for(const [id,d] of Object.entries(devices)){const o=document.createElement('option');o.value=id;o.textContent=`${id.toUpperCase()} · ${d.name}`;s.appendChild(o)}
-  s.value=cur&&devices[cur]?cur:'tv1';s.onchange=loadPreview;
+  s.value=cur&&devices[cur]?cur:(Object.keys(devices)[0]||'');s.onchange=loadPreview;
   const savedResolution=localStorage.getItem('classroom-preview-resolution')||'1920x1080';
   el('previewResolution').value=savedResolution;
   setPreviewResolution(savedResolution,false);
@@ -605,7 +602,8 @@ window.setPreviewSize=size=>{
 };
 function loadPreview(){
   const frame=el('previewFrame');
-  frame.src=`/display/${encodeURIComponent(el('previewSelect').value||'tv1')}?preview=1`;
+  const id=el('previewSelect').value||Object.keys(devices)[0];if(!id)return;
+  frame.src=`/display/${encodeURIComponent(id)}?preview=1`;
   frame.onload=()=>requestAnimationFrame(scalePreview);
 }
 new ResizeObserver(()=>scalePreview()).observe(el('previewViewport'));
@@ -923,7 +921,7 @@ window.loadPlutoStatus=async()=>{
 function setupSettings(){
   const s=el('configDevice'),cur=s.value;s.innerHTML='';
   for(const [id,d] of Object.entries(devices)){const o=document.createElement('option');o.value=id;o.textContent=`${id.toUpperCase()} · ${d.name}`;s.appendChild(o)}
-  s.value=cur&&devices[cur]?cur:'tv1';s.onchange=loadDeviceConfig;loadDeviceConfig();
+  s.value=cur&&devices[cur]?cur:(Object.keys(devices)[0]||'');s.onchange=loadDeviceConfig;loadDeviceConfig();
   const gm=el('groupMembers');gm.innerHTML='';
   for(const [id,d] of Object.entries(devices)){
     const lab=document.createElement('label');lab.className='target';
@@ -962,6 +960,17 @@ window.loadDiagnostics=async()=>{
   el('diagRaw').textContent=JSON.stringify(j,null,2);
 };
 
+async function loadLightingTargets(){
+  const select=el('lightTarget'),current=select.value;
+  try{
+    const j=await api('/api/v1/govee'),rows=[['all','All configured lights']];
+    for(const id of Object.keys(j.groups||{}))rows.push([id,`${id} group`]);
+    for(const [id,d] of Object.entries(j.devices||{}))rows.push([id,d.name||id]);
+    select.replaceChildren(...rows.map(([id,label])=>{const o=document.createElement('option');o.value=id;o.textContent=label;return o}));
+    if(rows.some(([id])=>id===current))select.value=current;
+  }catch{/* Lighting remains explicitly limited to the all target while offline. */}
+}
+
 async function refreshStatus(){
   try{const j=await api('/api/v1/devices');window._status=j.status||{};renderTargets(window._status)}catch{}
 }
@@ -979,7 +988,8 @@ function connect(){
     if(m.type==='hello.ack'){
       reconnectDelay=1500;
       devices=m.devices||{};groups=m.groups||{};window._status=m.runtime?.displays||{};
-      renderTargets(window._status);setupPreview();setPreviewSize(localStorage.getItem('classroom-preview-size')||'medium');loadMedia();loadScenes();setupSettings();
+      if(!selected.size&&Object.keys(devices).length)selected.add(Object.keys(devices)[0]);
+      renderTargets(window._status);setupPreview();setPreviewSize(localStorage.getItem('classroom-preview-size')||'medium');loadMedia();loadScenes();loadLightingTargets();setupSettings();
     }else if(m.type==='error'&&/authentication|permission|unauthorized/i.test(String(m.error||''))){reconnectBlocked=true;el('conn').textContent=m.error||'Permission denied';try{ws.close()}catch{}
     }else if(m.type==='device.status'){
       window._status[m.deviceId]={

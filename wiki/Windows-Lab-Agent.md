@@ -15,7 +15,7 @@ The Hub stores only a credential hash. Windows protects the raw credential with
 DPAPI Local Machine scope for the scheduled task. Revoking it in the GUI
 disconnects the active computer and prevents reconnection.
 
-As of alpha.69, the pending enrollment code is DPAPI-protected too, configuration
+As of alpha.70, the pending enrollment code is DPAPI-protected too, configuration
 writes are atomic and restricted to System/Administrators, and the agent reports
 its supported capabilities during connection.
 

@@ -5,6 +5,10 @@ const path=require("path");
 const crypto=require("crypto");
 const {DatabaseSync}=require("node:sqlite");
 
+// Database, credential and recovery material must never inherit a permissive
+// umask from an interactive shell or container runtime.
+process.umask(0o077);
+
 function iso(){return new Date().toISOString()}
 function keyForFile(file){return path.basename(file).replace(/\.json$/i,"").replace(/\.jsonl$/i,"")}
 function ensureParent(file){fs.mkdirSync(path.dirname(file),{recursive:true})}
@@ -21,6 +25,7 @@ class ClassroomHubStorage{
     this.masterKeyFile=masterKeyFile||"/run/secrets/classroom-control-hub-master-key";
     this.legacyMirror=!!legacyMirror;
     ensureParent(this.dbFile);
+    try{fs.chmodSync(path.dirname(this.dbFile),0o700)}catch{}
     this.db=new DatabaseSync(this.dbFile);
     this.db.exec(`
       PRAGMA journal_mode=WAL;
@@ -148,6 +153,22 @@ class ClassroomHubStorage{
     this.migrateNormalizedObjects();
     const integrity=this.db.prepare("PRAGMA quick_check(1)").get();
     if(String(integrity?.quick_check||"").toLowerCase()!=="ok")throw Error(`SQLite integrity check failed: ${integrity?.quick_check||"unknown error"}`);
+    try{fs.chmodSync(this.dbFile,0o600)}catch{}
+    this.validateSchemaMigrations();
+  }
+
+  validateSchemaMigrations(){
+    const expected=[
+      "initial sqlite storage","normalized classroom configuration tables","web-managed configuration and access profile tables",
+      "controller ui defaults and access profiles","audit telemetry separation","local authentication users and setup state",
+      "display enrollment and revocable credentials","capability profiles assigned to users","lab agent enrollment and revocable credentials",
+      "granular authorization and configurable school schedule"
+    ];
+    const rows=this.db.prepare("SELECT version,name FROM schema_migrations ORDER BY version").all();
+    for(let i=0;i<expected.length;i++){const row=rows[i];if(!row||row.version!==i+1||row.name!==expected[i])throw Error(`Invalid or incomplete schema migration history at version ${i+1}`)}
+    const duplicateNames=this.db.prepare("SELECT name,COUNT(*) count FROM schema_migrations GROUP BY name HAVING COUNT(*)>1").all();
+    if(duplicateNames.length)throw Error("Schema migration history contains duplicate migration names");
+    return {ok:true,version:rows.at(-1)?.version||0,count:rows.length};
   }
 
   applyTelemetrySeparationMigration(){
@@ -360,7 +381,9 @@ class ClassroomHubStorage{
   }
   putSiteProfile(value){const current=this.getSetting("site.profile",{}),next={...(value||{}),revision:Math.max(0,Number(current.revision)||0)+1,updatedAt:iso()};this.setSetting("site.profile",next);return next}
   listAccessProfiles(){return this.db.prepare("SELECT id,name,role,enabled,config_json,updated_at FROM access_profiles ORDER BY name,id").all().map(r=>({id:r.id,name:r.name,role:r.role,enabled:!!r.enabled,config:parseJson(r.config_json,{}),updatedAt:r.updated_at}))}
-  putAccessProfile(value){const id=String(value?.id||"").trim();if(!id)throw Error("Profile ID is required");const role=String(value?.role||"viewer");if(!["viewer","operator","admin"].includes(role))throw Error("Invalid role");const config=value?.config&&typeof value.config==="object"?value.config:{};if(config.capabilities!==undefined&&(!Array.isArray(config.capabilities)||config.capabilities.some(x=>typeof x!=="string"||x.length>100)))throw Error("Capabilities must be a list of permission names");this.db.prepare(`INSERT INTO access_profiles(id,name,role,enabled,config_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,enabled=excluded.enabled,config_json=excluded.config_json,updated_at=excluded.updated_at`).run(id,String(value?.name||id),role,bool(value?.enabled!==false),JSON.stringify(config),iso());return this.listAccessProfiles().find(x=>x.id===id)}
+  effectiveAdministrators(){return this.db.prepare(`SELECT u.id,u.username,u.profile_id profileId FROM users u JOIN access_profiles p ON p.id=u.profile_id WHERE u.enabled=1 AND u.role='admin' AND p.enabled=1 AND p.role='admin'`).all().filter(row=>{const profile=this.db.prepare("SELECT config_json FROM access_profiles WHERE id=?").get(row.profileId);return parseJson(profile?.config_json,{}).capabilities?.includes("*")})}
+  assertEffectiveAdministrator(){if((this.setupCompleted()||this.userCount()>0)&&!this.effectiveAdministrators().length)throw Error("At least one enabled effective administrator is required")}
+  putAccessProfile(value){const id=String(value?.id||"").trim();if(!id)throw Error("Profile ID is required");const role=String(value?.role||"viewer");if(!["viewer","operator","admin"].includes(role))throw Error("Invalid role");const config=value?.config&&typeof value.config==="object"?value.config:{};if(config.capabilities!==undefined&&(!Array.isArray(config.capabilities)||config.capabilities.some(x=>typeof x!=="string"||x.length>100)))throw Error("Capabilities must be a list of permission names");return this.tx(()=>{this.db.prepare(`INSERT INTO access_profiles(id,name,role,enabled,config_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,enabled=excluded.enabled,config_json=excluded.config_json,updated_at=excluded.updated_at`).run(id,String(value?.name||id),role,bool(value?.enabled!==false),JSON.stringify(config),iso());this.assertEffectiveAdministrator();return this.listAccessProfiles().find(x=>x.id===id)})}
   deleteAccessProfile(id){id=String(id);if(this.db.prepare("SELECT 1 FROM users WHERE profile_id=? LIMIT 1").get(id))throw Error("Access profile is assigned to one or more users");this.db.prepare("DELETE FROM access_profiles WHERE id=?").run(id)}
   setPreference(key,value){this.db.prepare(`INSERT INTO system_preferences(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at`).run(String(key),JSON.stringify(value),iso())}
   getPreference(key,fallback=null){const r=this.db.prepare("SELECT value_json FROM system_preferences WHERE key=?").get(String(key));return r?parseJson(r.value_json,fallback):fallback}
@@ -391,6 +414,9 @@ class ClassroomHubStorage{
   authenticateLabAgent(agentId,token){const now=iso(),row=this.db.prepare("SELECT id,agent_id agentId,label,created_at createdAt,last_used_at lastUsedAt FROM lab_agent_credentials WHERE agent_id=? AND token_hash=? AND revoked_at IS NULL").get(String(agentId||""),this.tokenHash(token));if(!row)return null;this.db.prepare("UPDATE lab_agent_credentials SET last_used_at=? WHERE id=?").run(now,row.id);return {...row,lastUsedAt:now}}
   listLabAgentCredentials(){const now=iso(),policy=this.labAgentCredentialPolicy(),credentials=this.db.prepare("SELECT id,agent_id agentId,label,created_at createdAt,last_used_at lastUsedAt,revoked_at revokedAt FROM lab_agent_credentials ORDER BY agent_id,created_at DESC").all(),pending=this.db.prepare("SELECT id,agent_id agentId,created_at createdAt,expires_at expiresAt FROM lab_agent_enrollment_codes WHERE consumed_at IS NULL AND expires_at>? ORDER BY agent_id,created_at DESC").all(now);return {policy,credentials,pending}}
   revokeLabAgentCredential(id){return this.db.prepare("UPDATE lab_agent_credentials SET revoked_at=? WHERE id=? AND revoked_at IS NULL").run(iso(),String(id)).changes>0}
+  revokeLabAgentCredentials(agentId){return this.db.prepare("UPDATE lab_agent_credentials SET revoked_at=? WHERE agent_id=? AND revoked_at IS NULL").run(iso(),String(agentId)).changes}
+  cancelLabAgentEnrollments(agentId){return this.db.prepare("DELETE FROM lab_agent_enrollment_codes WHERE agent_id=? AND consumed_at IS NULL").run(String(agentId)).changes}
+  revokeLabAgentAccess(agentId){return this.tx(()=>({credentials:this.revokeLabAgentCredentials(agentId),enrollments:this.cancelLabAgentEnrollments(agentId)}))}
 
   authPolicy(){const p=this.getPreference("auth.policy",{});return {standardHours:Math.max(1,Math.min(168,Number(p.standardHours)||12)),rememberHours:Math.max(1,Math.min(720,Number(p.rememberHours)||168)),maxSessions:Math.max(1,Math.min(50,Number(p.maxSessions)||10))}}
   setAuthPolicy(value){const current=this.authPolicy(),next={...current,...(value||{})};next.standardHours=Math.max(1,Math.min(168,Number(next.standardHours)||12));next.rememberHours=Math.max(next.standardHours,Math.min(720,Number(next.rememberHours)||168));next.maxSessions=Math.max(1,Math.min(50,Number(next.maxSessions)||10));this.setPreference("auth.policy",next);return next}
@@ -411,10 +437,10 @@ class ClassroomHubStorage{
     let salt=existing?.password_salt||"",hash=existing?.password_hash||"";
     if(password!==null&&password!==undefined&&password!==""){if(String(password).length<10)throw Error("Password must be at least 10 characters");salt=crypto.randomBytes(16).toString("hex");hash=this.hashPassword(password,salt)}
     if(!hash)throw Error("Password is required for a new user");
-    this.db.prepare(`INSERT INTO users(id,username,display_name,role,password_salt,password_hash,enabled,created_at,updated_at,last_login_at,profile_id) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,display_name=excluded.display_name,role=excluded.role,password_salt=excluded.password_salt,password_hash=excluded.password_hash,enabled=excluded.enabled,updated_at=excluded.updated_at,profile_id=excluded.profile_id`).run(id,username,displayName||username,role,salt,hash,bool(value?.enabled!==false),existing?.created_at||now,now,existing?.last_login_at||null,profileId);
-    return this.listUsers().find(x=>x.id===id)
+    return this.tx(()=>{this.db.prepare(`INSERT INTO users(id,username,display_name,role,password_salt,password_hash,enabled,created_at,updated_at,last_login_at,profile_id) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,display_name=excluded.display_name,role=excluded.role,password_salt=excluded.password_salt,password_hash=excluded.password_hash,enabled=excluded.enabled,updated_at=excluded.updated_at,profile_id=excluded.profile_id`).run(id,username,displayName||username,role,salt,hash,bool(value?.enabled!==false),existing?.created_at||now,now,existing?.last_login_at||null,profileId);this.assertEffectiveAdministrator();return this.listUsers().find(x=>x.id===id)})
   }
-  deleteUser(id){this.db.prepare("DELETE FROM users WHERE id=?").run(String(id))}
+  createFirstAdministrator(value,{password}={}){if(this.userCount())throw Error("Initial administrator setup has already completed");const id=String(value?.id||crypto.randomUUID()),username=String(value?.username||"").trim(),displayName=String(value?.displayName||username).trim();if(!/^[a-z0-9._@-]{2,80}$/i.test(username))throw Error("A valid username is required");if(String(password||"").length<10)throw Error("Password must be at least 10 characters");const salt=crypto.randomBytes(16).toString("hex"),hash=this.hashPassword(password,salt),now=iso();return this.tx(()=>{if(this.userCount())throw Error("Initial administrator setup has already completed");this.db.prepare(`INSERT INTO users(id,username,display_name,role,password_salt,password_hash,enabled,created_at,updated_at,profile_id) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(id,username,displayName||username,"admin",salt,hash,1,now,now,"administrator");this.setPreference("auth.enabled",true);this.setPreference("setup.completed",true);this.assertEffectiveAdministrator();return this.listUsers().find(x=>x.id===id)})}
+  deleteUser(id){return this.tx(()=>{const changes=this.db.prepare("DELETE FROM users WHERE id=?").run(String(id)).changes;this.assertEffectiveAdministrator();return changes})}
   verifyUser(username,password){const r=this.db.prepare("SELECT * FROM users WHERE username=? COLLATE NOCASE AND enabled=1").get(String(username||"").trim());if(!r)return null;const got=this.hashPassword(password,r.password_salt),a=Buffer.from(got,"hex"),b=Buffer.from(r.password_hash,"hex");if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return null;return {id:r.id,username:r.username,displayName:r.display_name,role:r.role,profileId:r.profile_id,enabled:!!r.enabled}}
   createSession(user,{remoteAddr="",userAgent="",ttlHours=null}={}){this.cleanupSessions();const policy=this.authPolicy(),hours=Math.max(1,Math.min(720,Number(ttlHours)||policy.standardHours)),token=crypto.randomBytes(32).toString("base64url"),hash=crypto.createHash("sha256").update(token).digest("hex"),id=crypto.randomUUID(),now=new Date(),exp=new Date(now.getTime()+hours*3600000);this.db.prepare("INSERT INTO user_sessions(id,user_id,token_hash,created_at,expires_at,last_seen_at,remote_addr,user_agent) VALUES(?,?,?,?,?,?,?,?)").run(id,user.id,hash,now.toISOString(),exp.toISOString(),now.toISOString(),String(remoteAddr||""),String(userAgent||"").slice(0,500));this.db.prepare("UPDATE users SET last_login_at=?,updated_at=? WHERE id=?").run(now.toISOString(),now.toISOString(),user.id);const sessions=this.listUserSessions(user.id);for(const extra of sessions.slice(policy.maxSessions))this.deleteUserSession(user.id,extra.id);return {token,expiresAt:exp.toISOString()}}
   sessionUser(token){if(!token)return null;this.cleanupSessions();const hash=crypto.createHash("sha256").update(String(token)).digest("hex"),r=this.db.prepare(`SELECT s.id sessionId,s.expires_at expiresAt,u.id,u.username,u.display_name displayName,u.role,u.profile_id profileId,u.enabled FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND u.enabled=1 AND s.expires_at>?`).get(hash,iso());if(!r)return null;this.db.prepare("UPDATE user_sessions SET last_seen_at=? WHERE id=?").run(iso(),r.sessionId);return {...r,enabled:!!r.enabled}}

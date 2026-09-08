@@ -46,7 +46,12 @@ try{
 if($LASTEXITCODE -ne 0){throw 'Could not secure installed agent files.'}
 $action="-NoProfile -ExecutionPolicy AllSigned -File `"$agent`" -ConfigPath `"$config`""
 if(!$TrustedPublisherThumbprint){$action=$action -replace 'AllSigned','RemoteSigned'}
-& schtasks.exe /Create /TN 'Classroom Control Hub Agent' /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "powershell.exe $action" /F | Out-Null
+$taskAction=New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument $action
+$taskPrincipal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+$taskTrigger=New-ScheduledTaskTrigger -AtStartup
+$taskSettings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName 'Classroom Control Hub Agent' -Action $taskAction -Principal $taskPrincipal -Trigger $taskTrigger -Settings $taskSettings -Force|Out-Null
 if(!(Get-EventLog -LogName Application -Source 'ClassroomHubAgent' -Newest 1 -ErrorAction SilentlyContinue)){New-EventLog -LogName Application -Source 'ClassroomHubAgent' -ErrorAction SilentlyContinue}
 & schtasks.exe /Run /TN 'Classroom Control Hub Agent' | Out-Null
+if($LASTEXITCODE -ne 0){throw "Agent task was installed but could not be started (schtasks exit code $LASTEXITCODE)."}
 Write-Host "Classroom Control Hub agent installed for $AgentId. Enrollment completes when it connects."

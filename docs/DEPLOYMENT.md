@@ -178,9 +178,11 @@ Manual installation and optional automatic installation use the native
 replacement and performs `git fetch`, resolves the selected release tag to an
 immutable commit that must be reachable from `origin/main`, rebuilds the
 application services, discovers the published controller port from Compose,
-and requires `/health` to report the release's expected version. The configured
+and requires the backend, HTTPS gateway, maintenance service, and Host Agent to
+be healthy and report the expected version. The configured
 Git remote must be this project's public GitHub repository. A failure restores
-the previous detached commit and matching pre-update operational backup. The
+the previous detached commit, exact saved container image IDs, and matching
+pre-update operational backup. The
 **Revert Last Upgrade** action performs the same process deliberately and first
 backs up the current state. Administrators should not run the production
 checkout as a long-lived local branch; update and rollback deliberately leave
@@ -190,6 +192,17 @@ Automatic installation is disabled by default. When enabled, checks and
 installation occur only inside the configured maintenance window. The first
 deployment that introduces this feature must run `sudo ./install.sh` once to
 install the native application-update systemd unit.
+
+Use the controller's **Clear stored GitHub token** action after changing a
+private repository to public or when rotating credentials. The updater does not
+need a token for this public repository. Clearing it removes the encrypted
+database value; also revoke the old token at GitHub if it may have been exposed.
+
+Custom appliance roots are supported beneath `/opt` by setting
+`CLASSROOM_HUB_DIR`, `CLASSROOM_HUB_SERVICES_DIR`, and
+`CLASSROOM_HUB_BACKUP_DIR` when running the bootstrap. The installer persists
+their container-facing equivalents in `.env`; all three roots must be separate
+and non-nested.
 
 ## Backup policy
 

@@ -18,7 +18,7 @@ only its hash. Windows stores the credential with DPAPI using the Local Machine
 scope so the scheduled task can reconnect after reboot. Revoking the credential
 in the GUI disconnects the active agent and blocks future connections.
 
-The alpha.69 agent also DPAPI-protects the pending one-time enrollment code and
+The alpha.70 agent also DPAPI-protects the pending one-time enrollment code and
 writes its configuration through a restricted, atomic replacement. The agent
 reports a capability list when it connects. Controllers should use that list to
 avoid presenting actions that the computer cannot perform.

@@ -8,6 +8,7 @@ const {execFile}=require("child_process");
 const {promisify}=require("util");
 const crypto=require("crypto");
 const AdmZip=require("adm-zip");
+process.umask(0o077);
 const execFileAsync=promisify(execFile);
 const app=express();
 const PORT=Number(process.env.PORT||3010);
@@ -24,7 +25,8 @@ const MASTER_KEY_FILE=String(process.env.MASTER_KEY_FILE||"/run/secrets/classroo
 const UPLOAD_DIR="/work/uploads";
 const APP_UID=Math.max(1,Number(process.env.APP_UID||10001));
 const APP_GID=Math.max(1,Number(process.env.APP_GID||10001));
-fs.mkdirSync(BACKUP_DIR,{recursive:true});fs.mkdirSync(UPLOAD_DIR,{recursive:true});
+fs.mkdirSync(BACKUP_DIR,{recursive:true,mode:0o700});fs.mkdirSync(UPLOAD_DIR,{recursive:true,mode:0o700});
+for(const dir of [BACKUP_DIR,UPLOAD_DIR])try{fs.chmodSync(dir,0o700)}catch{}
 app.use(express.json({limit:"8mb"}));
 function secretEqual(actual,expected){const a=Buffer.from(String(actual||"")),b=Buffer.from(String(expected||""));return a.length===b.length&&crypto.timingSafeEqual(a,b)}
 function auth(req,res,next){if(!TOKEN)return res.status(503).json({ok:false,error:"Maintenance token not configured"});if(!secretEqual(req.get("x-maintenance-token"),TOKEN))return res.status(401).json({ok:false,error:"Unauthorized"});next()}
@@ -33,7 +35,7 @@ app.use(["/files","/file","/file/upload","/env","/update/stage","/update/deploy"
 function cleanName(v){return String(v||"").replace(/[^A-Za-z0-9._-]/g,"-").slice(0,180)}
 function statInfo(p,base){const st=fs.statSync(p);return {name:path.basename(p),path:path.relative(base,p)||".",type:st.isDirectory()?"directory":"file",size:st.size,modifiedAt:st.mtime.toISOString()}}
 function sha256File(p){const hash=crypto.createHash("sha256"),fd=fs.openSync(p,"r"),buf=Buffer.allocUnsafe(1024*1024);try{let n=0,pos=0;while((n=fs.readSync(fd,buf,0,buf.length,pos))>0){hash.update(buf.subarray(0,n));pos+=n}return hash.digest("hex")}finally{fs.closeSync(fd)}}
-function writeZipAtomic(zip,dest){const partial=`${dest}.partial-${process.pid}-${Date.now()}`;try{zip.writeZip(partial);fs.renameSync(partial,dest)}finally{fs.rmSync(partial,{force:true})}}
+function writeZipAtomic(zip,dest){const partial=`${dest}.partial-${process.pid}-${Date.now()}`;try{zip.writeZip(partial);fs.chmodSync(partial,0o600);fs.renameSync(partial,dest);fs.chmodSync(dest,0o600)}finally{fs.rmSync(partial,{force:true})}}
 function applicationVersion(){try{return fs.readFileSync(path.join(HUB_ROOT,"VERSION"),"utf8").trim()}catch{return null}}
 async function run(cmd,args=[],opts={}){if(cmd==="docker")return hostAgentRequest("POST","/docker/exec",{args,cwd:opts.cwd===HUB_ROOT?"hub":""},opts.timeout||180000);const {stdout,stderr}=await execFileAsync(cmd,args,{timeout:opts.timeout||15000,maxBuffer:opts.maxBuffer||8*1024*1024,cwd:opts.cwd||undefined,env:{...process.env,...(opts.env||{})}});return {stdout,stderr}}
 async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
@@ -46,7 +48,7 @@ async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
 }
 async function mainAppStatus(){return mainAppRequest("GET","/api/v1/internal/maintenance/status",null,10000)}
 async function dockerContainers(){const r=await run("docker",["ps","-a","--format","{{json .}}"],{timeout:10000});return r.stdout.split(/\r?\n/).filter(Boolean).map(x=>{try{return JSON.parse(x)}catch{return {raw:x}}})}
-async function componentHealth(){let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}return {version:"1.0.0-alpha.69",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null}}
+async function componentHealth(){let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}return {version:"1.0.0-alpha.70",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null}}
 app.get("/health",async(_req,res)=>{const state=await componentHealth(),ready=state.docker&&state.hostAgent?.ok&&state.roots.hub;res.status(ready?200:503).json({ok:ready,alive:true,ready,...state})});
 app.get("/ready",async(_req,res)=>{const state=await componentHealth(),ready=state.docker&&state.hostAgent?.ok&&state.roots.hub;res.status(ready?200:503).json({ok:ready,alive:true,ready,...state})});
 app.get("/system",async(_req,res)=>{
@@ -191,7 +193,7 @@ app.get("/checks/run",async(_req,res)=>{
 });
 app.post("/docker/:name/:action",async(req,res)=>{const name=cleanName(req.params.name),action=String(req.params.action||"");if(!["start","stop","restart","kill"].includes(action))return res.status(400).json({ok:false,error:"Unsupported action"});try{const r=await run("docker",[action,name],{timeout:30000});res.json({ok:true,name,action,...r})}catch(e){res.status(500).json({ok:false,error:e.message})}});
 app.get("/docker/:name/logs",async(req,res)=>{const name=cleanName(req.params.name),tail=String(Math.max(1,Math.min(5000,Number(req.query.tail||300))));try{const r=await run("docker",["logs","--timestamps","--tail",tail,name],{timeout:20000,maxBuffer:16*1024*1024});const text=(r.stdout||"")+(r.stderr||"");if(String(req.query.download||"")==="1"){res.setHeader("Content-Disposition",`attachment; filename="${name}-${Date.now()}.log"`);res.type("text/plain").send(text)}else res.json({ok:true,name,tail:Number(tail),text})}catch(e){res.status(500).json({ok:false,error:e.message})}});
-function copyIntoZip(zip,src,prefix,filter){if(!fs.existsSync(src))return;for(const ent of fs.readdirSync(src,{withFileTypes:true})){const full=path.join(src,ent.name),rel=path.posix.join(prefix,ent.name);if(filter&&!filter(full,rel,ent))continue;if(ent.isDirectory())copyIntoZip(zip,full,rel,filter);else zip.addLocalFile(full,path.posix.dirname(rel),path.basename(rel))}}
+function copyIntoZip(zip,src,prefix,filter){if(!fs.existsSync(src))return;for(const ent of fs.readdirSync(src,{withFileTypes:true})){const full=path.join(src,ent.name),rel=path.posix.join(prefix,ent.name);if(ent.isSymbolicLink())continue;if(filter&&!filter(full,rel,ent))continue;if(ent.isDirectory())copyIntoZip(zip,full,rel,filter);else if(ent.isFile())zip.addLocalFile(full,path.posix.dirname(rel),path.basename(rel))}}
 function backupFilter(scope){
   const skipDirs=new Set(["node_modules",".git","convert-tmp","presentation-upload-tmp"]);
   return (_full,rel,ent)=>{
@@ -225,13 +227,14 @@ app.post("/backup/create",async(req,res)=>{let dbSnapshot="";try{
   copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);if(hasDbSnapshot)zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
   if(scope==="full"||scope==="operational"||scope==="diagnostic")copyIntoZip(zip,Classroom_ROOT,"services",filter);
   if(scope==="full"&&fs.existsSync(MASTER_KEY_FILE))zip.addLocalFile(MASTER_KEY_FILE,"recovery-secrets","classroom-hub-master.key");
-  const manifest={version:3,createdAt:new Date().toISOString(),scope,applicationVersion:applicationVersion(),hostname:os.hostname(),hubRoot:HUB_ROOT,servicesRoot:Classroom_ROOT,databaseSnapshot:hasDbSnapshot,containsSecrets:scope==="full",requiresMasterKey:true};
+  const capabilities={configuration:scope!=="quick",database:hasDbSnapshot,data:["operational","diagnostic","full"].includes(scope)&&hasDbSnapshot,services:["operational","diagnostic","full"].includes(scope),secrets:scope==="full"};
+  const manifest={version:4,createdAt:new Date().toISOString(),scope,applicationVersion:applicationVersion(),hostname:os.hostname(),hubRoot:HUB_ROOT,servicesRoot:Classroom_ROOT,databaseSnapshot:hasDbSnapshot,containsSecrets:scope==="full",requiresMasterKey:true,capabilities};
   zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify(manifest,null,2)));writeZipAtomic(zip,dest);
   res.json({ok:true,name,size:fs.statSync(dest).size,sha256:sha256File(dest),download:`/backup/${encodeURIComponent(name)}`,containsSecrets:scope==="full"})
 }catch(e){res.status(500).json({ok:false,error:e.message})}finally{if(dbSnapshot)try{fs.rmSync(dbSnapshot,{force:true})}catch{}}});
-app.get("/backups",(_req,res)=>{const items=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR)).sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));res.json({ok:true,items})});
+app.get("/backups",(_req,res)=>{const items=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>{const info=statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR);try{const plan=backupRestorePlan(n);return {...info,capabilities:plan.capabilities,restoreModes:plan.restoreModes}}catch(e){return {...info,restorable:false,error:e.message,capabilities:{}}}}).sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));res.json({ok:true,items})});
 app.get("/backups/catalog",(_req,res)=>{try{
-  const managed=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>({...statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR),source:"managed",restorable:true}));
+  const managed=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>{const info=statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR);try{const plan=backupRestorePlan(n);return {...info,source:"managed",restorable:plan.restoreModes.length>0,capabilities:plan.capabilities,restoreModes:plan.restoreModes}}catch(e){return {...info,source:"managed",restorable:false,error:e.message,capabilities:{},restoreModes:[]}}});
   const migrationRoot="/host-backups";
   const migrations=[];
   if(fs.existsSync(migrationRoot))for(const ent of fs.readdirSync(migrationRoot,{withFileTypes:true})){
@@ -265,7 +268,7 @@ async function createOperationalBackupNamed(prefix="pre-restore") {
     const filter=(full,rel,ent)=>{if(/classroom-hub\.db(?:-wal|-shm)?$/.test(rel))return false;return backupFilter("operational")(full,rel,ent)};
     copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);
     zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
-    zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify({version:3,scope:"operational",createdAt:new Date().toISOString(),reason:prefix,applicationVersion:applicationVersion(),databaseSnapshot:true},null,2)));
+    zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify({version:4,scope:"operational",createdAt:new Date().toISOString(),reason:prefix,applicationVersion:applicationVersion(),databaseSnapshot:true,capabilities:{configuration:true,database:true,data:true,services:true,secrets:false}},null,2)));
     writeZipAtomic(zip,dest);return {name,dest,size:fs.statSync(dest).size,sha256:sha256File(dest)};
   }finally{fs.rmSync(dbSnapshot,{force:true})}
 }
@@ -274,6 +277,7 @@ function backupRestorePlan(name){
   const p=path.join(BACKUP_DIR,safeName);
   if(!fs.existsSync(p))throw Error("Backup not found");
   const zip=new AdmZip(p),entries=zip.getEntries();
+  if(entries.length>100000)throw Error("Restore archive contains too many entries");
   let expandedBytes=0;
   for(const entry of entries){
     const normalized=entry.entryName.replace(/\\/g,"/");
@@ -286,7 +290,9 @@ function backupRestorePlan(name){
   let manifest=null;const me=entries.find(e=>e.entryName==="backup-manifest.json");
   if(me)try{manifest=JSON.parse(me.getData().toString("utf8"))}catch{}
   const names=entries.map(e=>e.entryName.replace(/\\/g,"/"));
-  return {name:safeName,path:p,manifest,entries:entries.length,expandedBytes,hasConfig:names.some(n=>n.startsWith("classroom-hub/config/")),hasData:names.some(n=>n.startsWith("classroom-hub/data/")),hasDatabase:names.includes("classroom-hub/data/classroom-control-hub.db"),hasEnv:names.includes("classroom-hub/.env"),hasMasterKey:names.some(n=>/master\.key$/.test(n)),preview:names.slice(0,100)};
+  const hasConfig=names.some(n=>n.startsWith("classroom-hub/config/")),hasData=names.some(n=>n.startsWith("classroom-hub/data/")),hasDatabase=names.includes("classroom-hub/data/classroom-control-hub.db"),hasEnv=names.includes("classroom-hub/.env"),hasMasterKey=names.some(n=>/master\.key$/.test(n));
+  const capabilities={configuration:!!(manifest?.capabilities?.configuration??(hasConfig||hasDatabase)),database:!!(manifest?.capabilities?.database??hasDatabase),data:!!(manifest?.capabilities?.data??hasData),services:!!(manifest?.capabilities?.services??names.some(n=>n.startsWith("services/"))),secrets:!!(manifest?.capabilities?.secrets??(hasEnv&&hasMasterKey))};
+  return {name:safeName,path:p,manifest,entries:entries.length,expandedBytes,hasConfig,hasData,hasDatabase,hasEnv,hasMasterKey,capabilities,restoreModes:[...(capabilities.database?["configuration"]:[]),...(capabilities.data&&capabilities.database?["data","configuration-data"]:[])],preview:names.slice(0,100)};
 }
 app.get("/backup/:name/restore-plan",(req,res)=>{try{res.json({ok:true,plan:backupRestorePlan(req.params.name)})}catch(e){res.status(400).json({ok:false,error:e.message})}});
 async function verifyRestoreSource(srcRoot,{data=false}={}){
@@ -296,28 +302,32 @@ async function verifyRestoreSource(srcRoot,{data=false}={}){
     const check=String((await run("sqlite3",[dbPath,"PRAGMA quick_check;"],{timeout:60000})).stdout||"").trim();if(check!=="ok")throw Error(`Backup database integrity check failed: ${check||"no result"}`);
   }
 }
-function replaceRestoreContent(srcRoot,{database=false,data=false}={}){
+function replaceRestoreContent(srcRoot,{database=false,data=false,journalFile=path.join(UPLOAD_DIR,"restore-journal.json")}={}){
   const restored=[];
+  const journal=phase=>{const partial=`${journalFile}.partial`;fs.writeFileSync(partial,JSON.stringify({version:1,phase,at:new Date().toISOString(),database,data}),{mode:0o600});fs.renameSync(partial,journalFile)};
+  journal("preparing");
   if(data){
     const src=path.join(srcRoot,"data"),dst=path.join(HUB_ROOT,"data");fs.mkdirSync(dst,{recursive:true});
-    for(const ent of fs.readdirSync(dst,{withFileTypes:true})){if(ent.name==="backups")continue;fs.rmSync(path.join(dst,ent.name),{recursive:true,force:true})}
-    for(const ent of fs.readdirSync(src,{withFileTypes:true})){if(ent.name==="backups")continue;fs.cpSync(path.join(src,ent.name),path.join(dst,ent.name),{recursive:true})}
+    const stage=path.join(HUB_ROOT,`.restore-data-${process.pid}-${Date.now()}`);fs.mkdirSync(stage,{mode:0o700});
+    for(const ent of fs.readdirSync(src,{withFileTypes:true})){if(ent.name==="backups"||ent.isSymbolicLink())continue;fs.cpSync(path.join(src,ent.name),path.join(stage,ent.name),{recursive:true,dereference:false})}
+    journal("committing");for(const ent of fs.readdirSync(dst,{withFileTypes:true})){if(ent.name==="backups")continue;fs.rmSync(path.join(dst,ent.name),{recursive:true,force:true})}
+    for(const ent of fs.readdirSync(stage,{withFileTypes:true}))fs.renameSync(path.join(stage,ent.name),path.join(dst,ent.name));fs.rmSync(stage,{recursive:true,force:true});
     for(const suffix of ["-wal","-shm"])fs.rmSync(path.join(dst,"classroom-control-hub.db"+suffix),{force:true});restored.push("data");
   }else if(database){
     const src=path.join(srcRoot,"data","classroom-control-hub.db"),dst=path.join(HUB_ROOT,"data","classroom-control-hub.db");
-    fs.mkdirSync(path.dirname(dst),{recursive:true});for(const suffix of ["","-wal","-shm"])fs.rmSync(dst+suffix,{force:true});fs.cpSync(src,dst);restored.push("database");
+    fs.mkdirSync(path.dirname(dst),{recursive:true});const stage=`${dst}.restore-${process.pid}`;fs.copyFileSync(src,stage);fs.chmodSync(stage,0o600);journal("committing");for(const suffix of ["-wal","-shm"])fs.rmSync(dst+suffix,{force:true});fs.renameSync(stage,dst);restored.push("database");
   }
-  const applyOwnership=p=>{const st=fs.lstatSync(p);if(st.isDirectory())for(const ent of fs.readdirSync(p))applyOwnership(path.join(p,ent));fs.chownSync(p,APP_UID,APP_GID)};
+  const applyOwnership=p=>{const st=fs.lstatSync(p);if(st.isSymbolicLink()){fs.lchownSync(p,APP_UID,APP_GID);return}if(st.isDirectory())for(const ent of fs.readdirSync(p))applyOwnership(path.join(p,ent));fs.chownSync(p,APP_UID,APP_GID);if(st.isDirectory())fs.chmodSync(p,0o700);else if(st.isFile())fs.chmodSync(p,0o600)};
   if(data){for(const ent of fs.readdirSync(path.join(HUB_ROOT,"data"))){if(ent!=="backups")applyOwnership(path.join(HUB_ROOT,"data",ent))}}
   else if(database){applyOwnership(path.join(HUB_ROOT,"data","classroom-control-hub.db"))}
-  return restored;
+  journal("completed");fs.rmSync(journalFile,{force:true});return restored;
 }
 async function waitForMainApplication(){
   const deadline=Date.now()+RESTORE_HEALTH_TIMEOUT_MS;let last="not ready";
   while(Date.now()<deadline){try{const status=await mainAppStatus();if(status.ok&&status.database)return status}catch(e){last=e.message}await new Promise(resolve=>setTimeout(resolve,1000))}
   throw Error(`Classroom Control Hub did not become healthy after restore: ${last}`);
 }
-async function extractRestore(name,target){const plan=backupRestorePlan(name);new AdmZip(plan.path).extractAllTo(target,true);return {plan,srcRoot:path.join(target,"classroom-hub")}}
+async function extractRestore(name,target){const plan=backupRestorePlan(name),root=path.resolve(target);fs.mkdirSync(root,{recursive:true,mode:0o700});const zip=new AdmZip(plan.path);for(const entry of zip.getEntries()){const normalized=entry.entryName.replace(/\\/g,"/"),dest=path.resolve(root,normalized);if(dest!==root&&!dest.startsWith(root+path.sep))throw Error(`Unsafe archive path: ${normalized}`);if(entry.isDirectory){fs.mkdirSync(dest,{recursive:true,mode:0o700});continue}fs.mkdirSync(path.dirname(dest),{recursive:true,mode:0o700});fs.writeFileSync(dest,entry.getData(),{mode:0o600,flag:"wx"})}return {plan,srcRoot:path.join(root,"classroom-hub")}}
 app.post("/backup/:name/restore",async(req,res)=>{
   let stopped=false,temp=null,safety=null,mutationStarted=false;
   try{
@@ -325,6 +335,7 @@ app.post("/backup/:name/restore",async(req,res)=>{
     const mode=String(req.body?.mode||"configuration-data");
     if(!["configuration","data","configuration-data"].includes(mode))throw Error("Invalid restore mode");
     const plan=backupRestorePlan(req.params.name);
+    const requestedCapability=mode==="configuration"?"database":"data";if(!plan.capabilities[requestedCapability]||!plan.capabilities.database)throw Error(`Backup does not support ${mode} restore`);
     safety=await createOperationalBackupNamed("pre-restore");
     temp=path.join(UPLOAD_DIR,`restore-${Date.now()}`);fs.mkdirSync(temp,{recursive:true});const extracted=await extractRestore(plan.name,temp),srcRoot=extracted.srcRoot;
     const doData=mode.includes("data"),doDatabase=mode==="configuration";
@@ -355,14 +366,14 @@ app.post("/audit/prune",async(req,res)=>{try{res.json(await mainAppRequest("POST
 app.get("/diagnostics/bundle",async(_req,res)=>{try{
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-diagnostics-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
   let application=null;try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}
-  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.69",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
+  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.70",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
   zip.addFile("summary.json",Buffer.from(JSON.stringify(info,null,2)));
   try{const c=await dockerContainers();zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(c,null,2)));for(const row of c){const n=cleanName(row.Names||row.Name||"");if(!n)continue;try{const r=await run("docker",["logs","--timestamps","--tail","1000",n],{timeout:20000,maxBuffer:16*1024*1024});zip.addFile(`logs/${n}.log`,Buffer.from((r.stdout||"")+(r.stderr||"")))}catch(e){zip.addFile(`logs/${n}.error.txt`,Buffer.from(e.message))}}}catch(e){zip.addFile("docker/error.txt",Buffer.from(e.message))}
   try{const r=await run("docker",["stats","--no-stream","--format","{{json .}}"],{timeout:15000});zip.addFile("docker/stats.jsonl",Buffer.from(r.stdout||""))}catch{}
   try{const r=await run("df",["-h"]);zip.addFile("host/disk.txt",Buffer.from(r.stdout||""))}catch{}
   try{const r=await run("ip",["addr"]);zip.addFile("host/ip-addr.txt",Buffer.from(r.stdout||""))}catch{}
   try{const r=await run("ip",["route"]);zip.addFile("host/routes.txt",Buffer.from(r.stdout||""))}catch{}
-  zip.writeZip(dest);res.download(dest,name);
+  writeZipAtomic(zip,dest);res.download(dest,name);
 }catch(e){res.status(500).json({ok:false,error:e.message})}});
 const MANAGED_INTEGRATIONS_FILE=path.join(HUB_ROOT,"data","managed-integrations.json");
 async function readManagedIntegrations({resolved=false}={}){

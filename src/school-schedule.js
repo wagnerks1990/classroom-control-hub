@@ -16,6 +16,11 @@ function validTime(value) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
 }
 
+function boundedFiniteNumber(value, fallback, minimum, maximum) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
+}
+
 function defaultSchoolScheduleProfile({ anchorDate = "" } = {}) {
   return {
     id: "school-default",
@@ -104,7 +109,7 @@ function normalizeSchoolScheduleProfile(input = {}, fallback = defaultSchoolSche
     periodCycleDays,
     exceptionRules,
     continuation: {
-      maximumGapMinutes: Math.max(0, Math.min(120, Number(input.continuation?.maximumGapMinutes ?? base.continuation?.maximumGapMinutes ?? 15))),
+      maximumGapMinutes: boundedFiniteNumber(input.continuation?.maximumGapMinutes, boundedFiniteNumber(base.continuation?.maximumGapMinutes, 15, 0, 120), 0, 120),
       legacyBisonCompatibility: input.continuation?.legacyBisonCompatibility ?? base.continuation?.legacyBisonCompatibility ?? false
     },
     updatedAt: input.updatedAt || base.updatedAt || null

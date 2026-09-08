@@ -2,7 +2,7 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.69` — live-test hardening, transactional recovery, and verified appliance deployment.
+> **Status:** `1.0.0-alpha.70` — live-test hardening, transactional recovery, and verified appliance deployment.
 
 ## What it does
 

@@ -9,17 +9,48 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   preflight:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Verify release ref matches application version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "${GITHUB_REF_TYPE}" = "tag"
           test "${GITHUB_REF_NAME#v}" = "$(tr -d '\r\n' < VERSION)"
           node -e 'const p=require("./package.json"),v=require("fs").readFileSync("VERSION","utf8").trim();if(p.version!==v)process.exit(1)'
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          checks="$(gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100")"
+          for required in validate windows-agent; do
+            jq -e --arg name "$required" '[.check_runs[] | select(.name==$name and .conclusion=="success")] | length > 0' <<<"$checks" >/dev/null \
+              || { echo "Required Validate workflow job did not pass for tag commit: $required" >&2; exit 1; }
+          done
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+      - name: Run release-gating validation
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit --omit=dev --audit-level=high
+          npm test
+          npm --prefix maintenance-agent ci --ignore-scripts --no-audit --no-fund
+          npm --prefix maintenance-agent audit --omit=dev --audit-level=high
+          node --check src/server.js
+          node --check maintenance-agent/server.js
+          python3 -m py_compile host-agent/server.py
+          bash -n install.sh deploy/bootstrap.sh host-agent/update-runner.sh host-agent/app-update-runner.sh
+          docker compose config >/dev/null
+          docker build -t classroom-control-hub:release-gate .
+          docker build -t classroom-control-hub-maintenance:release-gate maintenance-agent
 
   hub:
     needs: preflight

@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, timezone
 
-VERSION = "1.0.0-alpha.69"
+VERSION = "1.0.0-alpha.70"
 SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-control-hub/host-agent.sock")
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
 
@@ -235,7 +235,7 @@ def start_app_update_job(body):
     commit=run(['git','-C',str(HUB_ROOT),'rev-parse','HEAD'],20).stdout.strip()
     try: version=(HUB_ROOT/'VERSION').read_text().strip()
     except Exception: version=''
-    request={"action":action,"targetRef":"","targetCommit":"","expectedVersion":"","rollbackCommit":commit,"rollbackVersion":version,"backupName":str(body.get('backupName') or ''),"backupSha256":str(body.get('backupSha256') or ''),"failureBackupName":str(body.get('failureBackupName') or body.get('backupName') or ''),"failureBackupSha256":str(body.get('failureBackupSha256') or body.get('backupSha256') or ''),"githubToken":str(body.get('githubToken') or '')}
+    request={"action":action,"targetRef":"","targetCommit":"","expectedVersion":"","rollbackCommit":commit,"rollbackVersion":version,"backupName":str(body.get('backupName') or ''),"backupSha256":str(body.get('backupSha256') or ''),"failureBackupName":str(body.get('failureBackupName') or body.get('backupName') or ''),"failureBackupSha256":str(body.get('failureBackupSha256') or body.get('backupSha256') or ''),"previousHubImage":"","previousMaintenanceImage":"","githubToken":str(body.get('githubToken') or '')}
     if len(request['githubToken'])>1000: raise RuntimeError('GitHub token is too long')
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',request['backupName']): raise RuntimeError('A valid pre-update backup is required')
     if not re.fullmatch(r'[0-9a-f]{64}',request['backupSha256']): raise RuntimeError('A valid pre-update backup checksum is required')
@@ -257,7 +257,9 @@ def start_app_update_job(body):
         failure_backup_sha=str(body.get('failureBackupSha256') or '')
         if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',failure_backup): raise RuntimeError('A valid pre-revert backup is required')
         if not re.fullmatch(r'[0-9a-f]{64}',failure_backup_sha): raise RuntimeError('A valid pre-revert backup checksum is required')
-        request.update({"targetCommit":commit,"expectedVersion":version,"backupName":backup,"backupSha256":backup_sha,"failureBackupName":failure_backup,"failureBackupSha256":failure_backup_sha})
+        hub_image=str(current.get('previousHubImage') or ''); maintenance_image=str(current.get('previousMaintenanceImage') or '')
+        if not re.fullmatch(r'sha256:[0-9a-f]{64}',hub_image) or not re.fullmatch(r'sha256:[0-9a-f]{64}',maintenance_image): raise RuntimeError('The immutable rollback images are no longer available')
+        request.update({"targetCommit":commit,"expectedVersion":version,"backupName":backup,"backupSha256":backup_sha,"failureBackupName":failure_backup,"failureBackupSha256":failure_backup_sha,"previousHubImage":hub_image,"previousMaintenanceImage":maintenance_image})
     APP_UPDATE_REQUEST_FILE.parent.mkdir(parents=True,exist_ok=True)
     temp=APP_UPDATE_REQUEST_FILE.with_suffix('.tmp'); temp.write_text(json.dumps(request,indent=2)); os.chmod(temp,0o600); temp.replace(APP_UPDATE_REQUEST_FILE)
     p=run(['systemctl','start','--no-block',APP_UPDATE_SERVICE],20,False)

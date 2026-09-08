@@ -1,9 +1,10 @@
 # Changelog
 
-## 1.0.0-alpha.69 - 2026-09-08
+## 1.0.0-alpha.70 - 2026-09-08
 
 ### Added
 
+- A privacy-first browser-history opt-in, Windows agent capability/event telemetry, GUI removal of stored GitHub tokens, and capability-aware backup restore actions.
 - End-to-end live-test quality gates covering release-version convergence, Windows command parity, strict schedule values, authorization boundaries, database readiness, rollback ordering, and bounded release checks.
 - A GitHub Actions Compose smoke deployment that builds the appliance, starts the backend and Caddy gateway, and verifies HTTP and HTTPS health.
 - Windows lab-agent screenshots, Chrome/Edge/Firefox history reporting, capability advertisement, bounded command execution, active-session lock/logoff handling, protected atomic configuration, and self-update rollback.
@@ -11,6 +12,7 @@
 
 ### Changed
 
+- Made initial administrator creation transactional, display enrollment URLs canonical, lab-computer removal revoke all agent access, and authenticated appliance maintenance available from the controller by default.
 - Made class and automation changes validate and persist atomically, reject duplicate IDs and unsupported secondary actions, and protect referenced classes from deletion.
 - Made school timezone and classroom identity database-backed operational settings instead of decorative GUI values.
 - Split liveness/readiness behavior and removed classroom topology from the public health response.
