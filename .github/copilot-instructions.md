@@ -1,6 +1,6 @@
 # GitHub Copilot Instructions
 
-Read `/AGENTS.md` before making changes. Use `/docs/AI-CONTEXT.md` for the current technical/operational model and `/docs/VEYON-MUSIC-INTEGRATIONS.md` for the Veyon/Music Assistant contract.
+Read `/AGENTS.md` before making changes. Use `/docs/AI-CONTEXT.md` for the current technical/operational model, `/docs/DISPLAY-ACCESS.md` for the classroom display access contract, and `/docs/VEYON-MUSIC-INTEGRATIONS.md` for the Veyon/Music Assistant contract.
 
 Key rules:
 
@@ -9,6 +9,9 @@ Key rules:
 - Preserve runtime `.env`, `data/`, databases, uploads, backups, keys, and secrets during upgrades.
 - Never hardcode or commit production IPs, credentials, tokens, stream IDs, school-specific calendars, or private URLs.
 - Keep backend/controller/display/maintenance/host-agent version strings converged for every release.
+- Classroom display receivers use stable direct URLs `/display/<id>` on the trusted classroom/admin network. An enabled configured display ID is sufficient; do not require display enrollment links, per-browser display credentials, or the legacy shared `DISPLAY_TOKEN` for normal display access.
+- Unknown or disabled display IDs must still be rejected. Controller/user authentication and Windows lab-agent enrollment remain credentialed and must not be weakened when changing display access.
+- Display credential/enrollment database tables may remain for schema/rollback compatibility, but they are legacy state rather than runtime authority.
 - Morning Announcements are highest priority. When they end, re-evaluate and re-trigger the currently applicable winning display automations before Background Music resumes; do not restore stale snapshots.
 - Timer chaining is only for the matching Bison continuation of the same base period.
 - Integration health must be independent. A Pluto failure must not falsely mark MQTT/Govee offline.
