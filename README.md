@@ -2,7 +2,7 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.70` — live-test hardening, transactional recovery, and verified appliance deployment.
+> **Status:** `1.0.0-alpha.70` — live-test hardening in progress. The next release removes the Caddy/TLS gateway and temporarily standardizes on direct HTTP while deployment/update reliability is corrected.
 
 ## What it does
 
@@ -27,11 +27,28 @@ Ubuntu host
 │   └── /run/classroom-control-hub/host-agent.sock
 └── Docker
     ├── classroom-control-hub
-    ├── classroom-control-hub-maintenance
-    └── classroom-control-hub-tls (Caddy)
+    └── classroom-control-hub-maintenance
 ```
 
 The application and maintenance service run in containers. Host-level operations are delegated to a narrow systemd host agent instead of giving the main application broad host privileges.
+
+### Temporary HTTP-only deployment
+
+The current appliance exposes the main application directly on HTTP:
+
+```text
+http://APPLIANCE-IP:3000/controller/
+```
+
+Default network settings are:
+
+```text
+HUB_BIND_ADDRESS=0.0.0.0
+HUB_PORT=3000
+TRUST_PROXY_HOPS=0
+```
+
+The previous Caddy/HTTPS gateway has been removed for now. HTTPS will be reintroduced later as a separately reviewed feature after the base deployment/update path is stable. Until then, restrict port 3000 to a trusted classroom/admin network and do not expose the appliance directly to the public Internet.
 
 ## One-command appliance install
 
@@ -44,7 +61,9 @@ curl --proto '=https' --tlsv1.2 -fsSL \
 sudo bash /tmp/classroom-hub-bootstrap.sh
 ```
 
-It installs Docker Engine and Compose from Docker's signed package repository, clones the hub into `/opt/classroom-hub`, generates unique appliance credentials, installs the native Host Agent, starts the containers, verifies component health, and prints the secure first-time setup URL. Review the downloaded script before running it on a production machine.
+The HTTPS above is used to securely retrieve the bootstrap from GitHub. The installed Classroom Control Hub service itself currently uses HTTP.
+
+The bootstrap installs Docker Engine and Compose from Docker's signed package repository, clones the hub into `/opt/classroom-hub`, generates unique appliance credentials, installs the native Host Agent, starts the containers, verifies component health, and prints the first-time setup URL. Review the downloaded script before running it on a production machine.
 
 Use the web controller for routine upgrades and rollback after initial installation. The bootstrap refuses to overwrite an existing installation unless `CLASSROOM_HUB_REINSTALL=true` is explicitly supplied.
 
@@ -57,11 +76,19 @@ cd /opt/classroom-hub
 git fetch origin
 git pull --ff-only origin main
 cat VERSION
-docker compose build --no-cache
-docker compose up -d
-docker compose ps
-curl -fsS http://localhost:3000/health
+sudo bash install.sh
 ```
+
+For a development rebuild after the installer has established host permissions and secrets:
+
+```bash
+docker compose build --no-cache
+docker compose up -d --remove-orphans
+docker compose ps
+curl -fsS http://127.0.0.1:3000/health
+```
+
+`--remove-orphans` removes the legacy TLS gateway when upgrading from a release that still included it.
 
 Back up production state before upgrades and never overwrite the local `.env`, database, data, uploads, backups, or secrets with repository examples.
 
@@ -71,21 +98,28 @@ Back up production state before upgrades and never overwrite the local `.env`, d
 sudo bash install.sh
 ```
 
-The installer is required even for a first local appliance deployment because it
-creates unique credentials, owned persistence directories, secret mount files,
-the native Host Agent, and updater units. Running a raw `docker compose up` from
-a clean clone intentionally fails preflight rather than creating insecure or
-root-owned runtime state. Then open:
+The installer is required even for a first local appliance deployment because it creates unique credentials, persistent-directory ownership, secret mount files, the native Host Agent, and updater units. Running a raw `docker compose up` from a clean clone is not the supported installation path.
+
+Then open:
 
 ```text
-https://localhost
+http://SERVER-IP:3000/controller/
 ```
-
-The backend’s port 3000 is bound to loopback for health checks and same-host tunnels. LAN browser traffic enters through the HTTPS gateway. For a dedicated appliance, set `HUB_TLS_HOST` to its DNS name or IP and install the generated local root CA on managed classroom devices. A publicly trusted certificate can be used by replacing the internal Caddy TLS policy.
 
 ## Persistent data
 
 Runtime state must remain outside the container image. The default Compose configuration stores persistent application data in `./data` and keeps site-specific secrets in `.env`, mounted secret files, or encrypted application storage.
+
+The shared data root uses a deliberate ownership model so both the non-root application and hardened maintenance service can operate:
+
+```text
+/opt/classroom-hub/data          root:10001 0770
+/opt/classroom-hub/data/backups  root:10001 0700
+```
+
+Application-owned files remain `10001:10001`.
+
+The master encryption key is stored at `/etc/classroom-control-hub/master.key`. Upgrades from older releases preserve the previous `/etc/classroom-hub/master.key` when present.
 
 Never commit production `.env` files, databases, API tokens, private keys, backups, or site-specific secrets.
 
@@ -101,7 +135,16 @@ Important optional settings include:
 - `PLUTO_URL`
 - `VEYON_WEBAPI_URL`
 - `VEYON_SCAN_SUBNET`
+
 See `.env.example`, `INSTALL.md`, and `docs/CONFIGURATION.md`.
+
+## Windows lab agents
+
+Because the appliance is temporarily HTTP-only, Windows lab-agent enrollment requires the explicit `-AllowHttp` switch and should be limited to trusted classroom/admin networks.
+
+```powershell
+.\Install-Agent.ps1 -HubUrl http://SERVER-IP:3000 -AllowHttp
+```
 
 ## Documentation
 
@@ -110,6 +153,7 @@ Start with:
 - [`INSTALL.md`](INSTALL.md) — install/migration quick guide
 - [`GITHUB-MIGRATION.md`](GITHUB-MIGRATION.md) — Git migration and update workflow
 - [`docs/README.md`](docs/README.md) — documentation index
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — current HTTP-only deployment model
 - [`docs/AI-CONTEXT.md`](docs/AI-CONTEXT.md) — compact technical context for AI assistants
 - [`AGENTS.md`](AGENTS.md) — authoritative contributor/AI operating contract
 - [`wiki/`](wiki/) — Git-tracked mirror of the GitHub Wiki
@@ -118,7 +162,7 @@ Start with:
 
 AI coding assistants should read `AGENTS.md` first and then `docs/AI-CONTEXT.md`. GitHub Copilot-specific guidance is stored in `.github/copilot-instructions.md`.
 
-Project-critical invariants include Morning Announcements priority/recovery, explicitly linked class continuations, Background Music recovery, version convergence, independent integration health, and preservation of production runtime state.
+Project-critical invariants include Morning Announcements priority/recovery, explicitly linked class continuations, Background Music recovery, version convergence, independent integration health, preservation of production runtime state, and the current rule that TLS/Caddy must not become a deployment health dependency until HTTPS is intentionally reintroduced.
 
 ## Container images
 
