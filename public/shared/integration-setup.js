@@ -33,7 +33,7 @@
         ${field({key:"url",label:"Music Assistant URL",value:url,placeholder:"http://host.docker.internal:8095",help:"Container-to-host API address. The Open Music Assistant button converts this to a browser-reachable address.",scope})}
         ${field({key:"token",label:"Long-lived access token",value:cfg.token||"",placeholder:"Required access token",help:"Stored encrypted in the Classroom Control Hub database. Saving is rejected if authentication fails.",secret:true,scope})}
       </div>
-      <div class="actions toolbar" style="margin-top:10px"><button type="button" data-open-music-assistant>Open Music Assistant</button><span class="muted">Create/copy the token there, return here, paste it, then Save.</span></div>
+      <div class="actions toolbar" style="margin-top:10px"><button type="button" data-open-music-assistant>Open Music Assistant</button><span class="muted">Create/copy the token there, return here, paste it, then Save & Verify.</span></div>
     </div>`;
   }
   function veyonFields(cfg,scope){
@@ -69,6 +69,21 @@
       <div class="muted" style="margin-top:10px">Computer inventory, roles, hostnames/IPs and Veyon application settings are database-authoritative. Legacy veyon-computers.json is migration input only and is retired after verified import.</div>
     </div>`;
   }
+  function replaceActionBehavior(card,id,scope){
+    if(!card)return;
+    const buttons=[...card.querySelectorAll(".actions button,.toolbar button")];
+    for(const button of buttons){
+      const text=button.textContent.trim();
+      if(id==="veyonwebapi"&&/remove/i.test(text)){button.remove();continue}
+      if(/save.*recreate|install/i.test(text)){
+        button.textContent=id==="musicassistant"?"Save & Verify":"Save Configuration";
+        button.onclick=()=>{
+          if(scope==="controller"&&typeof window.deployManagedModule==="function")return window.deployManagedModule(id,false);
+          if(scope==="setup"&&typeof window.moduleAction==="function")return window.moduleAction(id,false);
+        };
+      }
+    }
+  }
   async function enhanceSetupCard(id){
     const card=document.getElementById(`mod-${id}`);if(!card||card.dataset.guidedSetup==="1")return;
     const details=card.querySelector("details");if(!details)return;
@@ -76,9 +91,7 @@
     details.querySelectorAll("label").forEach(x=>x.remove());
     details.insertAdjacentHTML("beforeend",id==="musicassistant"?musicFields(cfg,"setup"):veyonFields(cfg,"setup"));
     card.dataset.guidedSetup="1";
-    if(id==="veyonwebapi"){
-      card.querySelectorAll(".actions button").forEach(button=>{if(/recreate|install/i.test(button.textContent))button.textContent="Save Configuration"});
-    }
+    replaceActionBehavior(card,id,"setup");
     wire(card,cfg);
   }
   async function enhanceControllerEditor(id){
@@ -87,7 +100,7 @@
     editor.innerHTML=id==="musicassistant"?musicFields(cfg,"controller"):veyonFields(cfg,"controller");
     editor.dataset.guidedSetup="1";
     const card=editor.closest(".card");
-    if(id==="veyonwebapi")card?.querySelectorAll(".toolbar button").forEach(button=>{if(/save.*recreate/i.test(button.textContent))button.textContent="Save Configuration"});
+    replaceActionBehavior(card,id,"controller");
     wire(card||editor,cfg);
   }
   function wire(root,cfg){
