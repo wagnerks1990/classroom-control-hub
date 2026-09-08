@@ -102,6 +102,22 @@ function reconcileVeyonSecretMetadata(db){
   console.warn(`Startup recovery reconciled Veyon private-key metadata to '${keyName}'.`);
 }
 
+function enableDirectDisplayAccess(){
+  const {ClassroomHubStorage}=require("./storage");
+  const previous=ClassroomHubStorage.prototype.authenticateDisplay;
+  if(previous?.__directDisplayAccess)return;
+  function authenticateConfiguredDisplay(displayId){
+    const id=String(displayId||"").trim();
+    if(!id)return null;
+    const row=this.db.prepare("SELECT id,enabled FROM display_devices WHERE id=? LIMIT 1").get(id);
+    if(!row||Number(row.enabled)===0)return null;
+    return {id:`direct:${id}`,displayId:id,label:"Configured display URL",direct:true};
+  }
+  authenticateConfiguredDisplay.__directDisplayAccess=true;
+  ClassroomHubStorage.prototype.authenticateDisplay=authenticateConfiguredDisplay;
+  console.warn("Direct display URL access enabled: configured displays authenticate by stable display ID; enrollment credentials are no longer required.");
+}
+
 adoptSynchronizedVeyonKeyName();
 const dbFile=canonicalDatabaseFile();
 process.env.DATABASE_FILE=dbFile;
@@ -114,6 +130,7 @@ if(fs.existsSync(dbFile)){
   }finally{db.close()}
 }
 
+enableDirectDisplayAccess();
 // Register scoped maintenance-agent route mirrors before server.js creates the
 // Express routes. Database writes and secret encryption still execute inside
 // server.js handlers; the bridge only supplies maintenance-token authorization.
