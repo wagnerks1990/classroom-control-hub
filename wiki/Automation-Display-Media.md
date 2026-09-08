@@ -12,3 +12,12 @@ For linked-class automations, **Use class default display targets** is a persist
 - Test a Show Media action and verify the actual receiver renders the selected file.
 - Save a linked-class event with class default display targets enabled, reopen it, and verify the checkbox remains enabled.
 - Verify explicit cross-domain targets are preserved.
+
+
+## Test Now and linked-class behavior
+
+`Test Now` executes every action in order and reports the exact action or timer overlay that failed. When a linked class is not scheduled today, manual testing still uses that class as a deterministic context so display text/media/targets and timer rendering can be validated. This exception applies only to manual testing; scheduled execution still requires the linked class and school cycle to match the actual date.
+
+When **Use class default display targets** is enabled, the class display targets apply to every display-domain action in the automation, including display actions added to a lighting-led event and the timer overlay. Lighting targets remain separate.
+
+Alternating-day automations inherit the configured school-cycle anchor. Phase A/B remains the stored phase identity even when the school profile gives those phases friendly labels such as Green Days or Group B Days.
