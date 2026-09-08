@@ -1,9 +1,13 @@
 ## Classroom Control Hub
 
 - [Home](Home)
+- [Controller Workspace](Controller-Workspace)
 - [Architecture](Architecture)
 - [Installation and Deployment](Installation-and-Deployment)
 - [Configuration](Configuration)
+- [Display Access](Display-Access)
+- [Automation Display Media](Automation-Display-Media)
+- [Veyon and Music Assistant](Veyon-and-Music-Assistant)
 - [Operations](Operations)
 - [Troubleshooting](Troubleshooting)
 - [Development](Development)

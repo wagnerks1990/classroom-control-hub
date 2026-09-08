@@ -1,0 +1,45 @@
+name: Workspace UI
+
+on:
+  pull_request:
+    paths:
+      - 'public/shared/**'
+      - 'public/controller/**'
+      - 'test/workspace.test.js'
+      - 'test/fixtures/workspace-*.html'
+      - 'tools/test-workspace-ui.py'
+      - '.github/workflows/workspace-ui.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'public/shared/**'
+      - 'public/controller/**'
+      - 'test/workspace.test.js'
+      - 'test/fixtures/workspace-*.html'
+      - 'tools/test-workspace-ui.py'
+      - '.github/workflows/workspace-ui.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+      - name: Check workspace syntax and route contracts
+        run: |
+          node --check public/shared/workspace.js
+          node --check public/shared/branding.js
+          node --test test/workspace.test.js
+      - name: Install isolated browser-test dependencies
+        run: |
+          python3 -m venv /tmp/workspace-venv
+          /tmp/workspace-venv/bin/python -m pip install playwright==1.57.0
+          /tmp/workspace-venv/bin/python -m playwright install --with-deps chromium
+      - name: Exercise mocked operator workflows
+        run: /tmp/workspace-venv/bin/python tools/test-workspace-ui.py

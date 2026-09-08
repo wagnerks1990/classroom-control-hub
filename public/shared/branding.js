@@ -28,4 +28,12 @@
 
   window.ControlHubBranding={apply,load:async()=>{try{const response=await fetch("/api/v1/branding",{credentials:"same-origin",cache:"no-store"});if(!response.ok)throw Error(`HTTP ${response.status}`);const value=await response.json();return apply(value.branding||{})}catch{return apply(fallback)}}};
   window.ControlHubBranding.load();
+
+  // Operator-only enhancement. The workspace owns its CSS gate and classic fallback.
+  const workspaceSurface=/^\/controller\/(?:index|display|lab|veyon)\.html$/.test(location.pathname)||/^\/(?:controller|setup)\/?$/.test(location.pathname)||location.pathname==="/setup/index.html";
+  if(workspaceSurface&&!document.querySelector('script[src="/shared/workspace.js"]')){
+    const workspace=document.createElement("script");
+    workspace.src="/shared/workspace.js";
+    document.head.append(workspace);
+  }
 })();
