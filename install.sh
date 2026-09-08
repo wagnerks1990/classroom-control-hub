@@ -123,22 +123,37 @@ CURRENT_BIND="$(sed -n 's/^HUB_BIND_ADDRESS=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -z "$CURRENT_BIND" || "$CURRENT_BIND" == "127.0.0.1" ]]; then set_env_path HUB_BIND_ADDRESS "0.0.0.0"; fi
 set_env_path TRUST_PROXY_HOPS "0"
 
-# Preserve an explicitly configured database. If alpha.70 left both database
-# filenames behind without DATABASE_FILE, prefer classroom-hub.db because that
-# was the active live-test database; otherwise preserve the only existing file.
+# Alpha.70 could leave two SQLite database names on disk. Preserve the explicitly
+# configured active database, then migrate its live contents into the single
+# canonical classroom-control-hub.db file used by Compose and maintenance restore.
 CURRENT_DATABASE="$(sed -n 's/^DATABASE_FILE=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -z "$CURRENT_DATABASE" ]]; then
-  if [[ -f "$TARGET/data/classroom-hub.db" ]]; then
+  if [[ -f "$TARGET/data/classroom-hub.db" && ! -f "$TARGET/data/classroom-control-hub.db" ]]; then
     CURRENT_DATABASE=/app/data/classroom-hub.db
-  elif [[ -f "$TARGET/data/classroom-control-hub.db" ]]; then
-    CURRENT_DATABASE=/app/data/classroom-control-hub.db
   else
-    CURRENT_DATABASE=/app/data/classroom-hub.db
+    CURRENT_DATABASE=/app/data/classroom-control-hub.db
   fi
-  set_env_path DATABASE_FILE "$CURRENT_DATABASE"
 fi
 case "$CURRENT_DATABASE" in /app/data/*.db) ;; *) fail "DATABASE_FILE must identify a .db file beneath /app/data";; esac
-printf 'Using persistent database: %s\n' "$CURRENT_DATABASE"
+CURRENT_DB_HOST="$TARGET/data/$(basename "$CURRENT_DATABASE")"
+CANONICAL_DATABASE=/app/data/classroom-control-hub.db
+CANONICAL_DB_HOST="$TARGET/data/classroom-control-hub.db"
+if [[ "$CURRENT_DATABASE" != "$CANONICAL_DATABASE" ]]; then
+  [[ -f "$CURRENT_DB_HOST" ]] || fail "Configured database $CURRENT_DATABASE does not exist"
+  echo "Migrating active SQLite database $(basename "$CURRENT_DB_HOST") to canonical classroom-control-hub.db ..."
+  (cd "$TARGET" && docker compose stop classroom-hub >/dev/null 2>&1) || true
+  DB_STAGE="$TARGET/data/.classroom-control-hub.db.migrate-$STAMP"
+  rm -f "$DB_STAGE"
+  sqlite3 "$CURRENT_DB_HOST" ".backup '$DB_STAGE'"
+  [[ "$(sqlite3 "$DB_STAGE" 'PRAGMA quick_check;' | tr -d '\r\n')" == "ok" ]] || { rm -f "$DB_STAGE"; fail "Canonical database migration failed SQLite integrity check"; }
+  chown 10001:10001 "$DB_STAGE"
+  chmod 0600 "$DB_STAGE"
+  rm -f "$CANONICAL_DB_HOST-wal" "$CANONICAL_DB_HOST-shm"
+  mv -f "$DB_STAGE" "$CANONICAL_DB_HOST"
+  CURRENT_DATABASE="$CANONICAL_DATABASE"
+fi
+set_env_path DATABASE_FILE "$CANONICAL_DATABASE"
+printf 'Using persistent database: %s\n' "$CANONICAL_DATABASE"
 chmod 600 "$TARGET/.env"
 
 mkdir -p /etc/classroom-control-hub
