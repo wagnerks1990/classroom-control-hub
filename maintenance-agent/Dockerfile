@@ -10,6 +10,11 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts
 COPY server.js ./
 COPY extensions.js ./
+# server.js remains the audited recovery implementation. Stamp its embedded
+# diagnostic/health version from package metadata at image build time so the
+# wrapper can evolve without duplicating that large file.
+RUN RELEASE_VERSION="$(node -p "require('./package.json').version")" \
+ && sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+/${RELEASE_VERSION}/g" server.js
 RUN mkdir -p /work/uploads
 ENV PORT=3010
 ENV NODE_OPTIONS=--require=/app/extensions.js
