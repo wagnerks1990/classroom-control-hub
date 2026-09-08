@@ -205,7 +205,7 @@ new display provisioning.
 
 ## Class schedules
 
-Class schedules can represent normal periods, transition pseudo-periods, and site-specific continuation/Bison periods. The matching engine may consider:
+Class schedules can represent normal periods, transition pseudo-periods, and explicitly linked continuation periods. The matching engine may consider:
 
 - start/end time;
 - weekday;

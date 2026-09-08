@@ -69,6 +69,11 @@ ensure_secret CONTROL_TOKEN
 ensure_secret DISPLAY_TOKEN
 ensure_secret LAB_AGENT_TOKEN
 ensure_secret MAINTENANCE_TOKEN
+APPLIANCE_ADDRESS="$(hostname -I | awk '{print $1}')"
+CONFIGURED_TLS_HOST="$(sed -n 's/^HUB_TLS_HOST=//p' "$TARGET/.env" | tail -n 1)"
+if [[ -z "$CONFIGURED_TLS_HOST" || "$CONFIGURED_TLS_HOST" == "localhost" ]]; then
+  sed -i "s/^HUB_TLS_HOST=.*/HUB_TLS_HOST=${APPLIANCE_ADDRESS}/" "$TARGET/.env"
+fi
 if ! grep -q '^HOST_CLASSROOM_HUB_DIR=' "$TARGET/.env"; then echo "HOST_CLASSROOM_HUB_DIR=$TARGET" >> "$TARGET/.env"; fi
 if ! grep -q '^HOST_SERVICES_DIR=' "$TARGET/.env"; then echo "HOST_SERVICES_DIR=$SERVICES" >> "$TARGET/.env"; fi
 chmod 600 "$TARGET/.env"
@@ -149,6 +154,8 @@ cd "$TARGET"
 EXPECTED_VERSION="$(tr -d '\r\n' < VERSION)"
 CONFIGURED_HUB_PORT="$(sed -n 's/^HUB_PORT=//p' "$TARGET/.env" | tail -n 1)"
 HUB_PORT_VALUE="${HUB_PORT:-${CONFIGURED_HUB_PORT:-3000}}"
+CONFIGURED_HTTPS_PORT="$(sed -n 's/^HUB_HTTPS_PORT=//p' "$TARGET/.env" | tail -n 1)"
+HUB_HTTPS_PORT_VALUE="${HUB_HTTPS_PORT:-${CONFIGURED_HTTPS_PORT:-443}}"
 echo "Validating source for $EXPECTED_VERSION ..."
 docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/server.js
 docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/storage.js
@@ -169,8 +176,8 @@ for _ in $(seq 1 30); do
 done
 docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok||!j.hostAgent?.ok){console.error(JSON.stringify(j));process.exit(1)}})" || { echo "Maintenance-to-Host-Agent verification failed." >&2; exit 1; }
 
-echo "Starting Classroom Control Hub backend ..."
-docker compose up -d --force-recreate classroom-hub
+echo "Starting Classroom Control Hub backend and HTTPS gateway ..."
+docker compose up -d --force-recreate classroom-hub caddy
 
 echo "Waiting for Classroom Control Hub health ..."
 for _ in $(seq 1 90); do
@@ -189,10 +196,11 @@ fi
 echo "Verified component convergence: $EXPECTED_VERSION (backend, maintenance, host agent)"
 echo
 echo "Classroom Control Hub migration completed."
-echo "Controller: http://$(hostname -I | awk '{print $1}'):${HUB_PORT_VALUE}/controller/"
+echo "Controller: https://${APPLIANCE_ADDRESS}:${HUB_HTTPS_PORT_VALUE}/controller/"
 SETUP_TOKEN_VALUE="$(sed -n 's/^SETUP_TOKEN=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -n "$SETUP_TOKEN_VALUE" ]]; then
-  echo "First-time setup: http://$(hostname -I | awk '{print $1}'):${HUB_PORT_VALUE}/setup/#token=$SETUP_TOKEN_VALUE"
+  echo "First-time setup: https://${APPLIANCE_ADDRESS}:${HUB_HTTPS_PORT_VALUE}/setup/#token=$SETUP_TOKEN_VALUE"
   echo "Treat the setup URL as a temporary administrator secret. It becomes unusable after the first administrator is created."
 fi
+echo "Local HTTPS uses an appliance-owned CA. Export it with: cd $TARGET && docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./classroom-hub-root-ca.crt"
 [[ -d "$BACKUP" ]] && echo "Rollback snapshot: $BACKUP"

@@ -12,7 +12,7 @@ AI coding assistants and contributors should treat the GitHub repository `main` 
 
 ## Current baseline
 
-The current known-good baseline is `1.0.0-alpha.67`.
+The current known-good baseline is `1.0.0-alpha.68`.
 
 Critical invariants:
 
@@ -20,7 +20,7 @@ Critical invariants:
 - Ant Media live detection uses HLS as the primary signal.
 - Announcement audio is locally controlled so mute/volume work.
 - When announcements end, the scheduler re-evaluates the current moment and re-triggers winning current display automations before Background Music resumes.
-- Timer chaining is only for the matching Bison continuation of the same base period.
+- Timer chaining is only for an explicitly linked continuation of the same base class or period.
 - Display/controller/backend/maintenance/host-agent versions must stay converged.
 - Integration health is independent; a failure in Pluto must not falsely mark MQTT/Govee offline.
 - Optional or slow hardware probes must not block the initial Overview screen.

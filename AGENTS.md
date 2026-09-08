@@ -17,7 +17,7 @@ Do not infer production configuration from public defaults. Site-specific config
 
 ## Current baseline
 
-The current known-good application baseline is `1.0.0-alpha.67`.
+The current known-good application baseline is `1.0.0-alpha.68`.
 
 Verified production behaviors at this baseline include:
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.0-alpha.68 - 2026-09-08
+
+### Added
+
+- Database-backed school schedule profiles with configurable cycle days, day groups, anchors, period mappings, exception times, and continuation rules.
+- SHA-256 manifests for Windows lab-agent installation and in-place agent updates.
+- Unit coverage for generic schedule normalization, exception transforms, and legacy-profile isolation.
+- Automatic GitHub Release creation after both tagged container images publish successfully.
+- A one-click Caddy HTTPS gateway with an appliance-owned CA; fresh installs bind the backend’s maintenance port to loopback.
+
+### Changed
+
+- Replaced district-specific schedule editor language and presets with school-configurable controls while importing existing installations through a compatibility profile.
+- Expanded teacher and technician access profiles and enforced granular capabilities on schedules, automations, media, diagnostics, lab control, integration checks, and controller WebSockets.
+- Restricted web upgrades to the trusted upstream repository and made rollback points single-use so repeated reverts cannot pair source with the wrong backup.
+- Reduced maintenance-container write access to application data and known integration data directories; the container is now read-only with all Linux capabilities dropped.
+- Restricted native service actions/log access to classified units and replaced permissive Docker-run filtering with an explicit option parser.
+- Persisted the display asset signing key and applied privacy retention immediately after startup.
+
+### Fixed
+
+- Protected integration status and scene endpoints that previously exposed operational details without authentication.
+- Completed fragmented Windows WebSocket message assembly and prevented overlapping receive operations during heartbeat waits.
+- Escaped all five HTML-sensitive characters in controller-rendered values.
+
 ## 1.0.0-alpha.67 - 2026-09-08
 
 - Locked both Node dependency graphs and upgraded `adm-zip` and `pdfjs-dist` past their high-severity advisories; CI now uses `npm ci`, production audits, immutable action SHAs, and container SBOM/provenance attestations.

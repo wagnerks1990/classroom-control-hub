@@ -1,11 +1,36 @@
 services:
+  caddy:
+    image: caddy:2.11.2-alpine
+    container_name: classroom-control-hub-tls
+    restart: unless-stopped
+    environment:
+      HUB_TLS_HOST: ${HUB_TLS_HOST:-localhost}
+      HUB_HTTPS_PORT: ${HUB_HTTPS_PORT:-443}
+    ports:
+      - "${HUB_HTTP_PORT:-80}:8080"
+      - "${HUB_HTTPS_PORT:-443}:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      classroom-hub:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+
   classroom-hub:
     build: .
     image: ghcr.io/wagnerks1990/classroom-control-hub:${CLASSROOM_CONTROL_HUB_TAG:-alpha}
     container_name: classroom-control-hub
     restart: unless-stopped
     ports:
-      - "${HUB_PORT:-3000}:3000"
+      - "${HUB_BIND_ADDRESS:-0.0.0.0}:${HUB_PORT:-3000}:3000"
     environment:
       PORT: 3000
       ROOM_NAME: ${ROOM_NAME:-Classroom}
@@ -99,8 +124,11 @@ services:
       MASTER_KEY_FILE: /run/secrets/classroom-control-hub-master-key
     volumes:
       - /run/classroom-control-hub:/run/classroom-control-hub
-      - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}:/managed/classroom-hub
-      - ${HOST_SERVICES_DIR:-/opt/services}:/managed/services
+      - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}:/managed/classroom-hub:ro
+      - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}/data:/managed/classroom-hub/data
+      - ${HOST_SERVICES_DIR:-/opt/services}:/managed/services:ro
+      - ${HOST_SERVICES_DIR:-/opt/services}/mosquitto:/managed/services/mosquitto
+      - ${HOST_SERVICES_DIR:-/opt/services}/nodered:/managed/services/nodered
       - /opt/classroom-hub-backups:/host-backups:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     healthcheck:
@@ -111,4 +139,14 @@ services:
       retries: 3
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /work/uploads:size=1024m,mode=1770
     # Deliberately not published to the host. Access is proxied by Classroom Control Hub.
+
+volumes:
+  caddy_data:
+  caddy_config:

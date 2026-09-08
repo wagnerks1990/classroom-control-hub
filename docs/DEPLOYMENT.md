@@ -62,6 +62,7 @@ sudo cp .env.example .env
 ```
 
 Review every value in `.env` before starting production services. Do not commit the production `.env`.
+Set `HUB_TLS_HOST` to the DNS name or IP used by classroom browsers. The installer does this automatically for a fresh appliance using its primary IP.
 
 The supported installer path is:
 
@@ -86,6 +87,12 @@ curl -fsS http://localhost:3000/health
 sudo systemctl status classroom-hub-host-agent.service --no-pager -l
 sudo test -S /run/classroom-control-hub/host-agent.sock
 sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control-hub/
+```
+
+The application backend is deliberately bound to `127.0.0.1:3000`; normal LAN access uses `https://HUB_TLS_HOST/`. Caddy creates an appliance-owned local CA. Export its root certificate for managed-device trust deployment with:
+
+```bash
+sudo docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./classroom-hub-root-ca.crt
 ```
 
 Confirm that:

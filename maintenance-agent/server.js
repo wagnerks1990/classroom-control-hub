@@ -41,7 +41,7 @@ async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
 }
 async function mainAppStatus(){return mainAppRequest("GET","/api/v1/internal/maintenance/status",null,10000)}
 async function dockerContainers(){const r=await run("docker",["ps","-a","--format","{{json .}}"],{timeout:10000});return r.stdout.split(/\r?\n/).filter(Boolean).map(x=>{try{return JSON.parse(x)}catch{return {raw:x}}})}
-app.get("/health",async(_req,res)=>{let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}res.json({ok:true,version:"1.0.0-alpha.67",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null})});
+app.get("/health",async(_req,res)=>{let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}res.json({ok:true,version:"1.0.0-alpha.68",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null})});
 app.get("/system",async(_req,res)=>{
   const nets=os.networkInterfaces();let disk=null,hostDocker=null;
   try{disk=(await run("df",["-h","/managed/classroom-hub"])).stdout}catch{}
@@ -288,14 +288,16 @@ async function verifyRestoreSource(srcRoot,{data=false}={}){
     const check=String((await run("sqlite3",[dbPath,"PRAGMA quick_check;"],{timeout:60000})).stdout||"").trim();if(check!=="ok")throw Error(`Backup database integrity check failed: ${check||"no result"}`);
   }
 }
-function replaceRestoreContent(srcRoot,{configuration=false,data=false}={}){
+function replaceRestoreContent(srcRoot,{database=false,data=false}={}){
   const restored=[];
-  if(configuration){const src=path.join(srcRoot,"config"),dst=path.join(HUB_ROOT,"config");if(fs.existsSync(src)){fs.rmSync(dst,{recursive:true,force:true});fs.cpSync(src,dst,{recursive:true});restored.push("config")}}
   if(data){
     const src=path.join(srcRoot,"data"),dst=path.join(HUB_ROOT,"data");fs.mkdirSync(dst,{recursive:true});
     for(const ent of fs.readdirSync(dst,{withFileTypes:true})){if(ent.name==="backups")continue;fs.rmSync(path.join(dst,ent.name),{recursive:true,force:true})}
     for(const ent of fs.readdirSync(src,{withFileTypes:true})){if(ent.name==="backups")continue;fs.cpSync(path.join(src,ent.name),path.join(dst,ent.name),{recursive:true})}
     for(const suffix of ["-wal","-shm"])fs.rmSync(path.join(dst,"classroom-control-hub.db"+suffix),{force:true});restored.push("data");
+  }else if(database){
+    const src=path.join(srcRoot,"data","classroom-control-hub.db"),dst=path.join(HUB_ROOT,"data","classroom-control-hub.db");
+    fs.mkdirSync(path.dirname(dst),{recursive:true});for(const suffix of ["","-wal","-shm"])fs.rmSync(dst+suffix,{force:true});fs.cpSync(src,dst);restored.push("database");
   }
   return restored;
 }
@@ -314,10 +316,10 @@ app.post("/backup/:name/restore",async(req,res)=>{
     const plan=backupRestorePlan(req.params.name);
     safety=await createOperationalBackupNamed("pre-restore");
     temp=path.join(UPLOAD_DIR,`restore-${Date.now()}`);fs.mkdirSync(temp,{recursive:true});const extracted=await extractRestore(plan.name,temp),srcRoot=extracted.srcRoot;
-    const doConfig=mode.includes("configuration"),doData=mode.includes("data");
-    await verifyRestoreSource(srcRoot,{data:doData});
+    const doData=mode.includes("data"),doDatabase=mode==="configuration";
+    await verifyRestoreSource(srcRoot,{data:doData||doDatabase});
     await run("docker",["stop",APP_CONTAINER],{timeout:30000});stopped=true;mutationStarted=true;
-    const restored=replaceRestoreContent(srcRoot,{configuration:doConfig,data:doData});
+    const restored=replaceRestoreContent(srcRoot,{database:doDatabase,data:doData});
     if(!restored.length)throw Error("Selected restore mode has no matching content in this backup");
     await run("docker",["start",APP_CONTAINER],{timeout:30000});stopped=false;await waitForMainApplication();
     res.json({ok:true,name:plan.name,mode,restored,safetyBackup:safety.name,healthVerified:true,message:"Restore completed and the application passed its database health check."});
@@ -328,7 +330,7 @@ app.post("/backup/:name/restore",async(req,res)=>{
       try{
         if(!stopped){await run("docker",["stop",APP_CONTAINER],{timeout:30000});stopped=true}
         const rollbackDir=path.join(UPLOAD_DIR,`rollback-${Date.now()}`);fs.mkdirSync(rollbackDir,{recursive:true});
-        try{const extracted=await extractRestore(safety.name,rollbackDir);await verifyRestoreSource(extracted.srcRoot,{data:true});replaceRestoreContent(extracted.srcRoot,{configuration:true,data:true})}finally{fs.rmSync(rollbackDir,{recursive:true,force:true})}
+        try{const extracted=await extractRestore(safety.name,rollbackDir);await verifyRestoreSource(extracted.srcRoot,{data:true});replaceRestoreContent(extracted.srcRoot,{data:true})}finally{fs.rmSync(rollbackDir,{recursive:true,force:true})}
         await run("docker",["start",APP_CONTAINER],{timeout:30000});stopped=false;await waitForMainApplication();rollback={attempted:true,ok:true,backup:safety.name};
       }catch(rollbackError){rollback={attempted:true,ok:false,backup:safety.name,error:rollbackError.message}}
     }
@@ -342,7 +344,7 @@ app.post("/audit/prune",async(req,res)=>{try{res.json(await mainAppRequest("POST
 app.get("/diagnostics/bundle",async(_req,res)=>{try{
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-diagnostics-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
   let application=null;try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}
-  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.67",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
+  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.68",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
   zip.addFile("summary.json",Buffer.from(JSON.stringify(info,null,2)));
   try{const c=await dockerContainers();zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(c,null,2)));for(const row of c){const n=cleanName(row.Names||row.Name||"");if(!n)continue;try{const r=await run("docker",["logs","--timestamps","--tail","1000",n],{timeout:20000,maxBuffer:16*1024*1024});zip.addFile(`logs/${n}.log`,Buffer.from((r.stdout||"")+(r.stderr||"")))}catch(e){zip.addFile(`logs/${n}.error.txt`,Buffer.from(e.message))}}}catch(e){zip.addFile("docker/error.txt",Buffer.from(e.message))}
   try{const r=await run("docker",["stats","--no-stream","--format","{{json .}}"],{timeout:15000});zip.addFile("docker/stats.jsonl",Buffer.from(r.stdout||""))}catch{}

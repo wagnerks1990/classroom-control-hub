@@ -37,6 +37,8 @@ jobs:
         run: |
           node --check src/server.js
           node --check src/storage.js
+          node --check src/school-schedule.js
+          node --check src/security.js
 
       - name: Install locked maintenance dependencies
         working-directory: maintenance-agent

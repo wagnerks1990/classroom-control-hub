@@ -85,13 +85,13 @@ docker build -t classroom-control-hub-maintenance:test maintenance-agent
 - Ant Media detection uses HLS as the primary signal when available.
 - When announcements end, the scheduler re-evaluates current date/class/time and re-runs the winning current display automations before Background Music resumes.
 - Do not restore stale pre-announcement snapshots.
-- Timer continuation is only for the matching Bison continuation of the same base period/class.
+- Timer continuation is only for an explicitly linked continuation of the same base class or period.
 - Integration health is independent.
 - Slow optional integration probes must not block initial Overview rendering.
 
 ## Current known-good baseline
 
-`1.0.0-alpha.67` is the known-good baseline at the time this page was updated. A newer `VERSION` supersedes the version number but not these invariants unless deliberately changed and documented.
+`1.0.0-alpha.68` is the known-good baseline at the time this page was updated. A newer `VERSION` supersedes the version number but not these invariants unless deliberately changed and documented.
 
 ## Testing areas
 
@@ -100,7 +100,7 @@ Regression testing should cover:
 - controller load/authentication and Overview responsiveness
 - display connect/reconnect and version convergence
 - scheduled automation and manual Run Now/Test Now
-- class timer resolution/Bison continuation/transition timers
+- class timer resolution, explicit continuation, and transition timers
 - no-school/remote/half-day/delay rules
 - Morning Announcements HLS detection/playback/audio controls
 - announcement priority and post-release failsafe resync

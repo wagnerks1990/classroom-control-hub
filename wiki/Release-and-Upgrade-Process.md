@@ -26,7 +26,7 @@ Before publishing a release:
 8. Verify Host Agent service/socket and maintenance access.
 9. Test display reconnect/version convergence.
 10. Test automations and manual Run Now/Test Now.
-11. Test class timers and Bison continuation rules.
+11. Test class timers and explicit continuation rules.
 12. Test Morning Announcements playback, HLS detection, audio controls, priority lock, and release.
 13. Verify post-announcement failsafe scheduler resync restores the currently applicable automations.
 14. Test Background Music pause/resume/recovery.
