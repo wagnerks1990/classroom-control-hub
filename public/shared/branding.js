@@ -80,4 +80,15 @@
     script.dataset.controlhubIntegrationSetup="1";
     document.head.append(script);
   }
+
+  // Preserve the class-default-target choice for linked automations. The base
+  // alpha.71 editor incorrectly clears the checkbox when the primary action is
+  // lighting even though later display actions can still use class targets.
+  if(!renderer&&!document.querySelector('script[data-controlhub-automation-fix]')){
+    const script=document.createElement("script");
+    script.src="/shared/automation-hotfix.js";
+    script.defer=true;
+    script.dataset.controlhubAutomationFix="1";
+    document.head.append(script);
+  }
 })();
