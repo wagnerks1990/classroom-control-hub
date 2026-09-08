@@ -11,14 +11,30 @@ veyon-webapi.service
 
 The Hub detects these services through the Host Agent and labels the integration **Host Managed**. Host Managed means Classroom Control Hub does not install, remove, or recreate the systemd services. It does **not** mean monitor-only: Veyon application configuration remains editable in Classroom Control Hub.
 
+### Authentication profile
+
+This appliance is standardized on **Veyon key-file authentication** using a matching key pair named `master`.
+
+Verify the native key store with:
+
+```bash
+veyon-cli authkeys list details
+```
+
+The `master/private` and `master/public` rows must have the same Pair ID. The Host Agent synchronizes that existing pair into `/etc/classroom-control-hub/veyon/` before startup. The application imports the private key into the encrypted SQLite secret store, which becomes the Classroom Control Hub authority for the private key.
+
+The Hub does not silently generate or rotate Veyon keys because a rotated public key must also be deployed to every managed workstation.
+
+Veyon itself also supports logon/username-password authentication, but the current Classroom Control Hub backend profile is key-file authentication. Do not select or document logon authentication as active until that backend path is implemented and tested.
+
 ### Required Veyon settings
 
 Open the Veyon WebAPI integration configuration and review:
 
 - WebAPI URL (`http://host.docker.internal:11080` is the normal container-to-host value);
-- Veyon authentication key name;
-- Veyon private key;
-- Veyon public key/deployment metadata;
+- Veyon authentication key name (`master` is the appliance default);
+- Veyon private-key import/storage status;
+- Veyon public-key/deployment metadata;
 - optional scan subnet and range;
 - connection pool maximum;
 - authentication retries;
@@ -28,16 +44,18 @@ The private authentication key is encrypted in the Classroom Control Hub SQLite 
 
 ### Domain and SSH credentials
 
-Optional Windows/domain and Linux/SSH credentials are available for endpoint installation/configuration. They are not Veyon's normal control authentication method.
+Optional Windows/domain and Linux/SSH credentials are available for endpoint installation/configuration. In the current key-file profile they are not used for normal Veyon control authentication.
 
-Veyon control authentication uses the Veyon key pair. Optional deployment credentials can include:
+Optional deployment credentials can include:
 
 - Windows domain/workgroup, username and encrypted password;
 - Linux SSH username, encrypted private key and optional encrypted passphrase.
 
+A future Veyon logon-authentication implementation must store its actual control username/password separately from these deployment credentials.
+
 ### Existing computers
 
-Existing database computers do not need to be rediscovered just because the scan subnet is blank. The Hub should preserve names, IP addresses, roles and discovery metadata through upgrades.
+Existing database computers do not need to be rediscovered just because the scan subnet is blank. The Hub preserves names, IP addresses, roles and discovery metadata through upgrades.
 
 After saving Veyon configuration, the Hub probes the database inventory and reports counts for configured, online and authenticated computers. A `404` from `GET /` on port 11080 only proves the WebAPI process is reachable; it is not a successful control/authentication test.
 
@@ -67,6 +85,7 @@ Veyon host checks:
 
 ```bash
 systemctl status veyon.service veyon-webapi.service --no-pager
+veyon-cli authkeys list details
 ss -lntp | grep -E '11080|11100'
 ```
 
