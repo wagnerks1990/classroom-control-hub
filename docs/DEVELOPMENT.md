@@ -10,10 +10,10 @@ The direct source tree on `main` is canonical. The temporary `source-archive/` m
 
 ```text
 classroom-control-hub/
-├── src/                    # main Node.js backend
+├── src/                    # main Node.js backend and startup recovery
 ├── public/                 # controller, display, setup and supporting web UIs
-├── maintenance-agent/      # maintenance service
-├── host-agent/             # host-level systemd agent
+├── maintenance-agent/      # maintenance service + alpha extension layer
+├── host-agent/             # host-level systemd agent + controlled wrapper
 ├── config/                 # public defaults/catalog/schema
 ├── docs/                   # version-controlled technical documentation
 ├── wiki/                   # Git-tracked GitHub Wiki mirror
@@ -31,7 +31,9 @@ classroom-control-hub/
 
 Application changes must not require deleting the runtime database or site configuration as a routine upgrade step. Schema changes should use explicit, reviewable migrations.
 
-Production runtime `.env`, databases, data, uploads, backups, master keys, private keys, and credentials are not replaceable source files.
+Production runtime `.env`, databases, data, uploads, backups, master keys, private keys, credentials, and managed integration data are not replaceable source files.
+
+Database identity is an operational invariant. `DATABASE_FILE` is authoritative. If a migration reconciles database filenames, stop the application, take SQLite-safe backups of every database, verify the destination with `PRAGMA quick_check`, preserve the previous file for rollback, and update `.env` before recreation.
 
 ### Keep deployment-specific values out of source
 
@@ -51,6 +53,18 @@ When Morning Announcements end, current display state is recovered by a schedule
 
 A failed integration must not mark unrelated integrations offline. Slow optional hardware probes must not block initial controller Overview rendering.
 
+### Preserve appliance control boundaries
+
+The controller may inventory and operate existing Docker containers through the authenticated maintenance/Host Agent path. New container creation stays restricted to reviewed supported add-on images. Do not replace this with arbitrary root shell or unrestricted Docker execution.
+
+Supported optional managed add-ons are Mosquitto, Govee2MQTT, Music Assistant, and Veyon WebAPI. Existing containers should be adopted without recreation unless an administrator explicitly chooses recreate/update. Persistent add-on data must survive container replacement.
+
+### Setup wizard invariants
+
+Receiver IDs are stable, editable identifiers. Setup must reject duplicate receiver IDs and prune every display group against the final saved receiver set before writing configuration.
+
+Discovery actions must match backend capabilities: **Adopt Existing** must not call a route that rejects adoption, and **Deploy/Recreate** must remain an explicit action.
+
 ## Standard production layout
 
 The standard production checkout is `/opt/classroom-hub`. The Host Agent uses `/run/classroom-control-hub/host-agent.sock`.
@@ -64,9 +78,12 @@ Before committing a release candidate, run the checks represented by `.github/wo
 ```bash
 node --check src/server.js
 node --check src/storage.js
+node --check src/startup-recovery.js
 node --check maintenance-agent/server.js
+node --check maintenance-agent/extensions.js
 node tools/validate-controller.js
-python3 -m py_compile host-agent/server.py
+python3 -m py_compile host-agent/server.py host-agent/start.py
+npm test
 docker compose config
 docker build -t classroom-control-hub:test .
 docker build -t classroom-control-hub-maintenance:test maintenance-agent
@@ -80,22 +97,13 @@ bash -n install.sh
 
 ## Version convergence
 
-Before every release, search the source tree for old version strings. All independently loaded components must agree on the current release version.
+`VERSION` is the primary Hub release identifier. Root and maintenance package metadata must agree with it. Large client surfaces are stamped mechanically at image build time from `VERSION`, the maintenance image stamps its runtime diagnostic version from package metadata, and the Host Agent wrapper reports the release version while importing the audited core implementation.
 
-Verify:
-
-- `VERSION`;
-- root `package.json`;
-- backend-reported version;
-- controller constants/footer;
-- display renderer constants;
-- maintenance-agent package/server;
-- host-agent reported version;
-- reload/version-mismatch guards.
+Tests must verify the stamping/wrapper contracts so releases do not rely on manually editing large client files.
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.70` is the live-test candidate baseline. It includes configurable school scheduling plus the dependency, API privacy, capability, agent-enrollment, updater, recovery, and maintenance-plane hardening described in the changelog.
+At the time this document was updated, `1.0.0-alpha.71` is the live-test recovery/stabilization baseline. It includes the HTTP-only deployment change plus database identity, maintenance startup, access-profile, password-symbol, setup wizard, and managed-integration fixes found during the alpha.70 live deployment.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 
@@ -128,10 +136,16 @@ cd /opt/classroom-hub
 git fetch origin
 git pull --ff-only origin main
 cat VERSION
+sudo bash install.sh
+```
+
+For development rebuilds after the installer has established the host state:
+
+```bash
 docker compose build --no-cache
-docker compose up -d
+docker compose up -d --remove-orphans
 docker compose ps
-curl -fsS http://localhost:3000/health
+curl -fsS http://127.0.0.1:3000/health
 ```
 
 Always back up production state before upgrades.
@@ -140,6 +154,13 @@ Always back up production state before upgrades.
 
 High-value regression scenarios include:
 
+- active database selection when two historical `.db` files coexist;
+- built-in Administrator profile recovery when capabilities are missing;
+- passwords containing shell-significant punctuation such as `!` and `#`;
+- maintenance startup while the main application is still stopped;
+- adopting existing Docker integrations without recreation;
+- deploy/recreate/remove of supported add-ons while preserving persistent data;
+- Setup receiver-ID edits and shrinking display sets with custom groups;
 - multiple displays connecting/reconnecting simultaneously;
 - automation execution at period boundaries;
 - active-class selection for multi-class events;
