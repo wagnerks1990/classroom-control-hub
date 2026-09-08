@@ -1,8 +1,8 @@
 # Deployment
 
-## Recommended production model
+## Current deployment model
 
-Classroom Control Hub is intended to run primarily in Docker, with host-only operations delegated to a narrow systemd host agent.
+Classroom Control Hub currently runs as a direct HTTP appliance. HTTPS/TLS and the previous Caddy gateway are intentionally deferred while the deployment/update path is stabilized.
 
 ```text
 Ubuntu host
@@ -14,35 +14,62 @@ Ubuntu host
     └── classroom-control-hub-maintenance
 ```
 
+The main application publishes TCP port `3000` directly. The default is:
+
+```text
+HUB_BIND_ADDRESS=0.0.0.0
+HUB_PORT=3000
+TRUST_PROXY_HOPS=0
+```
+
+Use the appliance only on a trusted classroom/admin LAN or behind network controls that restrict access. Do not expose this HTTP-only deployment directly to the public Internet.
+
 ## Requirements
 
 Recommended baseline:
 
-- Ubuntu Server 24.04 LTS on `amd64` or `arm64` for the supported automatic bootstrap;
-- Docker Engine and Docker Compose v2, installed automatically by the bootstrap or supplied in advance for manual installation;
-- persistent local storage for the SQLite database, uploads, backups, and runtime configuration;
+- Ubuntu Server 24.04 LTS on `amd64` or `arm64`;
+- Docker Engine and Docker Compose v2;
+- persistent local storage for SQLite, uploads, backups, and runtime state;
 - reliable LAN connectivity to controlled classroom devices and integrations;
-- a reverse proxy and TLS when the controller is accessed outside a trusted management network.
+- host firewall/network segmentation appropriate for a temporary HTTP-only controller.
 
-## Persistent directories
+## Persistent state and permissions
 
-Do not place production state only inside a container writable layer. The standard production checkout is:
+The standard production checkout is `/opt/classroom-hub`.
 
 ```text
 /opt/classroom-hub/
 ├── .env
 ├── docker-compose.yml
 ├── data/
-├── uploads/
-├── backups/
-└── secrets/
+│   ├── classroom-control-hub.db
+│   └── backups/
+└── config/
 ```
 
-Site-specific runtime data must survive source updates. The exact volume mapping is defined by `docker-compose.yml`.
+Runtime state must survive source updates.
+
+The shared `data/` root is root-owned with group `10001` access so both hardened containers can traverse it:
+
+```text
+/opt/classroom-hub/data          root:10001 0770
+/opt/classroom-hub/data/backups  root:10001 0700
+```
+
+Application-owned data files are UID/GID `10001:10001`.
+
+The encryption key is stored outside the checkout at:
+
+```text
+/etc/classroom-control-hub/master.key
+```
+
+Upgrades from older installations must preserve `/etc/classroom-hub/master.key` if it already exists rather than silently rotating the key.
 
 ## First deployment
 
-For a clean supported server, download, review, and run the appliance bootstrap:
+For a clean supported server:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
@@ -51,179 +78,172 @@ curl --proto '=https' --tlsv1.2 -fsSL \
 sudo bash /tmp/classroom-hub-bootstrap.sh
 ```
 
-The bootstrap installs Docker from its signed apt repository, downloads the selected repository ref into a temporary staging directory, generates independent appliance secrets, invokes the production installer, verifies health/version convergence, and prints the token-bearing first-time setup URL. It refuses to overwrite an established appliance by default.
+The HTTPS above is only for securely retrieving the installer from GitHub. The installed Classroom Control Hub service itself currently uses HTTP.
 
-For a manual or migration deployment, clone into the standard path:
+For a manual deployment:
 
 ```bash
 sudo git clone https://github.com/wagnerks1990/classroom-control-hub.git /opt/classroom-hub
 cd /opt/classroom-hub
 sudo cp .env.example .env
-```
-
-Review every value in `.env` before starting production services. Do not commit the production `.env`.
-Set `HUB_TLS_HOST` to the DNS name or IP used by classroom browsers. The installer does this automatically for a fresh appliance using its primary IP.
-
-The supported installer path is:
-
-```bash
 sudo bash install.sh
 ```
 
-After the installer has created credentials, persistent-path ownership, secret
-mounts, and native services, Compose can be used for development rebuilds:
+The installer:
 
-```bash
-sudo bash install.sh
-sudo docker compose build
-sudo docker compose up -d
+1. creates a pre-migration backup when an existing installation is detected;
+2. preserves runtime data and site configuration;
+3. ensures non-empty setup/control/display/lab/maintenance tokens;
+4. preserves or creates the master encryption key;
+5. installs/restarts the native Host Agent;
+6. fixes the shared data-directory ownership model;
+7. removes obsolete TLS environment settings and the legacy Caddy container;
+8. builds and starts maintenance plus the main HTTP application;
+9. verifies backend, maintenance, and Host Agent version convergence.
+
+## Access
+
+After installation, use:
+
+```text
+http://APPLIANCE-IP:3000/controller/
 ```
+
+First-time setup uses:
+
+```text
+http://APPLIANCE-IP:3000/setup/#token=...
+```
+
+Treat the setup URL as an administrator secret. It becomes unusable after initial administrator creation.
 
 ## Verification
 
-After startup:
+Run:
 
 ```bash
+cd /opt/classroom-hub
 sudo docker compose ps
-curl -fsS http://localhost:3000/health
+curl -fsS http://127.0.0.1:3000/health | jq
 sudo systemctl status classroom-hub-host-agent.service --no-pager -l
 sudo test -S /run/classroom-control-hub/host-agent.sock
-sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control-hub/
 ```
 
-The application backend is deliberately bound to `127.0.0.1:3000`; normal LAN access uses `https://HUB_TLS_HOST/`. Caddy creates an appliance-owned local CA. Export its root certificate for managed-device trust deployment with:
+Expected Compose services:
 
-```bash
-sudo docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./classroom-hub-root-ca.crt
+```text
+classroom-control-hub
+classroom-control-hub-maintenance
 ```
+
+There should be no `classroom-control-hub-tls`/Caddy service in the current architecture.
 
 Confirm that:
 
-- the reported application version is the expected release;
-- backend, controller/display, maintenance, and host-agent versions are converged;
-- the database path is on persistent storage;
-- controller authentication is configured before exposing the application broadly;
-- configured display clients reconnect;
-- the Host Agent socket is visible both on the host and in the maintenance container;
-- integrations report their own health independently without exposing credentials in logs.
+- the application health endpoint returns `ok:true` and `ready:true`;
+- database and scheduler checks are healthy;
+- the main application and maintenance container are healthy;
+- the Host Agent is running the same application version;
+- `MAINTENANCE_TOKEN` is non-empty and consistent across Host Agent, application, and maintenance container;
+- the SQLite database is writable by UID/GID `10001`;
+- the controller is reachable from the trusted LAN on port 3000;
+- configured displays and integrations reconnect.
 
-## Reverse proxy
+## Firewall guidance
 
-The reverse proxy should terminate TLS and forward WebSocket traffic correctly. Display/control channels depend on long-lived connections, so proxy configuration must support WebSocket upgrade headers and suitable timeouts.
+Because the controller currently uses HTTP, restrict port 3000 to trusted classroom/admin networks. Example with UFW, replacing the subnet as appropriate:
 
-Do not expose maintenance or host-agent endpoints publicly.
+```bash
+sudo ufw allow from 172.16.127.0/24 to any port 3000 proto tcp
+```
 
-## Host Agent
+Do not expose the maintenance service or Host Agent socket externally.
 
-The host agent runs directly on the host under systemd. It communicates with the maintenance container only through `/run/classroom-control-hub/host-agent.sock`.
+## Windows lab agents
 
-See [HOST-AGENT.md](HOST-AGENT.md).
+The Windows lab-agent installer keeps an explicit `-AllowHttp` acknowledgement while TLS is deferred. This prevents accidental enrollment over an untrusted network.
+
+Example:
+
+```powershell
+.\Install-Agent.ps1 -HubUrl http://172.16.127.5:3000 -AllowHttp
+```
+
+See `docs/LAB-AGENT.md` and `wiki/Windows-Lab-Agent.md`.
 
 ## Git-first upgrade procedure
 
-Before any production upgrade, take a backup appropriate to the application/database state. A simple filesystem snapshot of the installation is useful in addition to database-safe backups:
+Before a production update, retain a recovery snapshot and database-safe backup.
 
 ```bash
 sudo cp -a /opt/classroom-hub "/opt/classroom-hub-backup-before-update-$(date +%Y%m%d-%H%M%S)"
 ```
 
-Then update source:
+Then:
 
 ```bash
 cd /opt/classroom-hub
 sudo git fetch origin
 sudo git pull --ff-only origin main
 cat VERSION
+sudo bash install.sh
 ```
 
-Build and recreate:
+For development rebuilds after the installer has established permissions/secrets:
 
 ```bash
-sudo docker compose build --no-cache
-sudo docker compose up -d
+sudo docker compose build
+sudo docker compose up -d --remove-orphans
+curl -fsS http://127.0.0.1:3000/health
 ```
 
-Verify:
-
-```bash
-sudo docker compose ps
-curl -fsS http://localhost:3000/health
-sudo docker compose logs --tail=150
-```
-
-Do not replace tracked source by unpacking a release ZIP over a Git checkout unless a documented recovery procedure explicitly requires it.
-
-## Integration health and UI responsiveness
-
-Optional or slow hardware integrations must not block the initial Overview screen. The UI should render lightweight application/device/schedule state first and refresh slow hardware status asynchronously.
-
-Integration health is independent. For example, a Pluto error must not make MQTT/Govee appear offline.
-
-## Rollback
-
-A rollback should replace application source/images while preserving the matching persistent state. If a database migration is not backward compatible, restore the matching pre-upgrade database backup before starting the older release.
-
-Keep at least one known-good production snapshot until the new release has been verified in the classroom.
+`--remove-orphans` is important when upgrading from a release that contained the old Caddy service.
 
 ## Web-managed release updates
 
-Infrastructure & Recovery can check a configurable GitHub `owner/repository` for
-semantic-version releases. Alpha, beta, and stable channels are separated;
-draft releases are never eligible. Private repositories require a read-only
-GitHub token, which is encrypted in the application database and never returned
-to the browser.
+The web-managed updater accepts verified semantic-version GitHub releases and delegates host-level work to `classroom-hub-app-update.service`.
 
-Manual installation and optional automatic installation use the native
-`classroom-hub-app-update.service`. The native job survives container
-replacement and performs `git fetch`, resolves the selected release tag to an
-immutable commit that must be reachable from `origin/main`, rebuilds the
-application services, discovers the published controller port from Compose,
-and requires the backend, HTTPS gateway, maintenance service, and Host Agent to
-be healthy and report the expected version. The configured
-Git remote must be this project's public GitHub repository. A failure restores
-the previous detached commit, exact saved container image IDs, and matching
-pre-update operational backup. The
-**Revert Last Upgrade** action performs the same process deliberately and first
-backs up the current state. Administrators should not run the production
-checkout as a long-lived local branch; update and rollback deliberately leave
-it detached at a verified release commit.
+A successful update currently requires:
 
-Automatic installation is disabled by default. When enabled, checks and
-installation occur only inside the configured maintenance window. The first
-deployment that introduces this feature must run `sudo ./install.sh` once to
-install the native application-update systemd unit.
+- backend HTTP health;
+- maintenance health;
+- native Host Agent health;
+- application/maintenance/Host Agent version convergence;
+- database/scheduler readiness.
 
-Use the controller's **Clear stored GitHub token** action after changing a
-private repository to public or when rotating credentials. The updater does not
-need a token for this public repository. Clearing it removes the encrypted
-database value; also revoke the old token at GitHub if it may have been exposed.
+TLS/Caddy is not a release-health dependency while HTTPS is deferred.
 
-Custom appliance roots are supported beneath `/opt` by setting
-`CLASSROOM_HUB_DIR`, `CLASSROOM_HUB_SERVICES_DIR`, and
-`CLASSROOM_HUB_BACKUP_DIR` when running the bootstrap. The installer persists
-their container-facing equivalents in `.env`; all three roots must be separate
-and non-nested.
+The updater must also ensure the runtime filesystem layout and a non-empty `MAINTENANCE_TOKEN` before recreating containers. Failed updates restore the previous source/images and matching operational backup.
+
+## Rollback
+
+Rollback replaces application source/images while preserving the matching runtime state. If a database migration is not backward compatible, restore the matching pre-upgrade database backup before starting the older release.
+
+Keep at least one known-good snapshot until the new release has been verified in the classroom.
+
+## Reintroducing HTTPS later
+
+HTTPS should return as a deliberate separate feature after the HTTP-only appliance path is stable. Requirements for that future work include:
+
+- no circular Compose health dependency;
+- DNS/SNI behavior tested with real classroom clients;
+- certificate distribution/trust strategy documented;
+- HTTP-to-HTTPS migration that does not strand existing installations;
+- reverse-proxy-aware `TRUST_PROXY_HOPS` configuration;
+- upgrade/rollback tests from the HTTP-only release;
+- no hard dependency on the proxy for maintenance or Host Agent health.
+
+Do not restore Caddy/TLS piecemeal through environment variables or ad-hoc Compose edits.
 
 ## Backup policy
 
 Back up at minimum:
 
-- SQLite database and WAL-related state using a database-safe backup mechanism;
+- the SQLite database and WAL-related state using a database-safe mechanism;
 - uploaded/media files;
 - site configuration;
-- encrypted secret-store master-key material;
-- certificates required for recovery;
-- deployment `.env` stored in a protected backup location.
+- the master encryption key;
+- `.env` in a protected backup location;
+- pre-upgrade recovery snapshots.
 
-Never commit these production backups to the public repository.
-
-## Production release channels
-
-Recommended tags:
-
-- `:alpha` — current alpha channel;
-- `:beta` — testing/pre-release channel when introduced;
-- semantic version tags such as `:1.0.0-alpha.67`;
-- `:latest` — stable releases only.
-
-Do not point `latest` at experimental alpha builds.
+Never commit production backups or secrets to the public repository.
