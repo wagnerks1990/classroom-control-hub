@@ -45,4 +45,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
 USER 10001:10001
-CMD ["node", "src/startup-recovery.js"]
+CMD ["node", "--require", "./src/direct-display-compat.js", "src/startup-recovery.js"]
