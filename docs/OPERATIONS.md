@@ -6,6 +6,16 @@ Classroom Control Hub continuously reconciles configured classroom state with sc
 
 The standard production checkout is `/opt/classroom-hub`.
 
+## Current network mode
+
+The appliance is temporarily HTTP-only. Access the controller through the trusted classroom/admin LAN at:
+
+```text
+http://APPLIANCE-IP:3000/controller/
+```
+
+There is currently no Caddy/TLS gateway. Keep `TRUST_PROXY_HOPS=0` unless a reviewed reverse proxy is deliberately added later. Restrict TCP/3000 to trusted networks and do not expose the controller directly to the public Internet.
+
 ## Displays
 
 Display clients should remain connected in kiosk/browser mode and identify themselves using stable IDs. If a display reconnects, the server should restore the current intended content rather than relying on stale client-side state.
@@ -14,7 +24,7 @@ If a display is offline:
 
 1. verify network connectivity and browser/kiosk process;
 2. confirm the display ID is correct;
-3. confirm WebSocket/reverse-proxy connectivity;
+3. confirm direct HTTP/WebSocket connectivity to the Hub on port 3000;
 4. reconnect/reload the display;
 5. verify it converges to the currently scheduled content.
 
@@ -112,7 +122,7 @@ Integration state is independent. A failed Pluto status request must not cause M
 
 Slow optional hardware checks should not block the initial Overview UI. Render lightweight application/device/schedule state first and refresh detailed hardware status asynchronously.
 
-## Host Agent
+## Host Agent and maintenance
 
 The native Host Agent should be active and listening on:
 
@@ -128,6 +138,17 @@ sudo test -S /run/classroom-control-hub/host-agent.sock
 sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control-hub/
 ```
 
+Maintenance readiness also requires a non-empty `MAINTENANCE_TOKEN` shared by the Host Agent, application, and maintenance container. Never print the token while troubleshooting; compare only presence/length when possible.
+
+The shared runtime data root should remain:
+
+```text
+/opt/classroom-hub/data          root:10001 0770
+/opt/classroom-hub/data/backups  root:10001 0700
+```
+
+The main app runs as UID/GID `10001:10001` and should not take ownership of the shared data root itself.
+
 ## Calendar exceptions
 
 School calendar rules are evaluated before normal automation execution. A deployment may define no-school dates, remote days, half days, and delayed starts.
@@ -140,6 +161,12 @@ No-School > Remote > Half Day > 2-Hour Delay > 1-Hour Delay > Normal
 
 No-school days suppress scheduled classroom operation and pause cycle advancement. Remote days advance the cycle but suppress scheduled physical-classroom operations while leaving manual controls available.
 
+## Scheduler readiness
+
+`/health` requires database and scheduler validation to pass. A class with an invalid time range, such as an end time earlier than its start time, can make the service unhealthy even though the Node process is running.
+
+If health reports `scheduler.ok=false`, inspect class schedules and automation actions in the active SQLite database. Fix both normalized columns and the corresponding JSON payload when repairing a migrated record. Do not rely on editing a legacy JSON mirror when database-backed state is active.
+
 ## Production updates
 
 Use Git-first updates:
@@ -149,25 +176,25 @@ cd /opt/classroom-hub
 git fetch origin
 git pull --ff-only origin main
 cat VERSION
-docker compose build --no-cache
-docker compose up -d
-docker compose ps
-curl -fsS http://localhost:3000/health
+sudo bash install.sh
 ```
+
+For a development rebuild after the installer has established runtime permissions:
+
+```bash
+docker compose build --no-cache
+docker compose up -d --remove-orphans
+docker compose ps
+curl -fsS http://127.0.0.1:3000/health
+```
+
+`--remove-orphans` cleans up the legacy TLS gateway when upgrading from a Caddy-based release.
 
 Take a backup before upgrading and preserve runtime `.env`, databases, data, uploads, backups, and secret/key material.
 
-Web-managed updates retain and pin the backup used by **Revert Last Upgrade**.
-The backup digest is verified and matching data is restored while the
-application is stopped, before the older release starts. The exact prior hub and
-maintenance image IDs are retained locally and reused for rollback rather than
-being rebuilt. An interrupted request remains in the root-only host journal and
-resumes after restart. Do not prune `classroom-control-hub-recovery:*` images
-while **Revert Last Upgrade** is available.
+Web-managed updates retain and pin the backup used by **Revert Last Upgrade**. The backup digest is verified and matching data is restored while the application is stopped, before the older release starts. The exact prior hub and maintenance image IDs are retained locally and reused for rollback rather than being rebuilt. An interrupted request remains in the root-only host journal and resumes after restart. Do not prune `classroom-control-hub-recovery:*` images while **Revert Last Upgrade** is available.
 
-An update is successful only after backend, Caddy HTTPS, maintenance, Host
-Agent, database health, and version convergence checks pass. Watch capacity
-before a large update with `df -h /opt/classroom-hub` and `docker system df`.
+An update is successful only after backend HTTP health, maintenance, Host Agent, database/scheduler health, and version convergence checks pass. TLS/Caddy is intentionally not part of the current release gate. Watch capacity before a large update with `df -h /opt/classroom-hub` and `docker system df`.
 
 ## Controller hard refresh
 
@@ -184,6 +211,7 @@ cd /opt/classroom-hub
 docker compose ps
 docker compose logs --tail=150
 docker compose logs -f classroom-hub
+journalctl -u classroom-hub-host-agent.service -n 100 --no-pager
 ```
 
 Do not publish logs publicly until they have been checked for credentials, internal addresses, user information, and diagnostic payloads. Rotate any live secret accidentally exposed in a shared/public transcript.
