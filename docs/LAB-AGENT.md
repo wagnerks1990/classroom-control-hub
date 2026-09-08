@@ -25,16 +25,24 @@ avoid presenting actions that the computer cannot perform.
 
 ## Transport and signing
 
-Use HTTPS/WSS in production. The installer rejects plain HTTP unless the
-administrator explicitly supplies `-AllowHttp`, which is intended only for a
-trusted setup network.
+The current Classroom Control Hub appliance is temporarily HTTP-only while the
+HTTPS/TLS gateway is redesigned. The Windows installer continues to reject plain
+HTTP unless the administrator explicitly supplies `-AllowHttp`. This is an
+intentional safety acknowledgement because enrollment credentials are otherwise
+sent over an unencrypted LAN connection.
 
-The default appliance uses Caddy's internal certificate authority. Before
-enrolling a Windows computer, install the appliance Caddy root certificate into
-**Local Computer → Trusted Root Certification Authorities** through Group Policy,
-MDM, or the Certificates management console. The installer performs a TLS/package
-preflight and stops with certificate-trust guidance rather than bypassing TLS
-validation. A publicly trusted Hub certificate needs no private CA deployment.
+Use HTTP enrollment only on a trusted, isolated classroom/admin network. Do not
+enroll agents across the public Internet or an untrusted Wi-Fi/VLAN.
+
+Example:
+
+```powershell
+.\Install-Agent.ps1 -HubUrl http://172.16.127.5:3000 -AllowHttp
+```
+
+When HTTPS is reintroduced, the installer should return to HTTPS/WSS without
+requiring `-AllowHttp`. Certificate trust/distribution guidance will be restored
+at that time; there is no Caddy root CA in the current deployment architecture.
 
 The repository scripts are development artifacts and are not Authenticode
 signed by default. Schools that require publisher verification should sign
