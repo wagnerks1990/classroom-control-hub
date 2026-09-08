@@ -1,6 +1,6 @@
 # GitHub Copilot Instructions
 
-Read `/AGENTS.md` before making changes. Use `/docs/AI-CONTEXT.md` for the current technical/operational model, `/docs/DISPLAY-ACCESS.md` for the classroom display access contract, and `/docs/VEYON-MUSIC-INTEGRATIONS.md` for the Veyon/Music Assistant contract.
+Read `/AGENTS.md` before making changes. Use `/docs/AI-CONTEXT.md` for the current technical/operational model, `/docs/DISPLAY-ACCESS.md` for the classroom display access contract, `/docs/AUTOMATION-DISPLAY-MEDIA.md` for automation media/class-target behavior, and `/docs/VEYON-MUSIC-INTEGRATIONS.md` for the Veyon/Music Assistant contract.
 
 Key rules:
 
@@ -12,6 +12,9 @@ Key rules:
 - Classroom display receivers use stable direct URLs `/display/<id>` on the trusted classroom/admin network. An enabled configured display ID is sufficient; do not require display enrollment links, per-browser display credentials, or the legacy shared `DISPLAY_TOKEN` for normal display access.
 - Unknown or disabled display IDs must still be rejected. Controller/user authentication and Windows lab-agent enrollment remain credentialed and must not be weakened when changing display access.
 - Display credential/enrollment database tables may remain for schema/rollback compatibility, but they are legacy state rather than runtime authority.
+- Direct displays still use short-lived signed, device-bound asset tokens for protected `/media/*` and `/presentations/*` requests. Do not gate those signed tokens on the retired display-enrollment policy.
+- A successful automation result does not prove media rendered; tests for display media must verify the receiver can fetch and render the protected asset.
+- `Use class default display targets` is persisted independently of the primary action domain. Do not silently clear it just because an event starts with lighting or another non-display action.
 - Morning Announcements are highest priority. When they end, re-evaluate and re-trigger the currently applicable winning display automations before Background Music resumes; do not restore stale snapshots.
 - Timer chaining is only for the matching Bison continuation of the same base period.
 - Integration health must be independent. A Pluto failure must not falsely mark MQTT/Govee offline.
