@@ -12,6 +12,7 @@ const TOKEN=String(process.env.MAINTENANCE_TOKEN||"");
 const HOST_AGENT_SOCKET=String(process.env.HOST_AGENT_SOCKET||"/run/classroom-control-hub/host-agent.sock");
 const MAIN_APP_URL=String(process.env.MAIN_APP_URL||"http://classroom-hub:3000").replace(/\/$/,"");
 const SERVICES_ROOT=path.resolve(process.env.MANAGED_SERVICES_ROOT||"/managed/services");
+const NATIVE_VEYON_URL="http://host.docker.internal:11080";
 
 // Supported optional services appear in both Setup and Infrastructure & Recovery.
 // Existing containers can be adopted without recreation. Recreate/deploy uses
@@ -23,14 +24,23 @@ const ADDONS={
   veyonwebapi:{id:"veyonwebapi",name:"Veyon WebAPI",container:"veyon-webapi",image:"veyon/webapi-proxy:latest",dataRoot:"veyon-webapi",description:"Optional Veyon WebAPI proxy for classroom workstation control."}
 };
 
-function hostAgentRequest(args,timeoutMs=180000){return new Promise((resolve,reject)=>{const raw=Buffer.from(JSON.stringify({args,cwd:""}));const req=http.request({socketPath:HOST_AGENT_SOCKET,path:"/docker/exec",method:"POST",headers:{"x-maintenance-token":TOKEN,"content-type":"application/json","content-length":raw.length}},res=>{const chunks=[];res.on("data",c=>chunks.push(c));res.on("end",()=>{const text=Buffer.concat(chunks).toString("utf8");let body;try{body=JSON.parse(text||"{}")}catch{body={error:text}}if((res.statusCode||500)>=400||body.ok===false)return reject(Error(body.error||`Host Agent HTTP ${res.statusCode}`));resolve(body)})});req.on("error",reject);req.setTimeout(timeoutMs,()=>req.destroy(Error("Host Agent Docker request timed out")));req.write(raw);req.end()})}
+function hostAgentJson(method,pathName,body=null,timeoutMs=15000){return new Promise((resolve,reject)=>{const raw=body==null?null:Buffer.from(JSON.stringify(body));const req=http.request({socketPath:HOST_AGENT_SOCKET,path:pathName,method,headers:{"x-maintenance-token":TOKEN,...(raw?{"content-type":"application/json","content-length":raw.length}:{})}},res=>{const chunks=[];res.on("data",c=>chunks.push(c));res.on("end",()=>{const text=Buffer.concat(chunks).toString("utf8");let value;try{value=JSON.parse(text||"{}")}catch{value={error:text}}if((res.statusCode||500)>=400||value.ok===false)return reject(Error(value.error||`Host Agent HTTP ${res.statusCode}`));resolve(value)})});req.on("error",reject);req.setTimeout(timeoutMs,()=>req.destroy(Error("Host Agent request timed out")));if(raw)req.write(raw);req.end()})}
+function hostAgentRequest(args,timeoutMs=180000){return hostAgentJson("POST","/docker/exec",{args,cwd:""},timeoutMs)}
 async function containerExists(name){try{await hostAgentRequest(["inspect",name],10000);return true}catch{return false}}
+async function hostServices(){try{const body=await hostAgentJson("GET","/services",null,10000);return Array.isArray(body.items)?body.items:Array.isArray(body.services)?body.services:[]}catch{return []}}
+async function nativeVeyon(){const services=await hostServices(),webapi=services.find(x=>x&&x.name==="veyon-webapi.service"),service=services.find(x=>x&&x.name==="veyon.service");const installed=!!webapi&&webapi.active!=="inactive"&&webapi.active!=="not-found";return {installed,webapi:webapi||null,service:service||null,url:NATIVE_VEYON_URL}}
 async function mainAppPut(id,settings){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const response=await fetch(`${MAIN_APP_URL}/api/v1/internal/maintenance/integrations/${encodeURIComponent(id)}`,{method:"PUT",headers:{"x-maintenance-token":TOKEN,"content-type":"application/json"},body:JSON.stringify({settings:settings||{}}),signal:controller.signal});const text=await response.text();let body;try{body=JSON.parse(text||"{}")}catch{body={}};if(!response.ok)throw Error(body.error||`Application HTTP ${response.status}`);return body}finally{clearTimeout(timer)}}
 function cleanPort(value,fallback){const n=Number(value||fallback);if(!Number.isInteger(n)||n<1||n>65535)throw Error("Port must be between 1 and 65535");return n}
 function managedPath(name){const value=path.join(SERVICES_ROOT,name);fs.mkdirSync(value,{recursive:true,mode:0o750});return value}
 
+async function adoptNativeVeyon(settings={}){const native=await nativeVeyon();if(!native.installed)return null;let resolved=settings||{};try{const saved=await mainAppPut("veyonwebapi",{...settings,url:settings.url||NATIVE_VEYON_URL});resolved=saved.resolved||resolved}catch{}return {ok:true,id:"veyonwebapi",adopted:true,managed:true,management:"host-managed",hostManaged:true,nativeService:"veyon-webapi.service",companionService:native.service?.name||null,url:resolved.url||settings.url||NATIVE_VEYON_URL,message:"Existing native Veyon WebAPI service adopted. Classroom Control Hub will use the host service instead of deploying a Docker proxy."}}
+
 async function deployAddon(id,settings={},recreate=false){
   const addon=ADDONS[id];if(!addon)throw Error("Unknown optional integration");
+  if(id==="veyonwebapi"){
+    const adopted=await adoptNativeVeyon(settings);
+    if(adopted)return adopted;
+  }
   const exists=await containerExists(addon.container);
   let resolved=settings||{};
   try{const saved=await mainAppPut(id,settings);resolved=saved.resolved||resolved}catch(error){if(id!=="veyonwebapi")throw error}
@@ -50,12 +60,8 @@ async function deployAddon(id,settings={},recreate=false){
     args.push("--network","host","-e",`GOVEE_MQTT_HOST=${resolved.mqttHost||settings.mqttHost||"127.0.0.1"}`,"-e",`GOVEE_MQTT_PORT=${cleanPort(resolved.mqttPort||settings.mqttPort,1883)}`,"-e",`TZ=${resolved.timezone||settings.timezone||process.env.TZ||"UTC"}`);
     for(const [env,key] of [["GOVEE_MQTT_USER","mqttUsername"],["GOVEE_MQTT_PASSWORD","mqttPassword"],["GOVEE_API_KEY","apiKey"],["GOVEE_EMAIL","email"],["GOVEE_PASSWORD","password"]]){const value=resolved[key]||settings[key];if(value)args.push("-e",`${env}=${value}`)}
   }else if(id==="musicassistant"){
-    // Music Assistant requires host networking for supported mDNS/uPnP player
-    // discovery. Keep its database under the managed services root.
     const base=managedPath("music-assistant");args.push("--network","host","-v",`${base}:/data`,`-e`,`LOG_LEVEL=${String(settings.logLevel||"info")}`);
   }else if(id==="veyonwebapi"){
-    // Official Veyon WebAPI proxy container. Host networking keeps classroom
-    // Veyon server endpoints reachable without publishing a broad port range.
     const base=managedPath("veyon-webapi");args.push("--network","host","-v",`${base}:/data`);
   }
   args.push(addon.image);
@@ -65,20 +71,24 @@ async function deployAddon(id,settings={},recreate=false){
 
 async function removeAddon(id){
   const addon=ADDONS[id];if(!addon)throw Error("Unknown optional integration");
+  if(id==="veyonwebapi"){
+    const native=await nativeVeyon();
+    if(native.installed)return {ok:false,id,hostManaged:true,removed:false,dataPreserved:true,message:"Native Veyon services are host-managed and are not removed by Classroom Control Hub."};
+  }
   const exists=await containerExists(addon.container);
   if(exists)await hostAgentRequest(["rm","-f",addon.container],30000);
   return {ok:true,id,removed:exists,container:addon.container,dataPreserved:true,dataRoot:path.join(SERVICES_ROOT,addon.dataRoot),message:"Container removed; persistent integration data was preserved for redeploy or rollback."};
 }
 
-// Wrap the established route registrations as server.js loads. This keeps the
-// mature backup/restore/update surface untouched while extending modules only.
+async function augmentModules(body){if(!body||!Array.isArray(body.modules))return body;const byId=new Map(body.modules.map(x=>[x.id,x]));for(const addon of Object.values(ADDONS)){const current=byId.get(addon.id);if(current)Object.assign(current,{image:addon.image,externalOnly:false,canDeploy:true,canRemove:true,ownership:"integration"});else{const added={...addon,state:"not-installed",health:"",configured:false,management:"not-installed",externalOnly:false,canDeploy:true,canRemove:true,ownership:"integration"};body.modules.push(added);byId.set(addon.id,added)}}const native=await nativeVeyon();if(native.installed){const current=byId.get("veyonwebapi");Object.assign(current,{state:native.webapi?.active==="active"?"running":"installed",health:native.webapi?.active||"installed",configured:true,management:"host-managed",hostManaged:true,nativeService:"veyon-webapi.service",companionService:native.service?.name||null,endpoint:NATIVE_VEYON_URL,externalOnly:true,canDeploy:false,canRemove:false,image:null,description:"Native Veyon WebAPI service discovered on the appliance host and adopted by Classroom Control Hub."})}return body}
+
 const originalGet=express.application.get;
 express.application.get=function(route,...handlers){
-  if(route==="/modules"&&handlers.length){const original=handlers[handlers.length-1];handlers[handlers.length-1]=async function(req,res,next){const send=res.json.bind(res);res.json=body=>{if(body&&Array.isArray(body.modules)){const byId=new Map(body.modules.map(x=>[x.id,x]));for(const addon of Object.values(ADDONS)){const current=byId.get(addon.id);if(current)Object.assign(current,{image:addon.image,externalOnly:false,canDeploy:true,canRemove:true,ownership:"integration"});else body.modules.push({...addon,state:"not-installed",health:"",configured:false,management:"not-installed",externalOnly:false,canDeploy:true,canRemove:true,ownership:"integration"})}}return send(body)};return original(req,res,next)};}return originalGet.call(this,route,...handlers)};
+  if(route==="/modules"&&handlers.length){const original=handlers[handlers.length-1];handlers[handlers.length-1]=async function(req,res,next){const send=res.json.bind(res);res.json=body=>{augmentModules(body).then(send).catch(()=>send(body));return res};return original(req,res,next)};}return originalGet.call(this,route,...handlers)};
 
 const originalPost=express.application.post;
 express.application.post=function(route,...handlers){
   if(route==="/modules/:id/deploy"&&handlers.length){const original=handlers[handlers.length-1];handlers[handlers.length-1]=async function(req,res,next){const id=String(req.params.id||"");if(!ADDONS[id])return original(req,res,next);try{return res.json(await deployAddon(id,req.body?.settings||{},req.body?.recreate===true))}catch(error){return res.status(500).json({ok:false,error:error.message})}};}
-  if(route==="/modules/:id/remove"&&handlers.length){const original=handlers[handlers.length-1];handlers[handlers.length-1]=async function(req,res,next){const id=String(req.params.id||"");if(!ADDONS[id])return original(req,res,next);try{return res.json(await removeAddon(id))}catch(error){return res.status(500).json({ok:false,error:error.message})}};}
+  if(route==="/modules/:id/remove"&&handlers.length){const original=handlers[handlers.length-1];handlers[handlers.length-1]=async function(req,res,next){const id=String(req.params.id||"");if(!ADDONS[id])return original(req,res,next);try{const result=await removeAddon(id);return res.status(result.ok===false?409:200).json(result)}catch(error){return res.status(500).json({ok:false,error:error.message})}};}
   return originalPost.call(this,route,...handlers)
 };
