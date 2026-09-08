@@ -20,6 +20,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The upstream Caddy binary carries cap_net_bind_service as a file
+    # capability. Retaining only that capability allows it to execute under
+    # no-new-privileges while all listeners remain on unprivileged ports.
+    cap_add:
+      - NET_BIND_SERVICE
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777

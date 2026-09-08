@@ -55,6 +55,7 @@ test("release version converges across independently deployed runtime surfaces",
     assert.ok(found.length,`${file} must expose the release version or load it from VERSION`);
     assert.deepEqual(found,[version],`${file} contains a stale or divergent release version`);
   }
+  assert.match(read("Dockerfile"),/^COPY VERSION \.\/VERSION$/m,"runtime image must contain VERSION for health and update verification");
 
   // Historical changelog entries and protocol compatibility fixtures may
   // legitimately mention older releases. Current-baseline documentation may not.

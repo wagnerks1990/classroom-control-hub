@@ -15,6 +15,7 @@
 - Made school timezone and classroom identity database-backed operational settings instead of decorative GUI values.
 - Split liveness/readiness behavior and removed classroom topology from the public health response.
 - Bound fresh Compose backend access to loopback so Caddy remains the external HTTPS boundary.
+- Preserved Caddy's sole executable file capability under the hardened container profile and included the release VERSION in the runtime image.
 - Hardened installation targets, migration snapshots, immutable update runners, resumable update requests, backup checksums, pinned rollback points, and release tag/version preflight.
 - Reordered first-run setup so the administrator exists before privileged integration discovery.
 - Added capability-aware controller navigation and safer rendering of database and integration values.
