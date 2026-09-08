@@ -203,3 +203,8 @@ Update documentation in the same change whenever behavior or operational procedu
 - Class-default display targets are a display-domain policy. They apply to primary display actions, display actions embedded in lighting/TV-led automations, and timer overlays. They never become lighting targets.
 - Timer overlay failures and action failures must be returned and persisted with actionable details rather than only the generic `Completed with action errors` status.
 - Alternating automations use the authoritative school-cycle anchor from the configured schedule profile; the controller must not depend on an editor-only anchor field.
+
+
+## Display text sizing consistency
+
+Display receivers use role-specific bounded font ranges for title, subtitle, body text, and timer text. Configured sizes are treated as visual targets. Auto-fit only shrinks when content would overflow and does so in predictable increments rather than arbitrary per-pixel results. Timer overlays reserve a deterministic layout band so the same body content does not change size merely because a timer label/value changes height. These rules apply equally to physical displays and controller previews because both use the same display renderer.

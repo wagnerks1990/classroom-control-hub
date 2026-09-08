@@ -21,3 +21,8 @@ For linked-class automations, **Use class default display targets** is a persist
 When **Use class default display targets** is enabled, the class display targets apply to every display-domain action in the automation, including display actions added to a lighting-led event and the timer overlay. Lighting targets remain separate.
 
 Alternating-day automations inherit the configured school-cycle anchor. Phase A/B remains the stored phase identity even when the school profile gives those phases friendly labels such as Green Days or Group B Days.
+
+
+## Display text sizing consistency
+
+Display receivers use role-specific bounded font ranges for title, subtitle, body text, and timer text. Configured sizes are treated as visual targets. Auto-fit only shrinks when content would overflow and does so in predictable increments rather than arbitrary per-pixel results. Timer overlays reserve a deterministic layout band so the same body content does not change size merely because a timer label/value changes height. These rules apply equally to physical displays and controller previews because both use the same display renderer.
