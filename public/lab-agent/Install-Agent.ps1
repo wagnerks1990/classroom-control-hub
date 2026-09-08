@@ -11,10 +11,15 @@ if($HubUrl.Scheme -ne 'https' -and !$AllowHttp){throw 'HTTPS is required. Use -A
 if(!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run this installer in an elevated PowerShell window.'}
 $root=Join-Path $env:ProgramData 'ClassroomControlHub';New-Item $root -ItemType Directory -Force|Out-Null
 $agent=Join-Path $root 'ClassroomHubAgent.ps1';$config=Join-Path $root 'lab-agent.json'
-$agentUri=$HubUrl.GetLeftPart([UriPartial]::Authority)+'/lab-agent/ClassroomHubAgent.ps1';Invoke-WebRequest $agentUri -OutFile $agent
+$origin=$HubUrl.GetLeftPart([UriPartial]::Authority)
+$manifest=Invoke-RestMethod ($origin+'/api/v1/lab-agent/manifest')
+if(!$manifest.sha256 -or $manifest.sha256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'Hub returned an invalid lab-agent manifest'}
+$agentUri=$origin+'/lab-agent/ClassroomHubAgent.ps1';Invoke-WebRequest $agentUri -OutFile $agent
+$actualHash=(Get-FileHash -LiteralPath $agent -Algorithm SHA256).Hash
+if($actualHash -ne ([string]$manifest.sha256).ToUpperInvariant()){Remove-Item $agent -Force -ErrorAction SilentlyContinue;throw 'Downloaded agent failed SHA-256 verification'}
 $signature=Get-AuthenticodeSignature $agent
 if($TrustedPublisherThumbprint){if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $TrustedPublisherThumbprint){throw 'Downloaded agent does not have the required valid publisher signature'}}
-@{hubUrl=$HubUrl.GetLeftPart([UriPartial]::Authority);agentId=$AgentId;enrollmentToken=$EnrollmentToken;credentialProtected='';trustedPublisherThumbprint=$TrustedPublisherThumbprint}|ConvertTo-Json|Set-Content $config -Encoding UTF8
+@{hubUrl=$origin;agentId=$AgentId;enrollmentToken=$EnrollmentToken;credentialProtected='';trustedPublisherThumbprint=$TrustedPublisherThumbprint}|ConvertTo-Json|Set-Content $config -Encoding UTF8
 & icacls.exe $root /inheritance:r /grant:r 'SYSTEM:(OI)(CI)(F)' 'Administrators:(OI)(CI)(F)' | Out-Null
 $action="-NoProfile -ExecutionPolicy AllSigned -File `"$agent`" -ConfigPath `"$config`""
 if(!$TrustedPublisherThumbprint){$action=$action -replace 'AllSigned','RemoteSigned'}

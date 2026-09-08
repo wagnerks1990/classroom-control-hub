@@ -29,7 +29,11 @@ p=os.environ['STATE_FILE']
 try: state=json.load(open(p))
 except Exception: state={}
 for item in sys.argv[1:]:
-    key,value=item.split('=',1); state[key]=value
+    key,value=item.split('=',1)
+    if value=='true': value=True
+    elif value=='false': value=False
+    elif value=='null': value=None
+    state[key]=value
 with open(p+'.tmp','w') as f: json.dump(state,f,indent=2)
 os.replace(p+'.tmp',p)
 PY
@@ -95,7 +99,11 @@ fi
 cd "$HUB_ROOT"
 CURRENT_COMMIT="$(git rev-parse HEAD)"
 CURRENT_VERSION="$(tr -d '\r\n' < VERSION 2>/dev/null || true)"
-set_state_fields "action=$ACTION" "previousCommit=$CURRENT_COMMIT" "previousVersion=$CURRENT_VERSION" "targetRef=$TARGETREF" "backupName=$BACKUPNAME"
+if [[ "$ACTION" == update ]]; then
+  set_state_fields "action=$ACTION" "previousCommit=$CURRENT_COMMIT" "previousVersion=$CURRENT_VERSION" "targetRef=$TARGETREF" "backupName=$BACKUPNAME"
+else
+  set_state_fields "action=$ACTION" "targetRef=$TARGETREF"
+fi
 
 rollback(){
   local rc=$?
@@ -152,5 +160,9 @@ health_check "$ACTUAL_VERSION"
 
 if [[ "$ACTION" == revert ]]; then restore_safety_backup "$BACKUPNAME"; health_check "$ACTUAL_VERSION"; fi
 trap - ERR
-set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false"
+if [[ "$ACTION" == revert ]]; then
+  set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=false" "previousCommit=" "previousVersion=" "backupName="
+else
+  set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=true"
+fi
 write_state completed "Classroom Control Hub $ACTUAL_VERSION deployed and verified successfully." true

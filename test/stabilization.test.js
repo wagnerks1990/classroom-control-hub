@@ -66,7 +66,7 @@ function rejectedDisplayHello(payload){
     ws.on("error",()=>{});
   });
 }
-function labAgentHello(payload){return new Promise((resolve,reject)=>{const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}}),timeout=setTimeout(()=>{ws.terminate();reject(new Error("Lab agent WebSocket timed out"))},3000);ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"lab-agent",agentId:"lab-pc-01",hostname:"LAB-PC-01",agentVersion:"1.0.0-alpha.67",...payload})));ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);resolve({ws,ack:msg})}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});ws.on("error",reject)})}
+function labAgentHello(payload){return new Promise((resolve,reject)=>{const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}}),timeout=setTimeout(()=>{ws.terminate();reject(new Error("Lab agent WebSocket timed out"))},3000);ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"lab-agent",agentId:"lab-pc-01",hostname:"LAB-PC-01",agentVersion:"1.0.0-alpha.68",...payload})));ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);resolve({ws,ack:msg})}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});ws.on("error",reject)})}
 
 test.before(async()=>{
   tempDir=fs.mkdtempSync(path.join(os.tmpdir(),"classroom-hub-test-"));
@@ -131,6 +131,11 @@ test("sensitive diagnostics and participation endpoints reject anonymous access"
 
   result=await request("/api/v1/sessions/arbitrary-session");
   assert.equal(result.response.status,503);
+
+  for(const endpoint of ["/api/v1/integrations/check","/api/v1/integrations/govee/tv/scenes","/api/v1/govee/tv/status","/api/v1/govee/tv/scenes"]){
+    result=await request(endpoint);
+    assert.ok([401,403].includes(result.response.status),`${endpoint} returned ${result.response.status}`);
+  }
 });
 
 test("class schedule duplication is registered before any delete request",async()=>{
@@ -141,6 +146,18 @@ test("class schedule duplication is registered before any delete request",async(
   result=await request(`/api/v1/class-schedules/${encodeURIComponent(id)}/duplicate`,{method:"POST",authenticated:true,body:{name:"Test class copy"}});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
   assert.notEqual(result.json.classSchedule.id,id);
+});
+
+test("school schedule profiles are editable and persisted in the database",async()=>{
+  const profile={name:"Blue Gold Schedule",anchorDate:"2027-08-23",cycleDays:["Blue","Gold"],dayGroups:[{id:"blue",label:"Blue Day",cycleDays:["Blue"],color:"#2255aa"},{id:"gold",label:"Gold Day",cycleDays:["Gold"],color:"#ddaa22"}],periodCycleDays:{"1":["Blue"],"2":["Gold"]},exceptionRules:{},continuation:{maximumGapMinutes:12,legacyBisonCompatibility:false}};
+  let result=await request("/api/v1/automations/calendar",{method:"PUT",authenticated:true,body:{scheduleProfile:profile}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.deepEqual(result.json.scheduleProfile.cycleDays,["Blue","Gold"]);
+  assert.equal(result.json.scheduleProfile.dayGroups[1].label,"Gold Day");
+
+  result=await request("/api/v1/automations/calendar",{authenticated:true});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.scheduleProfile.name,"Blue Gold Schedule");
 });
 
 test("automation action IDs are scoped to their parent automation",async()=>{
@@ -401,7 +418,10 @@ test("application update policy and GitHub token are stored in the database",asy
   assert.equal(result.json.settings.repository,"wagnerks1990/classroom-control-hub");
   assert.equal(result.json.settings.automatic,false);
 
-  result=await request("/api/v1/admin/app-updates/settings",{method:"PUT",authenticated:true,body:{repository:"example/general-control-hub",channel:"stable",automatic:true,checkIntervalHours:12,maintenanceStart:"01:30",maintenanceEnd:"03:00",token:"github-test-token"}});
+  result=await request("/api/v1/admin/app-updates/settings",{method:"PUT",authenticated:true,body:{repository:"example/untrusted-fork",channel:"stable"}});
+  assert.equal(result.response.status,400);
+
+  result=await request("/api/v1/admin/app-updates/settings",{method:"PUT",authenticated:true,body:{repository:"wagnerks1990/classroom-control-hub",channel:"stable",automatic:true,checkIntervalHours:12,maintenanceStart:"01:30",maintenanceEnd:"03:00",token:"github-test-token"}});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
   assert.equal(result.json.tokenConfigured,true);
   assert.equal(result.json.settings.channel,"stable");
@@ -442,4 +462,7 @@ test("one-command deployment bootstraps a guarded appliance with unique credenti
   assert.match(installer,/SOURCE_REAL.*TARGET_REAL/);
   assert.match(installer,/First-time setup:/);
   assert.match(compose,/LAB_AGENT_TOKEN:/);
+  assert.match(compose,/caddy:2\.11\.2-alpine/);
+  assert.match(compose,/HUB_BIND_ADDRESS/);
+  assert.match(installer,/https:\/\//);
 });

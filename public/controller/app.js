@@ -1,10 +1,10 @@
-const S={pluto:{},govee:null,schedules:{},automations:[],mediaFiles:[],classes:[],classStatus:null,scheduler:null,schedulerCalendar:{excludedDates:[]},districtNoSchoolDates:[]};
+const S={pluto:{},govee:null,schedules:{},automations:[],mediaFiles:[],classes:[],classStatus:null,scheduler:null,schedulerCalendar:{excludedDates:[]},scheduleProfile:{cycleDays:['A','B'],dayGroups:[{label:'Day A',cycleDays:['A']},{label:'Day B',cycleDays:['B']}]},districtNoSchoolDates:[]};
 const PRES={folders:[],presentations:[],state:null,currentFolder:'root',selectedId:null,displays:[],previewSlide:1};
 async function api(url,opt={}){const r=await fetch(url,{cache:'no-store',credentials:'same-origin',...opt});const t=await r.text();let j;try{j=JSON.parse(t)}catch{j={raw:t}}if(r.status===401&&(j.authRequired||window.AUTH_STATUS?.authEnabled)){window.AUTH_STATUS={...(window.AUTH_STATUS||{}),user:null};applyAuthUi(window.AUTH_STATUS);showLogin();throw Error('Authentication required')}if(!r.ok)throw Error(j.error||j.message||('HTTP '+r.status));return j}
 function jpost(url,obj){return api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)})}
 let toastTimer=null;function notify(message,type='info'){const el=document.getElementById('hubToast');if(!el)return;el.textContent=String(message||'');el.style.display='block';el.style.borderColor=type==='error'?'#9b3a3a':type==='success'?'#2d8a57':'#3a4a5a';clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display='none',4500)}
 
-const CLASSROOM_HUB_VERSION='v1.0.0-alpha.67';
+const CLASSROOM_HUB_VERSION='v1.0.0-alpha.68';
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&loginOverlay?.style.display==='flex'&&document.activeElement===loginPassword)performLogin()});
 let brandCycleState=null;
 
@@ -26,7 +26,7 @@ function paintBrandCycle(){
     return;
   }
   if(x.isStudentSchoolDay){
-    const cls=x.dayColor==='Green'?'dayGreen':'dayWhite';
+    const cls='cycle';
     brandCycle.innerHTML=`<span class="${cls}">${esc(x.dayColor)} Day</span> • <span class="cycle">Cycle ${esc(x.cycleDay)}</span>`;
   }else{
     const projected=x.projectedDayColor&&x.projectedCycleDay
@@ -70,7 +70,7 @@ function startBrandClock(){
   setInterval(refreshBrandStatus,60000);
 }
 
-function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
+function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function showPage(id){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===id));if(id==='av'||id==='tvs')refreshPluto();if(id==='presentations')loadPresentations();if(id==='media')loadMedia();if(id==='lights')loadGovee();if(id==='lab')loadLabAgentCredentials();if(id==='classes')loadClassSchedules();if(id==='schedules'){loadSchedules();ensureAutomationMediaLibrary().then(refreshAutomationMediaPickers);}if(id==='diagnostics')loadDiagnostics();if(id==='settings')loadAdminConfiguration();if(id==='system')loadSystemManagement();if(id==='music')loadMusicAssistant();if(id==='sessions')loadSession()}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 
@@ -211,7 +211,7 @@ async function refreshOverview(){
     const cy=classes.schoolCycle||brandCycleState||{};
     if(cy.isStudentSchoolDay){
       overviewSchoolDay.textContent=`${cy.dayColor} Day • Cycle ${cy.cycleDay}`;
-      overviewSchoolDay.className='kpi '+(cy.dayColor==='Green'?'ok':'');
+      overviewSchoolDay.className='kpi ok';
     }else{
       overviewSchoolDay.textContent='No Student Cycle Today';
       overviewSchoolDay.className='kpi';
@@ -799,32 +799,20 @@ function compareAutomationsByPhaseTime(a,b){
 }
 function phaseDisplayName(mode,phase){
   if(mode!=='alternating')return 'Weekly / Other';
-  return phase==='B'?'White Days':'Green Days';
+  return `${scheduleGroup(phase==='B'?1:0).label} Days`;
 }
 
-const SCHOOL_CYCLE_LETTERS=['A','B','C','D','E','F','G','H'];
-const GREEN_CYCLE_DAYS=['A','C','E','G'];
-const WHITE_CYCLE_DAYS=['B','D','F','H'];
+function scheduleCycleDays(){return Array.isArray(S.scheduleProfile?.cycleDays)&&S.scheduleProfile.cycleDays.length?S.scheduleProfile.cycleDays:['A','B']}
+function scheduleGroup(index){return S.scheduleProfile?.dayGroups?.[index]||{label:`Group ${index+1}`,cycleDays:index?scheduleCycleDays().filter((_,i)=>i%2):scheduleCycleDays().filter((_,i)=>!(i%2))}}
 
 function periodPresetCycleDays(period){
-  if(['1','2','3','4'].includes(period))return ['A','C','E','G'];
-  if(['5','6','7'].includes(period))return ['B','D','F','H'];
-  const m=String(period||'').match(/^BISON-(\d)$/);
-  if(!m)return [];
-  const n=Number(m[1]);
-  if([1,2].includes(n))return ['B'];
-  if([3,4].includes(n))return ['D'];
-  if([5,6].includes(n))return ['F'];
-  if([7,8].includes(n))return ['H'];
-  return [];
+  return S.scheduleProfile?.periodCycleDays?.[String(period||'')]||[];
 }
 function periodLabel(period){
-  if(!period)return '';
-  return String(period).startsWith('BISON-')?`Bison Block - Period ${String(period).split('-')[1]}`:`Period ${period}`;
+  return period?`Period / Block ${period}`:'';
 }
 function cycleDayColor(days=[]){
-  if(days.length&&days.every(x=>GREEN_CYCLE_DAYS.includes(x)))return 'Green';
-  if(days.length&&days.every(x=>WHITE_CYCLE_DAYS.includes(x)))return 'White';
+  for(const group of S.scheduleProfile?.dayGroups||[])if(days.length&&days.every(x=>(group.cycleDays||[]).includes(x)))return group.label;
   return days.length?'Mixed':'Any';
 }
 function selectedClassCycleDays(){
@@ -844,7 +832,7 @@ function classDaySummary(cls){
     const color=cls.dayType&&cls.dayType!=='Any'?cls.dayType:cycleDayColor(cycle);
     return `${color} • Cycle ${cycle.join(', ')||'Any'}${cls.period?` • ${periodLabel(cls.period)}`:''}`;
   }
-  if(cls.scheduleMode==='alternating')return `${cls.alternatePhase==='B'?'White':'Green'} Days`;
+  if(cls.scheduleMode==='alternating')return `${scheduleGroup(cls.alternatePhase==='B'?1:0).label} Days`;
   const n=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   return (cls.days||[]).map(d=>n[d]).join(', ');
 }
@@ -887,13 +875,14 @@ function renderClassScheduleMode(data=currentClassEdit){
   if(mode==='schoolcycle'){
     const selected=currentClassEdit.cycleDays?.length?currentClassEdit.cycleDays:periodPresetCycleDays(classPeriod.value);
     const color=currentClassEdit.dayType||cycleDayColor(selected);
+    const groups=S.scheduleProfile?.dayGroups||[];
     classScheduleModeFields.innerHTML=`<div class="grid2">
-      <label>Day Color<select id="classDayType"><option value="Any" ${color==='Any'?'selected':''}>Any</option><option value="Green" ${color==='Green'?'selected':''}>Green</option><option value="White" ${color==='White'?'selected':''}>White</option></select></label>
-      <label>Anchor<input value="08/19/2026 = Green / Cycle A" disabled></label>
+      <label>Day Group<select id="classDayType"><option value="Any" ${color==='Any'?'selected':''}>Any</option>${groups.map(g=>`<option value="${esc(g.label)}" ${color===g.label?'selected':''}>${esc(g.label)}</option>`).join('')}</select></label>
+      <label>Anchor<input value="${esc(S.scheduleProfile?.anchorDate||'Set in School Calendar')} = Cycle ${esc(scheduleCycleDays()[0])}" disabled></label>
     </div>
     <b>Cycle Days</b>
-    <div class="toolbar">${SCHOOL_CYCLE_LETTERS.map(letter=>`<label><input type="checkbox" data-classcycle="${letter}" ${selected.includes(letter)?'checked':''}> ${letter}</label>`).join('')}</div>
-    <div class="muted">Green: A C E G • White: B D F H • closed/no-student days do not advance the cycle.</div>`;
+    <div class="toolbar">${scheduleCycleDays().map(letter=>`<label><input type="checkbox" data-classcycle="${esc(letter)}" ${selected.includes(letter)?'checked':''}> ${esc(letter)}</label>`).join('')}</div>
+    <div class="muted">${groups.map(g=>`${esc(g.label)}: ${(g.cycleDays||[]).map(esc).join(' ')}`).join(' • ')} • closed/no-student days do not advance the cycle.</div>`;
     return;
   }
 
@@ -904,23 +893,25 @@ function renderClassScheduleMode(data=currentClassEdit){
   }
 
   classScheduleModeFields.innerHTML=`<div class="grid2">
-    <label>Day Color<select id="classAlternatePhase"><option value="A" ${currentClassEdit.alternatePhase!=='B'?'selected':''}>Green Days</option><option value="B" ${currentClassEdit.alternatePhase==='B'?'selected':''}>White Days</option></select></label>
-    <label>Anchor<input value="08/19/2026 = Green Day" disabled></label>
+    <label>Day Group<select id="classAlternatePhase"><option value="A" ${currentClassEdit.alternatePhase!=='B'?'selected':''}>${esc(scheduleGroup(0).label)} Days</option><option value="B" ${currentClassEdit.alternatePhase==='B'?'selected':''}>${esc(scheduleGroup(1).label)} Days</option></select></label>
+    <label>Anchor<input value="${esc(S.scheduleProfile?.anchorDate||'Set in School Calendar')} = ${esc(scheduleGroup(0).label)}" disabled></label>
   </div>`;
 }
 function newClassSchedule(){
   classId.value='';className.value='';classShortName.value='';classPeriod.value='';
+  classContinuationOf.value='';
   classStart.value='08:00';classEnd.value='09:00';renderClassDefaultTargets(['all']);classNotes.value='';
   classScheduleMode.value='schoolcycle';
-  currentClassEdit={days:[1,2,3,4,5],scheduleMode:'schoolcycle',alternatePhase:'A',anchorDate:'2026-08-19',cycleDays:[],dayType:'Any'};
+  currentClassEdit={days:[1,2,3,4,5],scheduleMode:'schoolcycle',alternatePhase:'A',anchorDate:S.scheduleProfile?.anchorDate||'',cycleDays:[],dayType:'Any'};
   renderClassScheduleMode(currentClassEdit);classEditorTitle.textContent='Add Class';classEditorMsg.textContent='';
 }
 function editClassSchedule(id){
   const x=S.classes.find(c=>c.id===id);if(!x)return;
   classId.value=x.id;className.value=x.name;classShortName.value=x.shortName||'';classPeriod.value=x.period||'';
+  classContinuationOf.value=x.continuationOf||'';
   classStart.value=x.startTime;classEnd.value=x.endTime;renderClassDefaultTargets(x.defaultTargets?.length?x.defaultTargets:['all']);
   classNotes.value=x.notes||'';classScheduleMode.value=x.scheduleMode||'schoolcycle';
-  currentClassEdit={days:x.days||[1,2,3,4,5],scheduleMode:x.scheduleMode||'schoolcycle',alternatePhase:x.alternatePhase||'A',anchorDate:x.anchorDate||'2026-08-19',cycleDays:x.cycleDays||periodPresetCycleDays(x.period),dayType:x.dayType||cycleDayColor(x.cycleDays||[])};
+  currentClassEdit={days:x.days||[1,2,3,4,5],scheduleMode:x.scheduleMode||'schoolcycle',alternatePhase:x.alternatePhase||'A',anchorDate:x.anchorDate||S.scheduleProfile?.anchorDate||'',cycleDays:x.cycleDays||periodPresetCycleDays(x.period),dayType:x.dayType||cycleDayColor(x.cycleDays||[])};
   renderClassScheduleMode(currentClassEdit);classEditorTitle.textContent='Edit Class';
 }
 async function saveClassSchedule(){
@@ -928,12 +919,12 @@ async function saveClassSchedule(){
     const mode=classScheduleMode.value;
     const cycleDays=mode==='schoolcycle'?selectedClassCycleDays():[];
     const body={
-      name:className.value.trim(),shortName:classShortName.value.trim(),period:classPeriod.value,
+      name:className.value.trim(),shortName:classShortName.value.trim(),period:classPeriod.value,continuationOf:classContinuationOf.value.trim(),
       startTime:classStart.value,endTime:classEnd.value,scheduleMode:mode,
       days:mode==='weekly'?[...classScheduleModeFields.querySelectorAll('[data-classday]:checked')].map(x=>Number(x.dataset.classday)):[1,2,3,4,5],
       alternatePhase:mode==='alternating'?(document.getElementById('classAlternatePhase')?.value||'A'):'A',
-      anchorDate:'2026-08-19',
-      dayType:mode==='schoolcycle'?(document.getElementById('classDayType')?.value||cycleDayColor(cycleDays)):(mode==='alternating'?(document.getElementById('classAlternatePhase')?.value==='B'?'White':'Green'):'Any'),
+      anchorDate:S.scheduleProfile?.anchorDate||'',
+      dayType:mode==='schoolcycle'?(document.getElementById('classDayType')?.value||cycleDayColor(cycleDays)):(mode==='alternating'?scheduleGroup(document.getElementById('classAlternatePhase')?.value==='B'?1:0).label:'Any'),
       cycleDays,defaultTargets:selectedClassDefaultTargets(),notes:classNotes.value,enabled:true
     };
     if(!body.name)throw Error('Class name is required');
@@ -971,7 +962,7 @@ function updateAutomationClassPreview(){
   autoClassPreview.innerHTML=classes.map(cls=>`${esc(cls.name)} → ${automationResolvedTime(cls,autoClassRef.value,autoClassOffset.value)} • ${esc(classDaySummary(cls))}`).join('<br>')+`<br><span class="muted">The same event/actions will run separately for each linked class.</span>`;
 }
 
-let currentScheduleData={days:[1,2,3,4,5],scheduleMode:'weekly',alternatePhase:'A',anchorDate:'2026-08-19',includeDates:[],dayType:'Any',cycleDays:[]};
+let currentScheduleData={days:[1,2,3,4,5],scheduleMode:'weekly',alternatePhase:'A',anchorDate:'',includeDates:[],dayType:'Any',cycleDays:[]};
 function renderScheduleModeFields(data=currentScheduleData){
   currentScheduleData={...currentScheduleData,...data};
   const mode=autoScheduleMode.value||currentScheduleData.scheduleMode||'weekly';
@@ -982,19 +973,20 @@ function renderScheduleModeFields(data=currentScheduleData){
     scheduleModeSummary.textContent='Runs on the selected weekdays.';
   }else if(mode==='schoolcycle'){
     const selected=currentScheduleData.cycleDays||[];
+    const groups=S.scheduleProfile?.dayGroups||[];
     scheduleModeFields.innerHTML=`<div class="grid2">
-      <label>Day Color<select id="autoDayType"><option value="Any" ${(currentScheduleData.dayType||'Any')==='Any'?'selected':''}>Any</option><option value="Green" ${currentScheduleData.dayType==='Green'?'selected':''}>Green</option><option value="White" ${currentScheduleData.dayType==='White'?'selected':''}>White</option></select></label>
-      <label>Anchor<input value="08/19/2026 = Green / Cycle A" disabled></label>
+      <label>Day Group<select id="autoDayType"><option value="Any" ${(currentScheduleData.dayType||'Any')==='Any'?'selected':''}>Any</option>${groups.map(g=>`<option value="${esc(g.label)}" ${currentScheduleData.dayType===g.label?'selected':''}>${esc(g.label)}</option>`).join('')}</select></label>
+      <label>Anchor<input value="${esc(S.scheduleProfile?.anchorDate||'Set in School Calendar')} = Cycle ${esc(scheduleCycleDays()[0])}" disabled></label>
     </div>
-    <b>Cycle Days</b><div class="toolbar">${SCHOOL_CYCLE_LETTERS.map(letter=>`<label><input type="checkbox" data-autocycle="${letter}" ${selected.includes(letter)?'checked':''}> ${letter}</label>`).join('')}</div>
+    <b>Cycle Days</b><div class="toolbar">${scheduleCycleDays().map(letter=>`<label><input type="checkbox" data-autocycle="${esc(letter)}" ${selected.includes(letter)?'checked':''}> ${esc(letter)}</label>`).join('')}</div>
     <div class="muted">Only student school days advance the cycle.</div>`;
-    scheduleModeSummary.textContent='Runs on the selected Green/White and A-H cycle days.';
+    scheduleModeSummary.textContent='Runs on the selected school day group and cycle days.';
   }else if(mode==='alternating'){
     scheduleModeFields.innerHTML=`<div class="grid2">
-      <label>Run On<select id="autoAlternatePhase"><option value="A" ${currentScheduleData.alternatePhase!=='B'?'selected':''}>Green Days</option><option value="B" ${currentScheduleData.alternatePhase==='B'?'selected':''}>White Days</option></select></label>
-      <label>Anchor<input value="08/19/2026 = Green Day" disabled></label>
-    </div><div class="muted">Green/White is derived from the A-H student cycle.</div>`;
-    scheduleModeSummary.textContent='Runs on Green or White student school days.';
+      <label>Run On<select id="autoAlternatePhase"><option value="A" ${currentScheduleData.alternatePhase!=='B'?'selected':''}>${esc(scheduleGroup(0).label)} Days</option><option value="B" ${currentScheduleData.alternatePhase==='B'?'selected':''}>${esc(scheduleGroup(1).label)} Days</option></select></label>
+      <label>Anchor<input value="${esc(S.scheduleProfile?.anchorDate||'Set in School Calendar')} = ${esc(scheduleGroup(0).label)}" disabled></label>
+    </div><div class="muted">Alternating groups are derived from the configured student cycle.</div>`;
+    scheduleModeSummary.textContent='Runs on the selected alternating school-day group.';
   }else{
     scheduleModeFields.innerHTML=`<label><b>Specific Dates</b><textarea id="autoIncludeDates" rows="6" placeholder="2026-08-24&#10;2026-08-26" style="width:100%;resize:vertical">${esc((currentScheduleData.includeDates||[]).join('\n'))}</textarea><span class="muted">School calendar rules still apply.</span></label>`;
     scheduleModeSummary.textContent='Runs only on the listed dates.';
@@ -1569,24 +1561,51 @@ function scheduleDescription(e){
 }
 function renderSchedulerCalendar(){
   const c=S.schedulerCalendar||{};
+  const p=S.scheduleProfile||{};
+  const groups=p.dayGroups||[];
+  schoolProfileName.value=p.name||'School Schedule';
+  schoolProfileAnchor.value=p.anchorDate||'';
+  schoolProfileCycleDays.value=(p.cycleDays||[]).join(', ');
+  schoolProfileContinuationGap.value=p.continuation?.maximumGapMinutes??15;
+  schoolProfileLegacyContinuation.checked=p.continuation?.legacyBisonCompatibility===true;
+  schoolProfileGroupOneLabel.value=groups[0]?.label||'Day A';schoolProfileGroupOneDays.value=(groups[0]?.cycleDays||[]).join(', ');
+  schoolProfileGroupTwoLabel.value=groups[1]?.label||'Day B';schoolProfileGroupTwoDays.value=(groups[1]?.cycleDays||[]).join(', ');
+  schoolProfileAdditionalGroups.value=JSON.stringify(groups.slice(2),null,2);
+  schoolProfilePeriodMap.value=JSON.stringify(p.periodCycleDays||{},null,2);
+  schoolProfileExceptionRules.value=JSON.stringify(p.exceptionRules||{},null,2);
   calendarExcludedDates.value=(c.noSchoolDates||c.excludedDates||[]).join('\n');
   calendarHalfDayDates.value=(c.halfDayDates||[]).join('\n');
   calendarOneHourDelayDates.value=(c.oneHourDelayDates||[]).join('\n');
   calendarTwoHourDelayDates.value=(c.twoHourDelayDates||[]).join('\n');
   calendarRemoteDates.value=(c.remoteDates||[]).join('\n');
-  districtCalendarPreview.textContent=`Rotation is recalculated live from 08/19/2026 = Green / Cycle A. ${calendarExcludedDates.value?parseDateLines(calendarExcludedDates.value).length:0} no-school • ${(c.halfDayDates||[]).length} half-day • ${(c.oneHourDelayDates||[]).length} one-hour delay • ${(c.twoHourDelayDates||[]).length} two-hour delay • ${(c.remoteDates||[]).length} remote.`;
+  districtCalendarPreview.textContent=`Rotation is recalculated live from ${p.anchorDate||'the first configured school day'} = ${groups[0]?.label||'first group'} / Cycle ${(p.cycleDays||[])[0]||'A'}. ${calendarExcludedDates.value?parseDateLines(calendarExcludedDates.value).length:0} no-school • ${(c.halfDayDates||[]).length} half-day • ${(c.oneHourDelayDates||[]).length} one-hour delay • ${(c.twoHourDelayDates||[]).length} two-hour delay • ${(c.remoteDates||[]).length} remote.`;
 }
 async function saveSchedulerCalendar(){
   try{
+    const csv=value=>[...new Set(String(value||'').split(',').map(x=>x.trim()).filter(Boolean))];
+    const cycleDays=csv(schoolProfileCycleDays.value);
+    const parseObject=(value,label)=>{let parsed;try{parsed=JSON.parse(value||'{}')}catch{throw Error(`${label} must be valid JSON`)}if(!parsed||Array.isArray(parsed)||typeof parsed!=='object')throw Error(`${label} must be a JSON object`);return parsed};
+    const parseArray=(value,label)=>{let parsed;try{parsed=JSON.parse(value||'[]')}catch{throw Error(`${label} must be valid JSON`)}if(!Array.isArray(parsed))throw Error(`${label} must be a JSON array`);return parsed};
     const body={
       noSchoolDates:parseDateLines(calendarExcludedDates.value),
       halfDayDates:parseDateLines(calendarHalfDayDates.value),
       oneHourDelayDates:parseDateLines(calendarOneHourDelayDates.value),
       twoHourDelayDates:parseDateLines(calendarTwoHourDelayDates.value),
-      remoteDates:parseDateLines(calendarRemoteDates.value)
+      remoteDates:parseDateLines(calendarRemoteDates.value),
+      scheduleProfile:{
+        ...S.scheduleProfile,name:schoolProfileName.value.trim(),anchorDate:schoolProfileAnchor.value,cycleDays,
+        dayGroups:[
+          {...(S.scheduleProfile?.dayGroups?.[0]||{}),id:S.scheduleProfile?.dayGroups?.[0]?.id||'group-1',label:schoolProfileGroupOneLabel.value.trim(),cycleDays:csv(schoolProfileGroupOneDays.value)},
+          {...(S.scheduleProfile?.dayGroups?.[1]||{}),id:S.scheduleProfile?.dayGroups?.[1]?.id||'group-2',label:schoolProfileGroupTwoLabel.value.trim(),cycleDays:csv(schoolProfileGroupTwoDays.value)},
+          ...parseArray(schoolProfileAdditionalGroups.value,'Additional day groups')
+        ],
+        periodCycleDays:parseObject(schoolProfilePeriodMap.value,'Period mapping'),
+        exceptionRules:parseObject(schoolProfileExceptionRules.value,'Exception rules'),
+        continuation:{maximumGapMinutes:Number(schoolProfileContinuationGap.value||15),legacyBisonCompatibility:schoolProfileLegacyContinuation.checked}
+      }
     };
     const j=await api('/api/v1/automations/calendar',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    S.schedulerCalendar=j.calendar;S.districtNoSchoolDates=j.districtNoSchoolDates||S.districtNoSchoolDates;calendarMsg.textContent='School calendar rules saved and cycle recalculated';renderSchedulerCalendar();
+    S.schedulerCalendar=j.calendar;S.scheduleProfile=j.scheduleProfile||S.scheduleProfile;S.districtNoSchoolDates=j.districtNoSchoolDates||S.districtNoSchoolDates;calendarMsg.textContent='School calendar rules and profile saved; cycle recalculated';renderSchedulerCalendar();
     await refreshBrandStatus();
     const [autos,cls]=await Promise.all([api('/api/v1/automations'),api('/api/v1/class-schedules/status')]);
     S.automations=autos.events||S.automations;S.scheduler=autos.scheduler||S.scheduler;S.classStatus={schoolCycle:cls.schoolCycle||null,calendarRule:cls.calendarRule||null,activeClass:cls.activeClass||null,nextClass:cls.nextClass||null};
@@ -1675,7 +1694,7 @@ async function loadSchedules(){
       api('/api/v1/class-schedules')
     ]);
     S.automations=a.events||[];S.mediaFiles=m.files||[];S.govee=g;S.scheduler=a.scheduler||null;S.classes=cls.classes||[];S.classStatus={schoolCycle:cls.schoolCycle||null,calendarRule:cls.calendarRule||null,activeClass:cls.activeClass||null,nextClass:cls.nextClass||null};populateAutomationClassSelect(selectedAutomationClassIds());
-    S.schedulerCalendar=cal.calendar||S.schedulerCalendar;S.districtNoSchoolDates=cal.districtNoSchoolDates||[];
+    S.schedulerCalendar=cal.calendar||S.schedulerCalendar;S.scheduleProfile=cal.scheduleProfile||S.scheduleProfile;S.districtNoSchoolDates=cal.districtNoSchoolDates||[];
     renderSchedulerClock();renderSchedulerCalendar();renderAutomationList();loadMorningWatch();
     if(!autoId.value)newAutomation();
   }catch(e){automationList.innerHTML=`<div class="bad">${esc(e.message)}</div>`}
@@ -1904,29 +1923,22 @@ async function createManagedBackup(){const scope=backupScope.value;if(scope==='f
 async function loadManagedBackups(){try{
   const j=await maintApi('/backups/catalog'),items=j.managed||[];
   let html=(j.migrations?.length?`<div class="muted" style="margin-bottom:8px"><b>${j.migrations.length}</b> installer rollback snapshot(s) detected under /opt/classroom-control-hub-backups. They are preserved separately from managed ZIP backups.</div>`:'');
-  html+=`<table><thead><tr><th>Backup</th><th>Size</th><th>Created</th><th>Actions</th></tr></thead><tbody>${items.map(x=>`<tr><td style="text-align:left">${esc(x.name)}</td><td>${fmtBytes(x.size)}</td><td>${esc(new Date(x.modifiedAt).toLocaleString())}</td><td><div class="toolbar"><button onclick="inspectManagedBackup('${esc(x.name).replace(/'/g,"\\'")}')">Inspect</button><button onclick="restorePlanManagedBackup('${esc(x.name).replace(/'/g,"\\'")}')">Restore Plan</button><button onclick="restoreManagedBackup('${esc(x.name).replace(/'/g,"\\'")}','configuration')">Restore Config</button><button class="danger" onclick="restoreManagedBackup('${esc(x.name).replace(/'/g,"\\'")}','configuration-data')">Restore Config + Data</button><button onclick="window.open('/api/v1/maintenance/backup/${encodeURIComponent(x.name)}','_blank')">Download</button><button class="danger" onclick="deleteManagedBackup('${esc(x.name).replace(/'/g,"\\'")}')">Delete</button></div></td></tr>`).join('')}</tbody></table>`;
+  html+=`<table><thead><tr><th>Backup</th><th>Size</th><th>Created</th><th>Actions</th></tr></thead><tbody>${items.map(x=>`<tr><td style="text-align:left">${esc(x.name)}</td><td>${fmtBytes(x.size)}</td><td>${esc(new Date(x.modifiedAt).toLocaleString())}</td><td><div class="toolbar"><button onclick="inspectManagedBackup('${esc(x.name).replace(/'/g,"\\'")}')">Inspect</button><button onclick="restorePlanManagedBackup('${esc(x.name).replace(/'/g,"\\'")}')">Restore Plan</button><button onclick="restoreManagedBackup('${esc(x.name).replace(/'/g,"\\'")}','configuration')">Restore Settings</button><button class="danger" onclick="restoreManagedBackup('${esc(x.name).replace(/'/g,"\\'")}','configuration-data')">Restore Settings + Data</button><button onclick="window.open('/api/v1/maintenance/backup/${encodeURIComponent(x.name)}','_blank')">Download</button><button class="danger" onclick="deleteManagedBackup('${esc(x.name).replace(/'/g,"\\'")}')">Delete</button></div></td></tr>`).join('')}</tbody></table>`;
   if(j.migrations?.length)html+=`<details style="margin-top:10px"><summary>Installer rollback snapshots (${j.migrations.length})</summary><table><tbody>${j.migrations.map(x=>`<tr><td style="text-align:left">${esc(x.name)}</td><td>${esc(new Date(x.modifiedAt).toLocaleString())}</td><td class="muted">Host-level migration rollback snapshot</td></tr>`).join('')}</tbody></table></details>`;
   managedBackups.innerHTML=html;
 }catch(e){managedBackups.innerHTML=`<div class="bad">${esc(e.message)}</div>`}}
 async function restorePlanManagedBackup(name){try{const j=await maintApi(`/backup/${encodeURIComponent(name)}/restore-plan`);maintenanceOutput.textContent=JSON.stringify(j,null,2);maintenanceOutput.scrollIntoView({behavior:'smooth',block:'center'})}catch(e){alert(e.message)}}
-async function restoreManagedBackup(name,mode){const label=mode==='configuration'?'configuration only':'configuration and operational data/database';if(!confirm(`Restore ${label} from ${name}? A new safety backup will be created automatically first.`))return;if(!confirm('This can overwrite current settings and may restart Classroom Control Hub. Continue?'))return;try{maintenanceOutput.textContent='Restoring backup…';const j=await maintApi(`/backup/${encodeURIComponent(name)}/restore`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,confirm:'RESTORE'})});maintenanceOutput.textContent=JSON.stringify(j,null,2);alert(`Restore completed. Safety backup: ${j.safetyBackup||'created'}`);setTimeout(()=>location.reload(),2500)}catch(e){maintenanceOutput.textContent=e.message;alert(e.message)}}
+async function restoreManagedBackup(name,mode){const label=mode==='configuration'?'database-backed settings':'settings and operational data';if(!confirm(`Restore ${label} from ${name}? A new safety backup will be created automatically first.`))return;if(!confirm('This can overwrite current settings and may restart Classroom Control Hub. Continue?'))return;try{maintenanceOutput.textContent='Restoring backup…';const j=await maintApi(`/backup/${encodeURIComponent(name)}/restore`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,confirm:'RESTORE'})});maintenanceOutput.textContent=JSON.stringify(j,null,2);alert(`Restore completed. Safety backup: ${j.safetyBackup||'created'}`);setTimeout(()=>location.reload(),2500)}catch(e){maintenanceOutput.textContent=e.message;alert(e.message)}}
 async function inspectManagedBackup(name){try{const j=await maintApi(`/backup/${encodeURIComponent(name)}/inspect`);maintenanceOutput.textContent=JSON.stringify(j,null,2);document.getElementById('maintenanceOutput').scrollIntoView({behavior:'smooth',block:'center'})}catch(e){alert(e.message)}}
 async function deleteManagedBackup(name){if(!confirm(`Delete backup ${name}?`))return;try{await maintApi(`/backup/${encodeURIComponent(name)}`,{method:'DELETE'});await loadManagedBackups()}catch(e){alert(e.message)}}
 async function runMaintenancePreset(preset){try{const j=await maintApi('/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preset})});maintenanceOutput.textContent=j.output||JSON.stringify(j,null,2)}catch(e){maintenanceOutput.textContent=e.message}}
-async function runAdvancedMaintenanceCommand(){const command=maintenanceCommand.value.trim();if(!command)return;try{const j=await maintApi('/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});maintenanceOutput.textContent=j.output||''}catch(e){maintenanceOutput.textContent=e.message}}
-async function fileManagerOpen(rel='.'){try{const root=fileRoot.value,j=await maintApi(`/files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(rel)}`);fileManagerPath=j.path||'.';filePath.textContent=`${root}:/${fileManagerPath==='.'?'':fileManagerPath}`;fileList.innerHTML=`<table><thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Modified</th></tr></thead><tbody>${(j.items||[]).map(x=>`<tr style="cursor:pointer" onclick="${x.type==='directory'?`fileManagerOpen('${esc(x.path).replace(/'/g,"\\'")}')`:`fileManagerEdit('${esc(x.path).replace(/'/g,"\\'")}')`}"><td style="text-align:left">${x.type==='directory'?'📁':'📄'} ${esc(x.name)}</td><td>${esc(x.type)}</td><td>${x.type==='file'?fmtBytes(x.size):''}</td><td>${esc(new Date(x.modifiedAt).toLocaleString())}</td></tr>`).join('')}</tbody></table>`}catch(e){fileList.innerHTML=`<div class="bad">${esc(e.message)}</div>`}}
-function fileManagerUp(){if(fileManagerPath==='.')return;const p=fileManagerPath.split('/');p.pop();fileManagerOpen(p.join('/')||'.')}
-async function fileManagerEdit(rel){try{const j=await maintApi(`/file?root=${encodeURIComponent(fileRoot.value)}&path=${encodeURIComponent(rel)}`);fileEditPath.value=rel;fileEditor.value=j.content||'';fileEditorMsg.textContent=`${fmtBytes(j.size)} • ${new Date(j.modifiedAt).toLocaleString()}`}catch(e){fileEditorMsg.textContent=e.message}}
-async function saveManagedFile(){const rel=fileEditPath.value.trim();if(!rel)return alert('Select or enter a file path first.');try{await maintApi('/file',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({root:fileRoot.value,path:rel,content:fileEditor.value})});fileEditorMsg.textContent='Saved. Previous version was backed up beside the file.';await fileManagerOpen(fileManagerPath)}catch(e){fileEditorMsg.textContent=e.message}}
-function downloadManagedFile(){const rel=fileEditPath.value.trim();if(rel)window.open(`/api/v1/maintenance/file?root=${encodeURIComponent(fileRoot.value)}&path=${encodeURIComponent(rel)}&download=1`,'_blank')}
-async function uploadManagedFile(){const f=fileUpload.files?.[0];if(!f)return alert('Choose a file first.');const fd=new FormData();fd.append('root',fileRoot.value);fd.append('path',fileManagerPath==='.'?'':fileManagerPath);fd.append('file',f);try{await maintApi('/file/upload',{method:'POST',body:fd});fileUpload.value='';await fileManagerOpen(fileManagerPath)}catch(e){alert(e.message)}}
 function renderAppUpdateHistory(history=[]){appUpdateHistory.innerHTML=history.length?`<table><thead><tr><th>Time</th><th>Action</th><th>Result</th><th>Version</th><th>Recovery</th></tr></thead><tbody>${history.slice(0,20).map(x=>`<tr><td>${esc(x.at?new Date(x.at).toLocaleString():'')}</td><td>${esc(x.action||'update')}</td><td><span class="pill ${x.ok===true?'ok':x.ok===false?'bad':''}">${esc(x.phase||'')}</span><br><span class="muted">${esc(x.message||'')}</span></td><td>${esc(x.activeVersion||x.targetRef||'')}</td><td>${esc(x.rollback===true?'Rolled back':x.backupName||'')}</td></tr>`).join('')}</tbody></table>`:'<div class="muted">No application update history yet.</div>'}
-async function loadAppUpdates(){try{const [settings,job]=await Promise.all([api('/api/v1/admin/app-updates/settings'),api('/api/v1/admin/app-updates/job').catch(e=>({ok:false,error:e.message,history:[]}))]);const p=settings.settings||{};appUpdateRepository.value=p.repository||'';appUpdateChannel.value=p.channel||'alpha';appUpdateInterval.value=p.checkIntervalHours||24;appUpdateStart.value=p.maintenanceStart||'02:00';appUpdateEnd.value=p.maintenanceEnd||'04:00';appUpdateAutomatic.checked=!!p.automatic;appUpdateToken.placeholder=settings.tokenConfigured?'Token stored — leave blank to keep it':'Optional for public repositories';renderAppUpdateHistory(job.history||settings.history||[]);revertAppUpdateBtn.disabled=!job.previousCommit||job.running;updateOutput.textContent=job.error?job.error:`Current: ${settings.currentVersion}\nPhase: ${job.phase||'idle'}\n${job.message||''}${job.targetRef?`\nTarget: ${job.targetRef}`:''}${job.backupName?`\nRecovery backup: ${job.backupName}`:''}`;if(job.running)pollAppUpdateJob()}catch(e){updateOutput.textContent=e.message}}
+async function loadAppUpdates(){try{const [settings,job]=await Promise.all([api('/api/v1/admin/app-updates/settings'),api('/api/v1/admin/app-updates/job').catch(e=>({ok:false,error:e.message,history:[]}))]);const p=settings.settings||{};appUpdateRepository.value=p.repository||'';appUpdateChannel.value=p.channel||'alpha';appUpdateInterval.value=p.checkIntervalHours||24;appUpdateStart.value=p.maintenanceStart||'02:00';appUpdateEnd.value=p.maintenanceEnd||'04:00';appUpdateAutomatic.checked=!!p.automatic;appUpdateToken.placeholder=settings.tokenConfigured?'Token stored — leave blank to keep it':'Optional for public repositories';renderAppUpdateHistory(job.history||settings.history||[]);revertAppUpdateBtn.disabled=job.revertAvailable!==true||job.running;updateOutput.textContent=job.error?job.error:`Current: ${settings.currentVersion}\nPhase: ${job.phase||'idle'}\n${job.message||''}${job.targetRef?`\nTarget: ${job.targetRef}`:''}${job.backupName?`\nRecovery backup: ${job.backupName}`:''}`;if(job.running)pollAppUpdateJob()}catch(e){updateOutput.textContent=e.message}}
 async function saveAppUpdateSettings(){try{const body={repository:appUpdateRepository.value.trim(),channel:appUpdateChannel.value,automatic:appUpdateAutomatic.checked,checkIntervalHours:Number(appUpdateInterval.value||24),maintenanceStart:appUpdateStart.value,maintenanceEnd:appUpdateEnd.value};if(appUpdateToken.value)body.token=appUpdateToken.value;const j=await api('/api/v1/admin/app-updates/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});appUpdateToken.value='';appUpdateToken.placeholder=j.tokenConfigured?'Token stored — leave blank to keep it':'Optional for public repositories';notify('Application update settings saved.','success')}catch(e){notify(e.message,'error')}}
 async function checkAppUpdate(){updateOutput.textContent='Checking GitHub releases…';installAppUpdateBtn.disabled=true;try{const j=await api('/api/v1/admin/app-updates/check',{method:'POST'});AVAILABLE_APP_RELEASE=j.available||null;installAppUpdateBtn.disabled=!AVAILABLE_APP_RELEASE;updateOutput.textContent=AVAILABLE_APP_RELEASE?`Update available: ${AVAILABLE_APP_RELEASE.version}\nTag: ${AVAILABLE_APP_RELEASE.tag}\nPublished: ${AVAILABLE_APP_RELEASE.publishedAt?new Date(AVAILABLE_APP_RELEASE.publishedAt).toLocaleString():'unknown'}\n${AVAILABLE_APP_RELEASE.name||''}`:`No newer approved ${j.channel} release is available.\nCurrent: ${j.currentVersion}${j.latest?`\nLatest channel release: ${j.latest.version}`:''}`}catch(e){updateOutput.textContent=e.message}}
 async function installAppUpdate(){if(!AVAILABLE_APP_RELEASE)return;if(!confirm(`Install ${AVAILABLE_APP_RELEASE.version} from GitHub? A recovery backup will be created before source or containers change.`))return;if(!confirm('The controller will disconnect while images rebuild. Failed health verification will automatically restore the previous release. Continue?'))return;try{const j=await api('/api/v1/admin/app-updates/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tag:AVAILABLE_APP_RELEASE.tag})});updateOutput.textContent=`Update job started.\nRecovery backup: ${j.safetyBackup||'creating'}\nThe page will keep checking progress.`;installAppUpdateBtn.disabled=true;pollAppUpdateJob()}catch(e){updateOutput.textContent=e.message}}
 async function revertAppUpdate(){if(!confirm('Revert to the previous application release and restore its matching pre-upgrade configuration/database backup?'))return;if(!confirm('This will replace the current release and restart the appliance. Continue with rollback?'))return;try{const j=await api('/api/v1/admin/app-updates/revert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'REVERT_RELEASE'})});updateOutput.textContent=`Rollback job started.\nCurrent-state safety backup: ${j.safetyBackup||'creating'}`;pollAppUpdateJob()}catch(e){updateOutput.textContent=e.message}}
-async function pollAppUpdateJob(){clearTimeout(APP_UPDATE_POLL);try{const j=await api('/api/v1/admin/app-updates/job');renderAppUpdateHistory(j.history||[]);updateOutput.textContent=`Phase: ${j.phase||'unknown'}\n${j.message||''}${j.targetRef?`\nTarget: ${j.targetRef}`:''}${j.backupName?`\nRecovery backup: ${j.backupName}`:''}${j.log?`\n\n${j.log.slice(-8000)}`:''}`;revertAppUpdateBtn.disabled=!j.previousCommit||j.running;if(j.running){APP_UPDATE_POLL=setTimeout(pollAppUpdateJob,3000)}else if(j.phase==='completed'||j.phase==='rolled-back'){setTimeout(()=>location.reload(),2500)}}catch(e){updateOutput.textContent=e.message;APP_UPDATE_POLL=setTimeout(pollAppUpdateJob,5000)}}
+async function pollAppUpdateJob(){clearTimeout(APP_UPDATE_POLL);try{const j=await api('/api/v1/admin/app-updates/job');renderAppUpdateHistory(j.history||[]);updateOutput.textContent=`Phase: ${j.phase||'unknown'}\n${j.message||''}${j.targetRef?`\nTarget: ${j.targetRef}`:''}${j.backupName?`\nRecovery backup: ${j.backupName}`:''}${j.log?`\n\n${j.log.slice(-8000)}`:''}`;revertAppUpdateBtn.disabled=j.revertAvailable!==true||j.running;if(j.running){APP_UPDATE_POLL=setTimeout(pollAppUpdateJob,3000)}else if(j.phase==='completed'||j.phase==='rolled-back'){setTimeout(()=>location.reload(),2500)}}catch(e){updateOutput.textContent=e.message;APP_UPDATE_POLL=setTimeout(pollAppUpdateJob,5000)}}
 
 
 let MA_PLAYERS=[],MA_SELECTED_PLAYER='',BGM_FAVORITES=[],BGM_SCHEDULE={};

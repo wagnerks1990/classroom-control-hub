@@ -60,8 +60,6 @@ aside{
 .brand .green{color:#37d77d}
 .ver{font-size:11px;color:var(--muted);margin-top:5px}
 .brandStatus{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.35}
-.brandStatus .dayGreen{color:#58df91;font-weight:800}
-.brandStatus .dayWhite{color:#ffffff;font-weight:800}
 .brandStatus .cycle{color:#8fd3ff;font-weight:800}
 .navSection{font-size:10px;text-transform:uppercase;letter-spacing:1.4px;color:rgba(255,255,255,.38);padding:13px 10px 4px;font-weight:800}
 nav button{
@@ -213,7 +211,7 @@ select option{background:#101612;color:#fff}.av40Summary{display:grid;grid-templ
   border-radius:16px;background:rgba(0,0,0,.25);
   display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;
 }
-.footerBrand b{color:#fff}.footerBrand .herd{color:#58df91;font-weight:800;letter-spacing:.8px}
+.footerBrand b{color:#fff}
 
 /* Alpha.5 controller cleanup */
 .navHint{font-size:10px;color:rgba(255,255,255,.34);padding:2px 12px 7px;line-height:1.35}
@@ -267,7 +265,7 @@ nav button{min-width:135px}
       </div>
       <div>
         <div class="brand" id="brandProductName">Classroom <span class="green">Hub</span></div>
-        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.67</span></div>
+        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.68</span></div>
         <div class="brandStatus">
           <div id="brandDateTime">Loading date/time…</div>
           <div id="brandCycle">Loading school cycle…</div>
@@ -604,24 +602,17 @@ nav button{min-width:135px}
       <div class="grid2">
         <label>Name<input id="className"></label>
         <label>Short Name<input id="classShortName"></label>
-        <label>Period / Block<select id="classPeriod" onchange="applyClassPeriodPreset()">
-          <option value="">Custom / None</option>
-          <option value="1">Period 1</option><option value="2">Period 2</option><option value="3">Period 3</option><option value="4">Period 4</option>
-          <option value="5">Period 5</option><option value="6">Period 6</option><option value="7">Period 7</option>
-          <option value="BISON-1">Bison Block - Period 1</option><option value="BISON-2">Bison Block - Period 2</option>
-          <option value="BISON-3">Bison Block - Period 3</option><option value="BISON-4">Bison Block - Period 4</option>
-          <option value="BISON-5">Bison Block - Period 5</option><option value="BISON-6">Bison Block - Period 6</option>
-          <option value="BISON-7">Bison Block - Period 7</option><option value="BISON-8">Bison Block - Period 8</option>
-        </select></label>
+        <label>Period / Block<input id="classPeriod" placeholder="Example: 1 or Advisory" onchange="applyClassPeriodPreset()"></label>
+        <label>Continuation Of<input id="classContinuationOf" placeholder="Optional class ID"></label>
         <label>Start<input id="classStart" type="time" value="08:00"></label>
         <label>End<input id="classEnd" type="time" value="09:00"></label>
       </div>
       <div class="grid2" style="margin-top:10px">
         <label>Schedule
           <select id="classScheduleMode" onchange="renderClassScheduleMode()">
-            <option value="schoolcycle">School Cycle (Green/White + A-H)</option>
+            <option value="schoolcycle">School Cycle</option>
             <option value="weekly">Weekly</option>
-            <option value="alternating">Green / White Only</option>
+            <option value="alternating">Alternating Day Groups</option>
           </select>
         </label>
         <div>
@@ -646,12 +637,24 @@ nav button{min-width:135px}
 
   <div class="panel" style="margin-bottom:14px">
     <h2 class="sectionTitle">School Calendar Rules</h2>
-    <div class="muted" style="margin-bottom:10px">All calendar changes recalculate the Green/White A–H rotation from the fixed anchor <b>08/19/2026 = Green / Cycle A</b>. One date per line, YYYY-MM-DD.</div>
+    <div class="muted" style="margin-bottom:10px">Configure your school’s cycle, day-group names, period mappings, and calendar exceptions. Dates use YYYY-MM-DD.</div>
+    <div class="grid2">
+      <label><b>Schedule Profile Name</b><input id="schoolProfileName" placeholder="School Schedule"></label>
+      <label><b>Cycle Anchor Date</b><input id="schoolProfileAnchor" type="date"></label>
+      <label><b>Cycle Days</b><input id="schoolProfileCycleDays" placeholder="A, B"></label>
+      <label><b>Continuation Gap (minutes)</b><input id="schoolProfileContinuationGap" type="number" min="0" max="120" value="15"></label>
+      <label><b>First Day Group</b><input id="schoolProfileGroupOneLabel" placeholder="Day A"><input id="schoolProfileGroupOneDays" placeholder="A" style="margin-top:6px"></label>
+      <label><b>Second Day Group</b><input id="schoolProfileGroupTwoLabel" placeholder="Day B"><input id="schoolProfileGroupTwoDays" placeholder="B" style="margin-top:6px"></label>
+      <label><b>Additional Day Groups (JSON)</b><textarea id="schoolProfileAdditionalGroups" rows="6" placeholder='[{"id":"group-3","label":"Flex Day","cycleDays":["C"]}]'></textarea></label>
+      <label><b>Period-to-Cycle Mapping (JSON)</b><textarea id="schoolProfilePeriodMap" rows="6" placeholder='{"1":["A"],"2":["B"]}'></textarea></label>
+      <label><b>Exception Time Rules (JSON)</b><textarea id="schoolProfileExceptionRules" rows="6" placeholder='{"half-day":{"periodTimes":{}}}'></textarea></label>
+    </div>
+    <label class="pill" style="margin:8px 0"><input id="schoolProfileLegacyContinuation" type="checkbox"> Enable compatibility for imported legacy continuation blocks</label>
     <div class="muted" style="margin-bottom:10px">If a date appears in more than one category, priority is: No-School → Remote → Half Day → 2-Hour Delay → 1-Hour Delay.</div>
     <div class="grid2">
       <label><b>District No-School Dates</b><span class="muted">No classroom automation runs and the A–H cycle pauses.</span><textarea id="calendarExcludedDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
       <label><b>District Remote Day Dates</b><span class="muted">The school-day cycle still advances, but classroom automation, Morning Announcements, legacy TV schedules, and scheduled Background Music do not run.</span><textarea id="calendarRemoteDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
-      <label><b>District Half Day Dates</b><span class="muted">Uses four shortened periods; Bison blocks do not run. P1/5 7:50–8:50 • P2/6 8:58–9:48 • P3/7 9:56–10:46 • P4/8 10:54–11:45.</span><textarea id="calendarHalfDayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
+      <label><b>District Half Day Dates</b><span class="muted">Uses the half-day period times configured in this school schedule profile.</span><textarea id="calendarHalfDayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
       <label><b>District 1 Hour Delay Dates</b><span class="muted">School begins 8:50 AM and ends 2:45 PM. The normal day's periods are proportionally compressed into the shorter day.</span><textarea id="calendarOneHourDelayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
       <label><b>District 2 Hour Delay Dates</b><span class="muted">School begins 9:50 AM and ends 2:45 PM. The normal day's periods are proportionally compressed into the shorter day.</span><textarea id="calendarTwoHourDelayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
     </div>
@@ -692,7 +695,7 @@ nav button{min-width:135px}
       <div class="panel" style="box-shadow:none;margin-top:10px">
         <label>Link to Class Schedule(s)</label>
         <div id="autoClassIds" class="toolbar" style="margin-top:6px"></div>
-        <div class="muted">Select one or more classes. The event runs independently for each selected class using that class's own start/end time and Green/White rotation.</div>
+        <div class="muted">Select one or more classes. The event runs independently for each selected class using that class's own times and school-cycle mapping.</div>
         <div id="autoClassBindingFields" style="display:none;margin-top:8px">
           <div class="grid2"><label>Run Relative To<select id="autoClassRef" onchange="updateAutomationClassPreview()"><option value="start">Class Start</option><option value="end">Class End</option></select></label><label>Offset Minutes<input id="autoClassOffset" type="number" min="-720" max="720" value="0" onchange="updateAutomationClassPreview()"></label></div>
           <label style="display:flex;gap:8px;align-items:center"><input id="autoUseClassTargets" type="checkbox" checked> Use class default display targets</label>
@@ -704,8 +707,8 @@ nav button{min-width:135px}
         <label>Schedule Type
           <select id="autoScheduleMode" onchange="renderScheduleModeFields()">
             <option value="weekly">Weekly weekdays</option>
-            <option value="schoolcycle">School Cycle (Green/White + A-H)</option>
-            <option value="alternating">Green / White school days</option>
+            <option value="schoolcycle">School Cycle</option>
+            <option value="alternating">Alternating Day Groups</option>
             <option value="dates">Specific calendar dates</option>
           </select>
         </label>
@@ -815,10 +818,10 @@ nav button{min-width:135px}
 
           <label style="display:flex;gap:8px;align-items:center;margin-top:8px">
             <input id="autoTimerOverlayFollowLinkedClasses" type="checkbox" checked>
-            Continue through a matching Bison continuation of the same class/period
+            Continue through an explicitly linked continuation of the same class/period
           </label>
           <div class="muted" style="margin-top:6px">
-            Multi-class events follow the class occurrence that is actually running. The countdown extends only when the next selected occurrence is a Bison block for the same underlying period and begins within 15 minutes. Adjacent regular classes or different Bison period mappings never chain.
+            Multi-class events follow the occurrence that is actually running. The countdown extends only through a class linked with “Continuation Of” and within the profile’s configured maximum gap. Imported legacy schedules can retain their prior compatibility behavior.
           </div>
         </div>
       </div>
@@ -1107,7 +1110,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
       <h2 class="sectionTitle">Backups & Recovery</h2>
       <div class="muted">Backups are created on the server and can be inspected, downloaded, or safely restored. Every restore creates a new pre-restore safety backup first. Full backups may contain secrets.</div>
       <div class="toolbar" style="margin:12px 0">
-        <select id="backupScope"><option value="configuration">Configuration — database + configuration</option><option value="quick">Application — application/config, no runtime data</option><option value="operational" selected>Operational — current app/config/data, excludes backup history & temp</option><option value="diagnostic">Diagnostic Snapshot — no secrets</option><option value="full">Full Recovery — includes secrets/master key</option></select>
+        <select id="backupScope"><option value="configuration">Settings — database-backed configuration</option><option value="quick">Application — source/legacy config, no runtime data</option><option value="operational" selected>Operational — settings and current data, excludes backup history & temp</option><option value="diagnostic">Diagnostic Snapshot — no secrets</option><option value="full">Full Recovery — includes secrets/master key</option></select>
         <button class="primary" onclick="createManagedBackup()">Create Backup</button>
         <button onclick="loadManagedBackups()">Refresh</button>
       </div>
@@ -1117,7 +1120,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
       <h2 class="sectionTitle">Update Classroom Control Hub</h2>
       <div class="muted">Check a configured GitHub repository for verified semantic-version releases. Every installation creates a database-safe backup and automatically rolls back if deployment health fails.</div>
       <div class="grid2" style="margin-top:12px">
-        <label>GitHub Repository<input id="appUpdateRepository" placeholder="owner/repository"></label>
+        <label>Trusted GitHub Repository<input id="appUpdateRepository" value="wagnerks1990/classroom-control-hub" readonly></label>
         <label>Release Channel<select id="appUpdateChannel"><option value="alpha">Alpha</option><option value="beta">Beta</option><option value="stable">Stable</option></select></label>
         <label>GitHub Read Token (optional/private repository)<input id="appUpdateToken" type="password" placeholder="Leave blank to keep stored token"></label>
         <label>Check Interval (hours)<input id="appUpdateInterval" type="number" min="1" max="168" value="24"></label>
@@ -1138,8 +1141,8 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 </section>
 <div class="footerBrand" data-kyle-attribution="true">
-  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.67</span>
-  <span class="herd">HERD STRONG</span>
+  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.68</span>
+  <span>CLASSROOM READY</span>
   <span>Built by <a href="https://github.com/wagnerks1990" target="_blank" rel="author noopener noreferrer">Kyle Wagner</a></span>
 </div>
 </main>

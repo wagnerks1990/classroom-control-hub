@@ -63,7 +63,7 @@ The scheduler evaluates:
 - half days;
 - delayed starts;
 - transition periods;
-- Bison/continuation rules;
+- explicit class-continuation rules;
 - manual execution requests.
 
 Calendar exceptions are resolved before normal occurrence execution. Site-specific school calendars are runtime configuration, not public source constants.

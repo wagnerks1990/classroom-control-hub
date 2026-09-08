@@ -35,7 +35,7 @@ A Git update must preserve them.
 
 ## Current known-good baseline
 
-`1.0.0-alpha.67` is the current known-good production baseline.
+`1.0.0-alpha.68` is the current known-good production baseline.
 
 Verified behaviors:
 
@@ -46,7 +46,7 @@ Verified behaviors:
 - Morning Announcements are highest priority and pause Background Music.
 - When announcements end, the scheduler performs a failsafe resync and re-runs the currently applicable winning display automations before Background Music resumes.
 - Display/controller/backend version convergence is required to prevent reload loops.
-- Timer continuation is limited to the matching Bison continuation of the same base period.
+- Timer continuation is limited to an explicitly linked continuation of the same base class or period.
 
 If `VERSION` is newer, use the newer release as the version source while retaining these invariants unless explicitly changed in the changelog.
 

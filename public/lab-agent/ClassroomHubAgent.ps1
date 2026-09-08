@@ -2,7 +2,7 @@
 param([string]$ConfigPath="$env:ProgramData\ClassroomControlHub\lab-agent.json")
 
 $ErrorActionPreference='Stop'
-$AgentVersion='1.0.0-alpha.67'
+$AgentVersion='1.0.0-alpha.68'
 [void][Reflection.Assembly]::LoadWithPartialName('System.Security')
 
 function Protect-Secret([string]$Value){
@@ -46,8 +46,13 @@ function Invoke-AgentCommand($Socket,$Command,$Config){
         Command-Result $Socket $Command $true (($out|Out-String).Trim())
       }
       'update-agent' {
-        $uri=([uri]$Config.hubUrl).GetLeftPart([UriPartial]::Authority)+'/lab-agent/ClassroomHubAgent.ps1'
+        $origin=([uri]$Config.hubUrl).GetLeftPart([UriPartial]::Authority)
+        $manifest=Invoke-RestMethod ($origin+'/api/v1/lab-agent/manifest')
+        if(!$manifest.sha256 -or $manifest.sha256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'Hub returned an invalid lab-agent manifest'}
+        $uri=$origin+'/lab-agent/ClassroomHubAgent.ps1'
         $temp=Join-Path $env:TEMP 'ClassroomHubAgent.update.ps1';Invoke-WebRequest $uri -OutFile $temp
+        $actualHash=(Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash
+        if($actualHash -ne ([string]$manifest.sha256).ToUpperInvariant()){Remove-Item $temp -Force -ErrorAction SilentlyContinue;throw 'Agent update failed SHA-256 verification'}
         $signature=Get-AuthenticodeSignature $temp
         if($Config.trustedPublisherThumbprint -and $signature.SignerCertificate.Thumbprint -ne $Config.trustedPublisherThumbprint){throw 'Agent update signer does not match the configured publisher'}
         if($Config.trustedPublisherThumbprint -and $signature.Status -ne 'Valid'){throw "Agent update signature is $($signature.Status)"}
@@ -70,10 +75,21 @@ while($true){
     $buffer=New-Object byte[] 1048576
     while($socket.State -eq [Net.WebSockets.WebSocketState]::Open){
       $segment=[ArraySegment[byte]]::new($buffer);$receive=$socket.ReceiveAsync($segment,[Threading.CancellationToken]::None)
-      $winner=[Threading.Tasks.Task]::WhenAny($receive,[Threading.Tasks.Task]::Delay(15000)).GetAwaiter().GetResult()
-      if($winner -ne $receive){$uptime=[int](((Get-Date)-(Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds);Send-Json $socket @{type='heartbeat';hostname=$env:COMPUTERNAME;user=(Get-CimInstance Win32_ComputerSystem).UserName;agentVersion=$AgentVersion;uptimeSeconds=$uptime;meta=@{os=[Environment]::OSVersion.VersionString}};continue}
+      while(!$receive.IsCompleted){
+        $winner=[Threading.Tasks.Task]::WhenAny($receive,[Threading.Tasks.Task]::Delay(15000)).GetAwaiter().GetResult()
+        if($winner -ne $receive){$uptime=[int](((Get-Date)-(Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds);Send-Json $socket @{type='heartbeat';hostname=$env:COMPUTERNAME;user=(Get-CimInstance Win32_ComputerSystem).UserName;agentVersion=$AgentVersion;uptimeSeconds=$uptime;meta=@{os=[Environment]::OSVersion.VersionString}}}
+      }
       $result=$receive.GetAwaiter().GetResult();if($result.MessageType -eq [Net.WebSockets.WebSocketMessageType]::Close){break}
-      $json=[Text.Encoding]::UTF8.GetString($buffer,0,$result.Count)|ConvertFrom-Json
+      $message=New-Object IO.MemoryStream
+      $message.Write($buffer,0,$result.Count)
+      while(!$result.EndOfMessage){
+        if($message.Length -gt 4MB){throw 'WebSocket message exceeds 4 MB'}
+        $segment=[ArraySegment[byte]]::new($buffer);$result=$socket.ReceiveAsync($segment,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+        if($result.MessageType -eq [Net.WebSockets.WebSocketMessageType]::Close){break}
+        $message.Write($buffer,0,$result.Count)
+      }
+      if($result.MessageType -eq [Net.WebSockets.WebSocketMessageType]::Close){$message.Dispose();break}
+      $json=[Text.Encoding]::UTF8.GetString($message.ToArray())|ConvertFrom-Json;$message.Dispose()
       if($json.type -eq 'hello.ack' -and $json.credential){$config.credentialProtected=Protect-Secret ([string]$json.credential);$config.enrollmentToken='';Save-Config $config}
       if($json.type -eq 'lab.command'){Invoke-AgentCommand $socket $json.command $config}
     }

@@ -57,7 +57,7 @@ Background Music is independent of ordinary visual automation. Priority audio pa
 
 ## Class timers
 
-Linked Class End Time timers follow the active selected class occurrence. Continuation chaining applies only to the valid matching continuation/Bison block for the same underlying base period/class. Adjacent unrelated periods do not chain due only to time proximity.
+Linked Class End Time timers follow the active selected class occurrence. Continuation chaining applies only to an explicitly linked continuation of the same underlying base period/class. Adjacent unrelated periods do not chain due only to time proximity.
 
 Transition pseudo-classes are terminal standalone timer occurrences.
 

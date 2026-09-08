@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, timezone
 
-VERSION = "1.0.0-alpha.67"
+VERSION = "1.0.0-alpha.68"
 SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-control-hub/host-agent.sock")
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
 
@@ -132,8 +132,32 @@ RELEASE_REF_RE=re.compile(r'^v?\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$')
 HUB_ROOT=Path(os.environ.get('CLASSROOM_HUB_DIR','/opt/classroom-hub')).resolve()
 SERVICES_ROOT=Path(os.environ.get('CLASSROOM_SERVICES_DIR','/opt/services')).resolve()
 DOCKER_NAME_RE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
-MANAGED_CONTAINERS={'classroom-control-hub','classroom-control-hub-maintenance','mosquitto','govee2mqtt','music-assistant-server','nodered','portainer'}
+MANAGED_CONTAINERS={'classroom-control-hub','classroom-control-hub-maintenance','classroom-control-hub-tls','mosquitto','govee2mqtt','music-assistant-server','nodered','portainer'}
 MANAGED_IMAGES={'eclipse-mosquitto:2.0.22','ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72','nodered/node-red:4.1.14-22','ghcr.io/music-assistant/server:2.9.13'}
+
+def allowed_managed_path(value):
+    source=str(value).split(':',1)[0]
+    try: resolved=Path(source).resolve(strict=False)
+    except Exception: return False
+    return resolved==SERVICES_ROOT or SERVICES_ROOT in resolved.parents or resolved==HUB_ROOT or HUB_ROOT in resolved.parents
+
+def validate_docker_run(args):
+    if args[-1] not in MANAGED_IMAGES: raise RuntimeError('Integration image is not pinned or allowlisted')
+    i=1
+    while i < len(args)-1:
+        option=args[i]
+        if option=='-d': i+=1; continue
+        if option in ('--name','--restart','--network','-p','--publish','-v','--volume','-e','--env'):
+            if i+1>=len(args)-1: raise RuntimeError(f'Missing value for Docker option {option}')
+            value=args[i+1]
+            if option=='--name' and value not in MANAGED_CONTAINERS: raise RuntimeError('Managed container name required')
+            if option=='--restart' and value!='unless-stopped': raise RuntimeError('Unsupported restart policy')
+            if option=='--network' and value!='host': raise RuntimeError('Unsupported Docker network')
+            if option in ('-p','--publish') and not re.fullmatch(r'[0-9]{1,5}:[0-9]{1,5}',value): raise RuntimeError('Invalid published port')
+            if option in ('-v','--volume') and (not allowed_managed_path(value) or 'docker.sock' in value): raise RuntimeError('Volume source is outside the managed roots')
+            if option in ('-e','--env') and not re.fullmatch(r'[A-Z][A-Z0-9_]{0,127}=.{0,2048}',value,re.S): raise RuntimeError('Invalid container environment setting')
+            i+=2; continue
+        raise RuntimeError(f'Docker run option is not allowlisted: {option}')
 
 def managed_docker(args, cwd=''):
     if not isinstance(args,list) or not args or len(args)>100 or any(not isinstance(x,str) or len(x)>4096 for x in args): raise RuntimeError('Invalid Docker request')
@@ -161,10 +185,7 @@ def managed_docker(args, cwd=''):
     elif verb=='compose':
         if cwd!='hub' or any(x not in ('compose','config','--services','ps') for x in args): raise RuntimeError('Only read-only hub Compose inspection is allowed')
     elif verb=='run':
-        if args[-1] not in MANAGED_IMAGES: raise RuntimeError('Integration image is not pinned or allowlisted')
-        forbidden=('--privileged','--pid','--ipc','--device','--cap-add','--security-opt','--entrypoint','--userns')
-        if any(x.startswith(forbidden) or 'docker.sock' in x or x.startswith('/') and not (x.startswith(str(SERVICES_ROOT)) or x.startswith(str(HUB_ROOT))) for x in args): raise RuntimeError('Unsafe Docker run option')
-        if '--name' not in args or args.index('--name')+1>=len(args) or args[args.index('--name')+1] not in MANAGED_CONTAINERS: raise RuntimeError('Managed container name required')
+        validate_docker_run(args)
     else: raise RuntimeError('Docker operation is not allowlisted')
     p=run(['docker',*args],180,False)
     if p.returncode!=0: raise RuntimeError((p.stderr or p.stdout or 'Docker operation failed').strip())
@@ -220,6 +241,7 @@ def start_app_update_job(body):
         request.update({"targetRef":ref,"expectedVersion":version})
     else:
         if str(body.get('confirm') or '')!='REVERT_RELEASE': raise RuntimeError('Explicit REVERT_RELEASE confirmation required')
+        if current.get('revertAvailable') is not True: raise RuntimeError('No unused verified rollback point is available')
         commit=str(current.get('previousCommit') or ''); version=str(current.get('previousVersion') or '')
         backup=str(current.get('backupName') or request['backupName'])
         if not re.fullmatch(r'[0-9a-f]{40}',commit): raise RuntimeError('No verified previous release is available to revert')
@@ -335,6 +357,7 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 name=urllib.parse.unquote(m.group(1))
                 if not UNIT_RE.fullmatch(name): return self.send_json(400,{"ok":False,"error":"Invalid systemd unit name"})
+                if name not in SERVICE_POLICY: return self.send_json(403,{"ok":False,"error":"Systemd unit is outside the managed allowlist"})
                 tail=max(10,min(5000,int((q.get('tail') or ['300'])[0])))
                 p=run(['journalctl','-u',name,'-n',str(tail),'--no-pager','--output=short-iso'],25,False)
                 return self.send_json(200,{"ok":True,"name":name,"tail":tail,"text":(p.stdout or '')+(p.stderr or '')})
@@ -383,6 +406,7 @@ class Handler(BaseHTTPRequestHandler):
             name=urllib.parse.unquote(m.group(1)); action=m.group(2); body=self.body()
             if not UNIT_RE.fullmatch(name): return self.send_json(400,{"ok":False,"error":"Invalid systemd unit name"})
             policy=SERVICE_POLICY.get(name,{})
+            if not policy: return self.send_json(403,{"ok":False,"error":"Systemd unit is outside the managed allowlist"})
             if policy.get('protected') and action in ('stop','disable'):
                 return self.send_json(409,{"ok":False,"error":f"{name} is protected because Classroom Control Hub or host recovery depends on it"})
             if action in ('stop','disable') and body.get('confirm') is not True:

@@ -141,6 +141,7 @@ class ClassroomHubStorage{
     this.db.prepare("INSERT OR IGNORE INTO schema_migrations(version,name,applied_at) VALUES(8,'capability profiles assigned to users',?)").run(iso());
     this.db.prepare("INSERT OR IGNORE INTO schema_migrations(version,name,applied_at) VALUES(9,'lab agent enrollment and revocable credentials',?)").run(iso());
     this.ensureDefaultAccessProfiles();
+    this.applyGranularCapabilityMigration();
     this.db.exec("UPDATE users SET profile_id=CASE role WHEN 'admin' THEN 'administrator' WHEN 'operator' THEN 'teacher' ELSE 'read-only' END WHERE profile_id IS NULL OR profile_id=''");
     this.masterKey=this.loadMasterKey();
     this.migrateNormalizedObjects();
@@ -184,13 +185,24 @@ class ClassroomHubStorage{
   ensureDefaultAccessProfiles(){
     const defaults=[
       {id:"administrator",name:"Administrator",role:"admin",config:{description:"Full Classroom Control Hub administration and system management.",capabilities:["*"]}},
-      {id:"technician",name:"Technician",role:"operator",config:{description:"Classroom operations, student-computer diagnostics, integrations and maintenance.",capabilities:["classroom.read","classroom.control","lab.read","lab.control","lab.sensitive.read","diagnostics.read"]}},
-      {id:"teacher",name:"Teacher",role:"operator",config:{description:"Daily classroom, display, lighting, AV and schedule operations.",capabilities:["classroom.read","classroom.control","lab.read","lab.control"]}},
+      {id:"technician",name:"Technician",role:"operator",config:{description:"Classroom operations, student-computer diagnostics and integrations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","lab.sensitive.read","diagnostics.read","diagnostics.run"]}},
+      {id:"teacher",name:"Teacher",role:"operator",config:{description:"Daily classroom, display, lighting, AV and schedule operations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","diagnostics.read"]}},
       {id:"read-only",name:"Read Only",role:"viewer",config:{description:"View classroom status without student browsing history or screenshots.",capabilities:["classroom.read"]}}
     ];
     const q=this.db.prepare("INSERT OR IGNORE INTO access_profiles(id,name,role,enabled,config_json,updated_at) VALUES(?,?,?,?,?,?)");
     for(const x of defaults)q.run(x.id,x.name,x.role,1,JSON.stringify(x.config),iso());
     if(this.getPreference("ui.controller",null)===null)this.setPreference("ui.controller",{navigation:"grouped",density:"comfortable",advancedCollapsed:true});
+  }
+
+  applyGranularCapabilityMigration(){
+    if(this.db.prepare("SELECT 1 FROM schema_migrations WHERE version=10").get())return;
+    const oldTechnician=JSON.stringify({description:"Classroom operations, student-computer diagnostics, integrations and maintenance.",capabilities:["classroom.read","classroom.control","lab.read","lab.control","lab.sensitive.read","diagnostics.read"]});
+    const oldTeacher=JSON.stringify({description:"Daily classroom, display, lighting, AV and schedule operations.",capabilities:["classroom.read","classroom.control","lab.read","lab.control"]});
+    const profiles=this.listAccessProfiles();
+    const technician=profiles.find(x=>x.id==="technician"),teacher=profiles.find(x=>x.id==="teacher");
+    if(technician&&JSON.stringify(technician.config)===oldTechnician)this.db.prepare("UPDATE access_profiles SET config_json=?,updated_at=? WHERE id='technician'").run(JSON.stringify({description:"Classroom operations, student-computer diagnostics and integrations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","lab.sensitive.read","diagnostics.read","diagnostics.run"]}),iso());
+    if(teacher&&JSON.stringify(teacher.config)===oldTeacher)this.db.prepare("UPDATE access_profiles SET config_json=?,updated_at=? WHERE id='teacher'").run(JSON.stringify({description:"Daily classroom, display, lighting, AV and schedule operations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","diagnostics.read"]}),iso());
+    this.db.prepare("INSERT INTO schema_migrations(version,name,applied_at) VALUES(10,'granular authorization and configurable school schedule',?)").run(iso());
   }
 
   tx(fn){this.db.exec("BEGIN IMMEDIATE");try{const out=fn();this.db.exec("COMMIT");return out}catch(err){this.db.exec("ROLLBACK");throw err}}

@@ -26,7 +26,7 @@ When an automation is linked to multiple classes, runtime class resolution shoul
 
 ### Timers
 
-Linked-class timers use the active occurrence's actual end time. Transition pseudo-classes are standalone timer endpoints. Continuation chaining must match the same underlying class/base period and only extend into an explicitly recognized continuation/Bison period.
+Linked-class timers use the active occurrence's actual end time. Transition pseudo-classes are standalone timer endpoints. Continuation chaining must use an explicit “Continuation Of” link to the same class or base period. Imported schedules can temporarily retain the documented legacy compatibility behavior.
 
 Adjacent unrelated regular periods do not chain simply because they are close together in time.
 

@@ -2,7 +2,7 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.67` — security, deployment, privacy, agent enrollment, and recovery hardening for classroom and education use.
+> **Status:** `1.0.0-alpha.68` — configurable school schedules, granular authorization, verified upgrades, and appliance hardening.
 
 ## What it does
 
@@ -27,7 +27,8 @@ Ubuntu host
 │   └── /run/classroom-control-hub/host-agent.sock
 └── Docker
     ├── classroom-control-hub
-    └── classroom-control-hub-maintenance
+    ├── classroom-control-hub-maintenance
+    └── classroom-control-hub-tls (Caddy)
 ```
 
 The application and maintenance service run in containers. Host-level operations are delegated to a narrow systemd host agent instead of giving the main application broad host privileges.
@@ -75,8 +76,10 @@ docker compose up -d
 Then open:
 
 ```text
-http://localhost:3000
+https://localhost
 ```
+
+The backend’s port 3000 is bound to loopback for health checks and same-host tunnels. LAN browser traffic enters through the HTTPS gateway. For a dedicated appliance, set `HUB_TLS_HOST` to its DNS name or IP and install the generated local root CA on managed classroom devices. A publicly trusted certificate can be used by replacing the internal Caddy TLS policy.
 
 ## Persistent data
 
@@ -86,7 +89,7 @@ Never commit production `.env` files, databases, API tokens, private keys, backu
 
 ## Site configuration
 
-The public repository intentionally does **not** include a specific school's internal IP addresses, calendars, credentials, stream URLs, or classroom hardware mappings. Configure those after deployment through environment variables and the controller.
+The public repository intentionally does **not** include a specific school's internal IP addresses, calendars, credentials, stream URLs, or classroom hardware mappings. Configure school schedules, integrations, devices, and branding in the controller; deployment secrets and bootstrap connection fallbacks remain in protected environment or secret files.
 
 Important optional settings include:
 
@@ -96,9 +99,6 @@ Important optional settings include:
 - `PLUTO_URL`
 - `VEYON_WEBAPI_URL`
 - `VEYON_SCAN_SUBNET`
-- `SCHOOL_CALENDAR_ANCHOR_DATE`
-- `SCHOOL_CALENDAR_ANCHOR_CYCLE_DAY`
-
 See `.env.example`, `INSTALL.md`, and `docs/CONFIGURATION.md`.
 
 ## Documentation
@@ -116,7 +116,7 @@ Start with:
 
 AI coding assistants should read `AGENTS.md` first and then `docs/AI-CONTEXT.md`. GitHub Copilot-specific guidance is stored in `.github/copilot-instructions.md`.
 
-Project-critical invariants include Morning Announcements priority/recovery, Bison timer behavior, Background Music recovery, version convergence, independent integration health, and preservation of production runtime state.
+Project-critical invariants include Morning Announcements priority/recovery, explicitly linked class continuations, Background Music recovery, version convergence, independent integration health, and preservation of production runtime state.
 
 ## Container images
 

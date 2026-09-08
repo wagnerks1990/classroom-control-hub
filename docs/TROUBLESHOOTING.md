@@ -80,11 +80,11 @@ Possible causes:
 
 Validate active-class resolution first. For class-linked events, the runtime should use the currently active selected occurrence when one exists.
 
-## Incorrect Bison/continuation chaining
+## Incorrect class-continuation chaining
 
 A short time gap is not enough to establish continuation identity.
 
-The next occurrence must be explicitly recognized as a continuation/Bison block and map to the same underlying base period/class. Different regular periods must remain separate even when only a few minutes apart.
+The next occurrence must use “Continuation Of” and map to the same underlying base period/class. Imported legacy schedules may use the compatibility switch. Different regular periods must remain separate even when only a few minutes apart.
 
 ## Background Music does not resume
 

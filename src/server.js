@@ -18,6 +18,7 @@ const AdmZip = require("adm-zip");
 const {ClassroomHubStorage,keyForFile} = require("./storage");
 const {applicationVersion}=require("./version");
 const {secureTokenEqual,capabilitiesFor,hasCapability:profileHasCapability}=require("./security");
+const {defaultSchoolScheduleProfile,legacySchoolScheduleProfile,normalizeSchoolScheduleProfile,effectiveTimesForRule,groupForCycleDay}=require("./school-schedule");
 
 // -----------------------------------------------------------------------------
 // Configuration
@@ -579,9 +580,9 @@ function normalizeSchedulerCalendar(input={},existing={}){
     oneHourDelayDates,
     twoHourDelayDates,
     remoteDates,
-    anchorDate:String(input.anchorDate||existing.anchorDate||process.env.SCHOOL_CALENDAR_ANCHOR_DATE||'2026-08-19'),
-    anchorCycleDay:String(input.anchorCycleDay||existing.anchorCycleDay||process.env.SCHOOL_CALENDAR_ANCHOR_CYCLE_DAY||'A'),
-    anchorDayColor:String(input.anchorDayColor||existing.anchorDayColor||process.env.SCHOOL_CALENDAR_ANCHOR_DAY_COLOR||'Green'),
+    anchorDate:String(input.anchorDate||existing.anchorDate||localDateKey(new Date())),
+    anchorCycleDay:String(input.anchorCycleDay||existing.anchorCycleDay||'A'),
+    anchorDayColor:String(input.anchorDayColor||existing.anchorDayColor||'Day A'),
     updatedAt:new Date().toISOString()
   };
 }
@@ -595,6 +596,19 @@ function persistSchedulerCalendar(){
 // Persist once at startup so existing installations migrate away from the old
 // federal-holiday toggle and receive the district closure dates automatically.
 persistSchedulerCalendar();
+
+// The active cycle and exception-day behavior is school-configurable. Existing
+// secured appliances receive a compatibility profile once; fresh installations
+// start with a generic two-day school cycle instead of site-specific defaults.
+const storedSchoolScheduleProfile=dbStore.getPreference("school.schedule.profile",null);
+let schoolScheduleProfile=normalizeSchoolScheduleProfile(
+  storedSchoolScheduleProfile||{},
+  storedSchoolScheduleProfile
+    ? defaultSchoolScheduleProfile({anchorDate:schedulerCalendar.anchorDate})
+    : (dbStore.userCount()>0?legacySchoolScheduleProfile(schedulerCalendar):defaultSchoolScheduleProfile({anchorDate:schedulerCalendar.anchorDate}))
+);
+if(!storedSchoolScheduleProfile){schoolScheduleProfile.updatedAt=new Date().toISOString();dbStore.setPreference("school.schedule.profile",schoolScheduleProfile)}
+function setSchoolScheduleProfile(value){schoolScheduleProfile=normalizeSchoolScheduleProfile(value,schoolScheduleProfile);schoolScheduleProfile.updatedAt=new Date().toISOString();dbStore.setPreference("school.schedule.profile",schoolScheduleProfile);return schoolScheduleProfile}
 
 const DEFAULT_MORNING_ANNOUNCEMENTS_URL = String(process.env.MORNING_ANNOUNCEMENTS_URL||"").trim();
 function normalizeMorningAnnouncements(input={},existing={}){
@@ -929,56 +943,47 @@ function countEligibleSchoolDays(anchorDate,targetDate){
   return count;
 }
 
-const SCHOOL_CYCLE_ANCHOR="2026-08-19";
-const SCHOOL_CYCLE_LETTERS=["A","B","C","D","E","F","G","H"];
-const GREEN_CYCLE_DAYS=new Set(["A","C","E","G"]);
-const WHITE_CYCLE_DAYS=new Set(["B","D","F","H"]);
+function schoolCycleAnchor(){return schoolScheduleProfile.anchorDate||schedulerCalendar.anchorDate||localDateKey(new Date())}
+function schoolCycleLetters(){return [...schoolScheduleProfile.cycleDays]}
+function schoolCycleGroup(index){return schoolScheduleProfile.dayGroups[index]||null}
+function alternateGroupLabel(phase="A"){return (schoolCycleGroup(String(phase).toUpperCase()==="B"?1:0)?.label)||schoolCycleLetters()[String(phase).toUpperCase()==="B"?1:0]||String(phase).toUpperCase()}
+function normalizedDayType(value,fallback="Any"){const allowed=new Set(["Any","Mixed",...(schoolScheduleProfile.dayGroups||[]).map(x=>x.label)]);return allowed.has(String(value))?String(value):(allowed.has(String(fallback))?String(fallback):"Any")}
 
 function schoolCycleForDate(date=new Date()){
   const key=localDateKey(date);
   const dow=date.getDay();
   const blocked=isCalendarBlocked(date);
   const isStudentSchoolDay=dow!==0&&dow!==6&&!blocked.blocked;
-  const anchor=dateFromKey(SCHOOL_CYCLE_ANCHOR);
+  const anchorKey=schoolCycleAnchor(),anchor=dateFromKey(anchorKey);
   if(!anchor)return {date:key,isStudentSchoolDay:false,cycleDay:null,dayColor:null,reason:"Invalid school-cycle anchor"};
 
   const offset=countEligibleSchoolDays(anchor,date);
-  const index=((offset%8)+8)%8;
-  const projectedCycleDay=SCHOOL_CYCLE_LETTERS[index];
-  const projectedDayColor=GREEN_CYCLE_DAYS.has(projectedCycleDay)?"Green":"White";
+  const letters=schoolCycleLetters(),index=((offset%letters.length)+letters.length)%letters.length;
+  const projectedCycleDay=letters[index],projectedGroup=groupForCycleDay(schoolScheduleProfile,projectedCycleDay);
+  const projectedDayColor=projectedGroup?.label||projectedCycleDay;
   return {
     date:key,
-    anchorDate:SCHOOL_CYCLE_ANCHOR,
+    anchorDate:anchorKey,
     isStudentSchoolDay,
     cycleDay:isStudentSchoolDay?projectedCycleDay:null,
     dayColor:isStudentSchoolDay?projectedDayColor:null,
     projectedCycleDay,
-    projectedDayColor,
+    projectedDayColor,dayGroup:projectedGroup,
     index,
     reason:isStudentSchoolDay?null:(blocked.blocked?blocked.reason:"Weekend")
   };
 }
 function normalizeCycleDays(value,fallback=[]){
   const src=Array.isArray(value)?value:fallback;
-  return [...new Set(src.map(x=>String(x||"").toUpperCase()).filter(x=>SCHOOL_CYCLE_LETTERS.includes(x)))];
+  const allowed=schoolCycleLetters();return [...new Set(src.map(x=>String(x||"").trim()).filter(x=>allowed.includes(x)))];
 }
 function periodDefaultCycleDays(period){
   const p=String(period||"").trim();
-  if(["1","2","3","4"].includes(p))return ["A","C","E","G"];
-  if(["5","6","7"].includes(p))return ["B","D","F","H"];
-  const m=p.match(/^BISON-(\d)$/i);
-  if(!m)return [];
-  const n=Number(m[1]);
-  if(n===1||n===2)return ["B"];
-  if(n===3||n===4)return ["D"];
-  if(n===5||n===6)return ["F"];
-  if(n===7||n===8)return ["H"];
-  return [];
+  return [...(schoolScheduleProfile.periodCycleDays[p]||[])];
 }
 function cycleDaysDayColor(cycleDays){
   const days=normalizeCycleDays(cycleDays);
-  if(days.length&&days.every(x=>GREEN_CYCLE_DAYS.has(x)))return "Green";
-  if(days.length&&days.every(x=>WHITE_CYCLE_DAYS.has(x)))return "White";
+  for(const group of schoolScheduleProfile.dayGroups||[])if(days.length&&days.every(x=>group.cycleDays.includes(x)))return group.label;
   return days.length?"Mixed":"Any";
 }
 function schoolCycleMatches({cycleDays=[],dayType="Any"}={},date=new Date()){
@@ -1013,7 +1018,7 @@ function automationMatchesDate(event,date){
   if(mode==="alternating"){
     const status=schoolCycleForDate(date);
     if(!status.isStudentSchoolDay)return {match:false,reason:status.reason||"Not a student school day"};
-    const wanted=String(event.alternatePhase||"A").toUpperCase()==="B"?"White":"Green";
+    const wanted=alternateGroupLabel(event.alternatePhase||"A");
     return {match:status.dayColor===wanted,reason:`${status.dayColor} Day • Cycle ${status.cycleDay}`};
   }
 
@@ -1050,7 +1055,7 @@ function normalizeAutomation(input={},existing={}){
     alternatePhase,
     anchorDate,
     includeDates,
-    dayType:["Green","White","Any","Mixed"].includes(String(input.dayType??existing.dayType??"Any"))?String(input.dayType??existing.dayType??"Any"):"Any",
+    dayType:normalizedDayType(input.dayType??existing.dayType??"Any"),
     cycleDays:normalizeCycleDays(input.cycleDays===undefined?existing.cycleDays:input.cycleDays),
     period:String(input.period??existing.period??"").trim().slice(0,40),
     classIds:[...new Set((Array.isArray(input.classIds)?input.classIds:(Array.isArray(existing.classIds)?existing.classIds:[input.classId??existing.classId].filter(Boolean))).map(String).filter(Boolean))],
@@ -1312,7 +1317,7 @@ function timerLinkedClassChain(event,baseClass,now=new Date(),timerOverlay={}){
 
   if(!selected.some(c=>c.id===baseClass.id))selected.push(baseClass);
 
-  const maxGap=Math.max(0,Math.min(120,Number(timerOverlay.followGapMinutes??15)));
+  const maxGap=Math.max(0,Math.min(120,Number(timerOverlay.followGapMinutes??schoolScheduleProfile.continuation?.maximumGapMinutes??15)));
   const follow=timerOverlay.followLinkedClasses!==false;
   const chain=[baseClass];
   const used=new Set([baseClass.id]);
@@ -1320,17 +1325,16 @@ function timerLinkedClassChain(event,baseClass,now=new Date(),timerOverlay={}){
   let cursorEnd=timeToMinutes(baseTimes?.endTime||baseClass.endTime);
 
   if(follow){
-    // Follow the schedule chronologically, but only through a real Bison
-    // continuation of the same underlying period. The gap threshold is a
-    // secondary guard, never the identity test. This allows P7 -> B1-P7 while
-    // preventing unrelated adjacent sections such as P3 IT I -> P4 IT I.
+    // Follow the schedule chronologically only through an explicitly linked
+    // continuation (or imported compatibility mapping). The gap threshold is
+    // a secondary guard, never the identity test.
     while(true){
       const next=selected
         .filter(c=>!used.has(c.id))
         .map(c=>{const t=effectiveClassTimes(c,now);return t?{c,start:timeToMinutes(t.startTime),end:timeToMinutes(t.endTime)}:null})
         .filter(Boolean)
         .filter(x=>x.start>=cursorEnd&&x.start-cursorEnd<=maxGap)
-        .filter(x=>isValidBisonTimerContinuation(chain[chain.length-1],x.c))
+        .filter(x=>isValidTimerContinuation(chain[chain.length-1],x.c))
         .sort((a,b)=>a.start-b.start||b.end-a.end||String(a.c.name||'').localeCompare(String(b.c.name||'')))[0];
       if(!next)break;
       chain.push(next.c);
@@ -2018,19 +2022,20 @@ function normalizeClassSchedule(input={},existing={}){
   const period=String(input.period??existing.period??"").trim().slice(0,40);
   const cycleDays=normalizeCycleDays(input.cycleDays===undefined?existing.cycleDays:input.cycleDays,periodDefaultCycleDays(period));
   const inferredDayType=cycleDaysDayColor(cycleDays);
-  const dayType=["Green","White","Any","Mixed"].includes(String(input.dayType??existing.dayType??inferredDayType))?String(input.dayType??existing.dayType??inferredDayType):inferredDayType;
-  const anchorRaw=(input.anchorDate??existing.anchorDate??(scheduleMode==="alternating"?"2026-08-19":""));const anchorDate=validDateKey(anchorRaw)?String(anchorRaw):"";
+  const dayType=normalizedDayType(input.dayType??existing.dayType??inferredDayType,inferredDayType);
+  const anchorRaw=(input.anchorDate??existing.anchorDate??(scheduleMode==="alternating"?schoolCycleAnchor():""));const anchorDate=validDateKey(anchorRaw)?String(anchorRaw):"";
   const includeDates=uniqueDateKeys(input.includeDates===undefined?existing.includeDates:input.includeDates);
   const excludedDates=uniqueDateKeys(input.excludedDates===undefined?existing.excludedDates:input.excludedDates);
   const defaultTargets=(Array.isArray(input.defaultTargets)?input.defaultTargets:(existing.defaultTargets||["all"])).map(cleanId).filter(Boolean);
-  return {...existing,id,name,shortName,startTime,endTime,days:[...new Set(days)],scheduleMode,alternatePhase,anchorDate,includeDates,excludedDates,period,cycleDays,dayType,phaseALabel:String(input.phaseALabel??existing.phaseALabel??"Green").trim().slice(0,30)||"Green",phaseBLabel:String(input.phaseBLabel??existing.phaseBLabel??"White").trim().slice(0,30)||"White",defaultTargets:[...new Set(defaultTargets)],enabled:input.enabled===undefined?(existing.enabled!==false):!!input.enabled,notes:String(input.notes??existing.notes??"").slice(0,500),createdAt:existing.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};
+  const continuationOf=String(input.continuationOf??existing.continuationOf??"").trim().slice(0,80);
+  return {...existing,id,name,shortName,startTime,endTime,days:[...new Set(days)],scheduleMode,alternatePhase,anchorDate,includeDates,excludedDates,period,cycleDays,dayType,continuationOf,phaseALabel:String(input.phaseALabel??existing.phaseALabel??alternateGroupLabel("A")).trim().slice(0,30)||alternateGroupLabel("A"),phaseBLabel:String(input.phaseBLabel??existing.phaseBLabel??alternateGroupLabel("B")).trim().slice(0,30)||alternateGroupLabel("B"),defaultTargets:[...new Set(defaultTargets)],enabled:input.enabled===undefined?(existing.enabled!==false):!!input.enabled,notes:String(input.notes??existing.notes??"").slice(0,500),createdAt:existing.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};
 }
 function classScheduleById(id){return classScheduleStore.classes.find(c=>c.id===String(id||""))||null}
 
 function classAlternatingPhaseForDate(_anchorDate,date=new Date()){
   const status=schoolCycleForDate(date);
   if(!status.isStudentSchoolDay)return null;
-  return status.dayColor==="Green"?"A":"B";
+  return status.dayColor===alternateGroupLabel("A")?"A":"B";
 }
 
 function classScheduleMatchesDate(cls,date=new Date()){
@@ -2050,7 +2055,7 @@ function classScheduleMatchesDate(cls,date=new Date()){
 
   const status=schoolCycleForDate(date);
   if(!status.isStudentSchoolDay)return false;
-  const wanted=(cls.alternatePhase||"A")==="B"?"White":"Green";
+  const wanted=alternateGroupLabel(cls.alternatePhase||"A");
   return status.dayColor===wanted;
 }
 function classPeriodNumber(cls){
@@ -2063,22 +2068,8 @@ function minutesToHHMM(mins){mins=Math.max(0,Math.min(1439,Math.round(mins)));re
 function effectiveClassTimes(cls,date=new Date()){
   if(!cls)return null;
   const rule=calendarRuleForDate(date);
-  const baseStart=timeToMinutes(cls.startTime),baseEnd=timeToMinutes(cls.endTime);
-  if(rule.type==='half-day'){
-    if(/^B[12]$/i.test(String(cls.period||''))||/^B[12]\b/i.test(String(cls.name||'')))return null;
-    const p=classPeriodNumber(cls),slot=p===1||p===5?0:p===2||p===6?1:p===3||p===7?2:p===4||p===8?3:null;
-    const slots=[[470,530],[538,588],[596,646],[654,705]];
-    if(slot===null)return null;
-    return {startTime:minutesToHHMM(slots[slot][0]),endTime:minutesToHHMM(slots[slot][1]),rule};
-  }
-  if(rule.type==='1-hour-delay'||rule.type==='2-hour-delay'){
-    const normalStart=470,normalEnd=885;
-    const delayedStart=rule.type==='1-hour-delay'?530:590;
-    const scale=(normalEnd-delayedStart)/(normalEnd-normalStart);
-    const transform=m=>delayedStart+(m-normalStart)*scale;
-    return {startTime:minutesToHHMM(transform(baseStart)),endTime:minutesToHHMM(transform(baseEnd)),rule};
-  }
-  return {startTime:cls.startTime,endTime:cls.endTime,rule};
+  const effective=effectiveTimesForRule(schoolScheduleProfile,cls,rule.type);
+  return effective?{...effective,rule}:null;
 }
 function classStartDate(cls,date=new Date()){const t=effectiveClassTimes(cls,date);if(!t)return null;const [h,m]=t.startTime.split(":").map(Number),d=new Date(date);d.setHours(h,m,0,0);return d}
 function classEndDate(cls,date=new Date()){const t=effectiveClassTimes(cls,date);if(!t)return null;const [h,m]=t.endTime.split(":").map(Number),d=new Date(date);d.setHours(h,m,0,0);return d}
@@ -2088,26 +2079,23 @@ function isTransitionClass(cls){
 function classBasePeriodNumber(cls){
   if(!cls)return null;
   const name=String(cls.name||'');
-  // Bison labels encode the originating regular period explicitly, e.g.
-  // "B1 - P7 / IT II ...". Preserve that underlying period identity.
+  // Imported legacy labels encode the originating regular period explicitly.
   const bison=name.match(/^\s*B[12]\s*-\s*P([1-8])\b/i);
   if(bison)return Number(bison[1]);
   const regular=name.match(/^\s*P([1-8])\b/i);
   if(regular)return Number(regular[1]);
   return classPeriodNumber(cls);
 }
-function isBisonClass(cls){
+function isLegacyContinuationClass(cls){
   if(!cls)return false;
   const name=String(cls.name||'');
   const period=String(cls.period||'');
   return /^\s*B[12]\b/i.test(name) || /^\s*B[12]\b/i.test(period) || /bison block/i.test(String(cls.notes||''));
 }
-function isValidBisonTimerContinuation(current,next){
+function isValidTimerContinuation(current,next){
   if(!current||!next||isTransitionClass(current)||isTransitionClass(next))return false;
-  // Chaining is intentionally Bison-only. Ordinary adjacent classes/sections
-  // (for example P3 IT I -> P4 IT I) are separate courses and must never be
-  // merged merely because their bell gap is <= 15 minutes.
-  if(!isBisonClass(next))return false;
+  if(next.continuationOf)return String(next.continuationOf)===String(current.id)||String(next.continuationOf)===String(current.period)||String(next.continuationOf)===String(classBasePeriodNumber(current)||"");
+  if(!schoolScheduleProfile.continuation?.legacyBisonCompatibility||!isLegacyContinuationClass(next))return false;
   const a=classBasePeriodNumber(current),b=classBasePeriodNumber(next);
   return Number.isInteger(a)&&Number.isInteger(b)&&a===b;
 }
@@ -2161,7 +2149,7 @@ function resolveAutomationForClass(event,classId,date=new Date()){
   const base=event.classTimeReference==="end"?effective.endTime:effective.startTime;
   const [h,m]=base.split(":").map(Number);let mins=h*60+m+Number(event.classTimeOffsetMinutes||0);mins=((mins%1440)+1440)%1440;
   const occurrenceStart=classStartDate(cls,date),occurrenceEnd=classEndDate(cls,date);
-  return {...event,classId:cls.id,time:`${String(Math.floor(mins/60)).padStart(2,"0")}:${String(mins%60).padStart(2,"0")}`,days:[...(cls.days||[])],scheduleMode:cls.scheduleMode||"schoolcycle",alternatePhase:cls.alternatePhase||"A",anchorDate:cls.anchorDate||SCHOOL_CYCLE_ANCHOR,dayType:cls.dayType||"Any",cycleDays:[...(cls.cycleDays||periodDefaultCycleDays(cls.period))],period:cls.period||"",includeDates:[...(cls.includeDates||[])],targets:(event.useClassTargets!==false&&automationTargetDomain(event.action)==="display"&&cls.defaultTargets?.length)?[...cls.defaultTargets]:(event.targets||[]),_class:cls,_automationClassIds:automationClassIds(event),_classStartAt:occurrenceStart?.getTime()||null,_classEndAt:occurrenceEnd?.getTime()||null,_classIsTransition:isTransitionClass(cls)};
+  return {...event,classId:cls.id,time:`${String(Math.floor(mins/60)).padStart(2,"0")}:${String(mins%60).padStart(2,"0")}`,days:[...(cls.days||[])],scheduleMode:cls.scheduleMode||"schoolcycle",alternatePhase:cls.alternatePhase||"A",anchorDate:cls.anchorDate||schoolCycleAnchor(),dayType:cls.dayType||"Any",cycleDays:[...(cls.cycleDays||periodDefaultCycleDays(cls.period))],period:cls.period||"",includeDates:[...(cls.includeDates||[])],targets:(event.useClassTargets!==false&&automationTargetDomain(event.action)==="display"&&cls.defaultTargets?.length)?[...cls.defaultTargets]:(event.targets||[]),_class:cls,_automationClassIds:automationClassIds(event),_classStartAt:occurrenceStart?.getTime()||null,_classEndAt:occurrenceEnd?.getTime()||null,_classIsTransition:isTransitionClass(cls)};
 }
 function resolveAutomationOccurrences(event,date=new Date()){
   const ids=automationClassIds(event);
@@ -2664,6 +2652,7 @@ function pruneStudentData(policy=privacyRetentionPolicy()){
 }
 
 const studentDataPruneTimer=setInterval(()=>pruneStudentData(),10*60*1000);studentDataPruneTimer.unref();
+setTimeout(()=>{try{pruneStudentData()}catch(error){diagnosticError(error,{component:"privacy-retention",operation:"startup-prune"})}},5000).unref();
 
 const baseDeviceConfig = readJson(DEVICE_CONFIG_FILE, {
   room: ROOM_NAME,
@@ -3287,12 +3276,13 @@ function userCapabilities(user){
   return capabilitiesFor(user,profile);
 }
 function hasCapability(user,capability){const profile=(dbStore.listAccessProfiles()||[]).find(x=>x.id===user?.profileId&&x.enabled);return profileHasCapability(user,capability,profile)}
+function publicUser(user){return user?{id:user.id,username:user.username,displayName:user.displayName,role:user.role,profileId:user.profileId||null,capabilities:userCapabilities(user)}:null}
 function authenticationUnavailable(res){
   return res.status(503).json({ok:false,error:"Secure setup is required before this operation is available",setupRequired:dbStore.userCount()===0});
 }
 function requireControl(req, res, next) {
   if(dbStore.authEnabled()){
-    const user=requestUser(req);if(!hasRole(user,"operator"))return res.status(401).json({ok:false,error:"Authentication required",authRequired:true});return next();
+    const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Authentication required",authRequired:true});if(!hasCapability(user,"classroom.control"))return res.status(403).json({ok:false,error:"Permission required: classroom.control"});return next();
   }
   if(!CONTROL_TOKEN)return authenticationUnavailable(res);
   const token=req.get("x-control-token")||"";
@@ -4122,7 +4112,9 @@ app.use((req,res,next)=>{
   res.setHeader("Cross-Origin-Opener-Policy","same-origin");
   // Keep controller execution self-contained. External/injected scripts (including browser
   // extensions which attempt page-level injection) are intentionally blocked.
-  res.setHeader("Content-Security-Policy","default-src 'self' data: blob:; base-uri 'self'; object-src 'none'; img-src 'self' data: blob: http: https:; media-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; script-src-elem 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src 'self' http: https: ws: wss:; frame-src 'self' http: https:; frame-ancestors 'self'");
+  const mainController=["/controller","/controller/","/controller/index.html"].includes(req.path);
+  const scriptPolicy=mainController?"script-src 'self'; script-src-elem 'self'; script-src-attr 'unsafe-inline'":"script-src 'self' 'unsafe-inline'; script-src-elem 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'";
+  res.setHeader("Content-Security-Policy",`default-src 'self' data: blob:; base-uri 'self'; object-src 'none'; img-src 'self' data: blob: http: https:; media-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline'; ${scriptPolicy}; connect-src 'self' http: https: ws: wss:; frame-src 'self' http: https:; frame-ancestors 'self'`);
   const proto=String(req.get("x-forwarded-proto")||"").toLowerCase();
   if(req.secure||proto==="https")res.setHeader("Strict-Transport-Security","max-age=15552000; includeSubDomains");
   next();
@@ -4231,11 +4223,12 @@ app.put("/api/v1/internal/maintenance/integrations/:id",requireMaintenanceAgent,
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
+const TRUSTED_UPDATE_REPOSITORY="wagnerks1990/classroom-control-hub";
 function updatePolicy(){
   const saved=dbStore.getPreference("updates.policy",{})||{};
-  return {repository:String(saved.repository||"wagnerks1990/classroom-control-hub"),channel:["alpha","beta","stable"].includes(saved.channel)?saved.channel:"alpha",automatic:!!saved.automatic,checkIntervalHours:Math.max(1,Math.min(168,Number(saved.checkIntervalHours)||24)),maintenanceStart:/^\d{2}:\d{2}$/.test(saved.maintenanceStart||"")?saved.maintenanceStart:"02:00",maintenanceEnd:/^\d{2}:\d{2}$/.test(saved.maintenanceEnd||"")?saved.maintenanceEnd:"04:00",lastCheckedAt:saved.lastCheckedAt||null,lastAvailable:saved.lastAvailable||null};
+  return {repository:TRUSTED_UPDATE_REPOSITORY,channel:["alpha","beta","stable"].includes(saved.channel)?saved.channel:"alpha",automatic:!!saved.automatic,checkIntervalHours:Math.max(1,Math.min(168,Number(saved.checkIntervalHours)||24)),maintenanceStart:/^\d{2}:\d{2}$/.test(saved.maintenanceStart||"")?saved.maintenanceStart:"02:00",maintenanceEnd:/^\d{2}:\d{2}$/.test(saved.maintenanceEnd||"")?saved.maintenanceEnd:"04:00",lastCheckedAt:saved.lastCheckedAt||null,lastAvailable:saved.lastAvailable||null};
 }
-function validUpdateRepository(value){return /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(String(value||""))}
+function validUpdateRepository(value){return String(value||"")===TRUSTED_UPDATE_REPOSITORY}
 function releaseVersion(tag){return String(tag||"").replace(/^v/,"")}
 function semverParts(value){const m=releaseVersion(value).match(/^(\d+)\.(\d+)\.(\d+)(?:[-.]([0-9A-Za-z.-]+))?$/);return m?{core:m.slice(1,4).map(Number),pre:m[4]?m[4].split("."):[]}:null}
 function compareVersions(a,b){const x=semverParts(a),y=semverParts(b);if(!x||!y)return 0;for(let i=0;i<3;i++)if(x.core[i]!==y.core[i])return x.core[i]-y.core[i];if(!x.pre.length||!y.pre.length)return x.pre.length?-1:y.pre.length?1:0;for(let i=0;i<Math.max(x.pre.length,y.pre.length);i++){if(x.pre[i]===undefined)return -1;if(y.pre[i]===undefined)return 1;const xn=Number(x.pre[i]),yn=Number(y.pre[i]),numeric=Number.isFinite(xn)&&Number.isFinite(yn);if(x.pre[i]!==y.pre[i])return numeric?xn-yn:String(x.pre[i]).localeCompare(String(y.pre[i]))}return 0}
@@ -4256,7 +4249,7 @@ async function maintenanceAgentApi(method,pathName,body=null,timeoutMs=30000){
 }
 function recordUpdateJob(job){if(!job?.phase)return;const history=dbStore.getPreference("updates.history",[])||[],key=[job.updatedAt,job.phase,job.targetCommit].join(":");if(history.some(x=>x.key===key))return;history.unshift({key,at:job.updatedAt||new Date().toISOString(),phase:job.phase,ok:job.ok??null,message:job.message||"",action:job.action||"",targetRef:job.targetRef||"",previousVersion:job.previousVersion||"",activeVersion:job.activeVersion||"",backupName:job.backupName||"",rollback:job.rollback??false});dbStore.setPreference("updates.history",history.slice(0,100))}
 app.get("/api/v1/admin/app-updates/settings",requireAdmin,(_req,res)=>res.json({ok:true,settings:updatePolicy(),tokenConfigured:dbStore.hasSecret("github.update.token"),currentVersion:APPLICATION_VERSION,history:dbStore.getPreference("updates.history",[])||[]}));
-app.put("/api/v1/admin/app-updates/settings",requireAdmin,(req,res)=>{try{const current=updatePolicy(),repository=String(req.body?.repository||current.repository).trim(),channel=String(req.body?.channel||current.channel);if(!validUpdateRepository(repository))throw Error("Repository must use owner/name format");if(!["alpha","beta","stable"].includes(channel))throw Error("Invalid release channel");const next={...current,repository,channel,automatic:req.body?.automatic===true,checkIntervalHours:Math.max(1,Math.min(168,Number(req.body?.checkIntervalHours)||24)),maintenanceStart:String(req.body?.maintenanceStart||current.maintenanceStart),maintenanceEnd:String(req.body?.maintenanceEnd||current.maintenanceEnd)};if(!/^\d{2}:\d{2}$/.test(next.maintenanceStart)||!/^\d{2}:\d{2}$/.test(next.maintenanceEnd))throw Error("Maintenance window times must use HH:MM");dbStore.setPreference("updates.policy",next);if(req.body?.token)dbStore.putSecret("github.update.token",String(req.body.token),{type:"github-release-read-token",repository});audit({kind:"admin.updates.settings",repository,channel,automatic:next.automatic});res.json({ok:true,settings:updatePolicy(),tokenConfigured:dbStore.hasSecret("github.update.token")})}catch(e){res.status(400).json({ok:false,error:e.message})}});
+app.put("/api/v1/admin/app-updates/settings",requireAdmin,(req,res)=>{try{const current=updatePolicy(),repository=String(req.body?.repository||current.repository).trim(),channel=String(req.body?.channel||current.channel);if(!validUpdateRepository(repository))throw Error(`Updates are restricted to the trusted repository ${TRUSTED_UPDATE_REPOSITORY}`);if(!["alpha","beta","stable"].includes(channel))throw Error("Invalid release channel");const next={...current,repository:TRUSTED_UPDATE_REPOSITORY,channel,automatic:req.body?.automatic===true,checkIntervalHours:Math.max(1,Math.min(168,Number(req.body?.checkIntervalHours)||24)),maintenanceStart:String(req.body?.maintenanceStart||current.maintenanceStart),maintenanceEnd:String(req.body?.maintenanceEnd||current.maintenanceEnd)};if(!/^\d{2}:\d{2}$/.test(next.maintenanceStart)||!/^\d{2}:\d{2}$/.test(next.maintenanceEnd))throw Error("Maintenance window times must use HH:MM");dbStore.setPreference("updates.policy",next);if(req.body?.token)dbStore.putSecret("github.update.token",String(req.body.token),{type:"github-release-read-token",repository:TRUSTED_UPDATE_REPOSITORY});audit({kind:"admin.updates.settings",repository:TRUSTED_UPDATE_REPOSITORY,channel,automatic:next.automatic});res.json({ok:true,settings:updatePolicy(),tokenConfigured:dbStore.hasSecret("github.update.token")})}catch(e){res.status(400).json({ok:false,error:e.message})}});
 app.post("/api/v1/admin/app-updates/check",requireAdmin,async(_req,res)=>{try{res.json(await githubReleaseCheck())}catch(e){res.status(502).json({ok:false,error:e.message})}});
 app.get("/api/v1/admin/app-updates/job",requireAdmin,async(_req,res)=>{try{const job=await maintenanceAgentApi("GET","/app-updates/job",null,30000);recordUpdateJob(job);res.json({...job,history:dbStore.getPreference("updates.history",[])||[]})}catch(e){res.status(502).json({ok:false,error:e.message})}});
 app.post("/api/v1/admin/app-updates/install",requireAdmin,async(req,res)=>{try{const check=await githubReleaseCheck();if(!check.available||check.available.tag!==String(req.body?.tag||""))return res.status(409).json({ok:false,error:"Selected release is no longer the current approved update"});const result=await maintenanceAgentApi("POST","/app-updates/start",{targetRef:check.available.tag,expectedVersion:check.available.version,githubToken:String(dbStore.getSecret("github.update.token")||""),confirm:"INSTALL_RELEASE"},30000);audit({kind:"admin.updates.start",tag:check.available.tag,version:check.available.version});res.status(202).json(result)}catch(e){res.status(502).json({ok:false,error:e.message})}});
@@ -4309,7 +4302,14 @@ app.use((req, res, next) => {
   next();
 });
 
-const assetAccessKey=crypto.randomBytes(32);
+function persistentAssetAccessKey(){
+  try{
+    let encoded=String(dbStore.getSecret("internal.asset-access-key")||"");
+    if(!/^[A-Za-z0-9_-]{43}$/.test(encoded)){encoded=crypto.randomBytes(32).toString("base64url");dbStore.putSecret("internal.asset-access-key",encoded,{type:"internal-signing-key"})}
+    return Buffer.from(encoded,"base64url");
+  }catch(error){diagnosticError(error,{component:"asset-access",operation:"key-load"});return crypto.randomBytes(32)}
+}
+const assetAccessKey=persistentAssetAccessKey();
 function issueAssetAccessToken(deviceId,ttlSeconds=7200){const expires=Math.floor(Date.now()/1000)+ttlSeconds,payload=`${cleanId(deviceId)}.${expires}`,signature=crypto.createHmac("sha256",assetAccessKey).update(payload).digest("base64url");return `${payload}.${signature}`}
 function validAssetAccessToken(token){const parts=String(token||"").split(".");if(parts.length!==3||!/^\d+$/.test(parts[1])||Number(parts[1])<Math.floor(Date.now()/1000))return false;const payload=`${parts[0]}.${parts[1]}`,expected=crypto.createHmac("sha256",assetAccessKey).update(payload).digest("base64url");return secureTokenEqual(parts[2],expected)&&!!devices[cleanId(parts[0])]?.enabled}
 function requireAssetAccess(req,res,next){if(requestUser(req)||validAssetAccessToken(req.query.access_token))return next();return res.status(401).json({ok:false,error:"Authenticated or enrolled-display asset access required"})}
@@ -4384,6 +4384,11 @@ app.get("/api/v1/status",requireAuthenticated, (_req, res) => {
     state: persistentState
   });
 });
+app.get("/api/v1/lab-agent/manifest",(_req,res)=>{
+  const file=path.join(PUBLIC_DIR,"lab-agent","ClassroomHubAgent.ps1");
+  try{res.json({ok:true,version:APPLICATION_VERSION,file:"ClassroomHubAgent.ps1",sha256:crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex")})}
+  catch(error){res.status(500).json({ok:false,error:"Lab agent package is unavailable"})}
+});
 
 app.get("/api/v1/devices",requireAuthenticated, (_req, res) => {
   res.json({
@@ -4432,7 +4437,7 @@ app.post("/api/v1/commands", requireControl, async (req, res) => {
   }
 });
 
-app.get("/api/v1/integrations/check", async (_req,res)=>{
+app.get("/api/v1/integrations/check",requireCapability("integrations.control"), async (_req,res)=>{
   const out={ok:true,mqtt:{configured:runtime.mqtt.configured,connected:runtime.mqtt.connected,lastError:runtime.mqtt.lastError},
     hardware:{govee:{configured:runtime.hardware.govee.configured,reachable:runtime.mqtt.connected,lastError:runtime.hardware.govee.lastError},
               pluto:{configured:runtime.hardware.pluto.configured,reachable:false,lastError:runtime.hardware.pluto.lastError}}};
@@ -4457,10 +4462,10 @@ app.post("/api/v1/scenes/:id/run",requireControl,async(req,res)=>{
  const results=[];for(const a of scene.actions)results.push(await executeCommand({type:a.type,target:req.body?.target??"all",payload:a.payload||{}},"scene"));
  res.json({ok:true,id,results});}catch(e){res.status(400).json({ok:false,error:e.message})}
 });
-app.get("/api/v1/integrations/govee/:target/scenes",(req,res)=>{
+app.get("/api/v1/integrations/govee/:target/scenes",requireAuthenticated,(req,res)=>{
   try{res.json(goveeScenes(req.params.target))}catch(e){res.status(400).json({ok:false,error:e.message})}
 });
-app.post("/api/v1/integrations/pluto/status",async(req,res)=>{
+app.post("/api/v1/integrations/pluto/status",requireCapability("integrations.control"),async(req,res)=>{
   try{const action=String(req.body?.action||"videoStatus"),allowed=new Set(["videoStatus","outputStatus","inputStatus","cecStatus","systemStatus","networkStatus"]);
   if(!allowed.has(action))return res.status(400).json({ok:false,error:"Unsupported status action"});
   res.json(await directPluto({action}));}catch(e){res.status(502).json({ok:false,error:e.message})}
@@ -4486,12 +4491,12 @@ app.put("/api/v1/govee/device/:target",requireControl,(req,res)=>{
   try{res.json({ok:true,...updateGoveeDevice(req.params.target,req.body||{})})}
   catch(e){res.status(400).json({ok:false,error:e.message})}
 });
-app.get("/api/v1/govee/:target/status",(req,res)=>{
+app.get("/api/v1/govee/:target/status",requireAuthenticated,(req,res)=>{
   const alias=cleanId(req.params.target),d=goveeDevices[alias];
   if(!d)return res.status(404).json({ok:false,error:"Unknown Govee device"});
   res.json({ok:true,device:alias,meta:d,state:goveeStates[d.id]||null});
 });
-app.get("/api/v1/govee/:target/scenes",(req,res)=>{try{res.json(goveeScenes(req.params.target))}catch(e){res.status(400).json({ok:false,error:e.message})}});
+app.get("/api/v1/govee/:target/scenes",requireAuthenticated,(req,res)=>{try{res.json(goveeScenes(req.params.target))}catch(e){res.status(400).json({ok:false,error:e.message})}});
 app.post("/api/v1/govee/:target/:action",requireControl,async(req,res)=>{
   try{res.json(await directGoveeCommand(req.params.target,cleanId(req.params.action),req.body||{}))}catch(e){res.status(400).json({ok:false,error:e.message})}
 });
@@ -4528,7 +4533,7 @@ app.post("/api/v1/pluto/schedules",requireControl,(req,res)=>{
 app.get("/api/v1/automations/morning-announcements",requireAuthenticated,(_req,res)=>{
   res.json({ok:true,config:morningAnnouncements,runtime:morningAnnouncementsRuntime,playbackUrl:announcementsPlaybackUrl()});
 });
-app.put("/api/v1/automations/morning-announcements",requireControl,(req,res)=>{
+app.put("/api/v1/automations/morning-announcements",requireCapability("automation.manage"),(req,res)=>{
   try{morningAnnouncements=normalizeMorningAnnouncements(req.body||{},morningAnnouncements);persistMorningAnnouncements();res.json({ok:true,config:morningAnnouncements,runtime:morningAnnouncementsRuntime,playbackUrl:announcementsPlaybackUrl()})}
   catch(err){res.status(400).json({ok:false,error:err.message})}
 });
@@ -4569,13 +4574,14 @@ app.post("/api/v1/automations/morning-announcements/stop",requireControl,async(r
   catch(err){res.status(500).json({ok:false,error:err.message})}
 });
 app.get("/api/v1/automations/calendar",requireAuthenticated,(_req,res)=>{
-  res.json({ok:true,calendar:schedulerCalendar,districtNoSchoolDates:DISTRICT_NO_SCHOOL_DATES_2026_2027,districtHalfDayDates:DISTRICT_HALF_DAY_DATES_2026_2027,cycleAnchor:{date:SCHOOL_CYCLE_ANCHOR,cycleDay:'A',dayColor:'Green'}});
+  res.json({ok:true,calendar:schedulerCalendar,scheduleProfile:schoolScheduleProfile,cycleAnchor:{date:schoolCycleAnchor(),cycleDay:schoolCycleLetters()[0]||null,dayColor:alternateGroupLabel('A')}});
 });
-app.put("/api/v1/automations/calendar",requireControl,(req,res)=>{
+app.put("/api/v1/automations/calendar",requireCapability("schedule.manage"),(req,res)=>{
   schedulerCalendar=normalizeSchedulerCalendar(req.body||{},schedulerCalendar);
   persistSchedulerCalendar();
-  audit({kind:"automation.calendar.update",noSchoolDates:schedulerCalendar.noSchoolDates,halfDayDates:schedulerCalendar.halfDayDates,oneHourDelayDates:schedulerCalendar.oneHourDelayDates,twoHourDelayDates:schedulerCalendar.twoHourDelayDates,remoteDates:schedulerCalendar.remoteDates,cycleAnchor:SCHOOL_CYCLE_ANCHOR});
-  res.json({ok:true,calendar:schedulerCalendar,districtNoSchoolDates:DISTRICT_NO_SCHOOL_DATES_2026_2027,districtHalfDayDates:DISTRICT_HALF_DAY_DATES_2026_2027,cycleAnchor:{date:SCHOOL_CYCLE_ANCHOR,cycleDay:'A',dayColor:'Green'}});
+  if(req.body?.scheduleProfile)setSchoolScheduleProfile({...req.body.scheduleProfile,anchorDate:req.body.scheduleProfile.anchorDate||schedulerCalendar.anchorDate});
+  audit({kind:"automation.calendar.update",noSchoolDates:schedulerCalendar.noSchoolDates,halfDayDates:schedulerCalendar.halfDayDates,oneHourDelayDates:schedulerCalendar.oneHourDelayDates,twoHourDelayDates:schedulerCalendar.twoHourDelayDates,remoteDates:schedulerCalendar.remoteDates,cycleAnchor:schoolCycleAnchor(),profileId:schoolScheduleProfile.id});
+  res.json({ok:true,calendar:schedulerCalendar,scheduleProfile:schoolScheduleProfile,cycleAnchor:{date:schoolCycleAnchor(),cycleDay:schoolCycleLetters()[0]||null,dayColor:alternateGroupLabel('A')}});
 });
 
 
@@ -4586,7 +4592,7 @@ function timeToMinutes(value){
 }
 function classPhaseRank(cls){
   if(cls?.scheduleMode!=="alternating")return 2;
-  return cls.alternatePhase==="B"?1:0; // Green/A first, White/B second
+  return cls.alternatePhase==="B"?1:0;
 }
 function compareClassSchedules(a,b){
   return classPhaseRank(a)-classPhaseRank(b)
@@ -4614,7 +4620,7 @@ function compareAutomations(a,b){
 
 app.get("/api/v1/school-cycle",requireAuthenticated,(req,res)=>{
   const date=req.query.date&&validDateKey(req.query.date)?new Date(`${req.query.date}T12:00:00`):new Date();
-  res.json({ok:true,...schoolCycleForDate(date),calendarRule:calendarRuleForDate(date),automationSuppressed:isAutomationSuppressed(date).blocked,cycle:SCHOOL_CYCLE_LETTERS,green:["A","C","E","G"],white:["B","D","F","H"]});
+  res.json({ok:true,...schoolCycleForDate(date),calendarRule:calendarRuleForDate(date),automationSuppressed:isAutomationSuppressed(date).blocked,cycle:schoolCycleLetters(),dayGroups:schoolScheduleProfile.dayGroups,scheduleProfileId:schoolScheduleProfile.id});
 });
 
 app.get("/api/v1/class-schedules",requireAuthenticated,(_req,res)=>{
@@ -4626,9 +4632,9 @@ app.get("/api/v1/class-schedules",requireAuthenticated,(_req,res)=>{
   }
 });
 app.get("/api/v1/class-schedules/status",requireAuthenticated,(_req,res)=>{const now=new Date();res.json({ok:true,...classStatusPayload(now),scheduler:schedulerStatus()})});
-app.post("/api/v1/class-schedules",requireControl,(req,res)=>{try{const cls=normalizeClassSchedule(req.body||{});classScheduleStore.classes.push(cls);persistClassSchedules();res.json({ok:true,classSchedule:cls})}catch(err){res.status(400).json({ok:false,error:err.message})}});
-app.put("/api/v1/class-schedules/:id",requireControl,(req,res)=>{try{const i=classScheduleStore.classes.findIndex(c=>c.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:"Class not found"});const cls=normalizeClassSchedule(req.body||{},classScheduleStore.classes[i]);classScheduleStore.classes[i]=cls;persistClassSchedules();res.json({ok:true,classSchedule:cls})}catch(err){res.status(400).json({ok:false,error:err.message})}});
-app.post("/api/v1/class-schedules/:id/duplicate",requireControl,(req,res)=>{
+app.post("/api/v1/class-schedules",requireCapability("schedule.manage"),(req,res)=>{try{const cls=normalizeClassSchedule(req.body||{});classScheduleStore.classes.push(cls);persistClassSchedules();res.json({ok:true,classSchedule:cls})}catch(err){res.status(400).json({ok:false,error:err.message})}});
+app.put("/api/v1/class-schedules/:id",requireCapability("schedule.manage"),(req,res)=>{try{const i=classScheduleStore.classes.findIndex(c=>c.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:"Class not found"});const cls=normalizeClassSchedule(req.body||{},classScheduleStore.classes[i]);classScheduleStore.classes[i]=cls;persistClassSchedules();res.json({ok:true,classSchedule:cls})}catch(err){res.status(400).json({ok:false,error:err.message})}});
+app.post("/api/v1/class-schedules/:id/duplicate",requireCapability("schedule.manage"),(req,res)=>{
   try{
     const source=classScheduleStore.classes.find(c=>c.id===req.params.id);
     if(!source)return res.status(404).json({ok:false,error:"Class not found"});
@@ -4649,7 +4655,7 @@ app.post("/api/v1/class-schedules/:id/duplicate",requireControl,(req,res)=>{
     res.status(400).json({ok:false,error:err.message});
   }
 });
-app.delete("/api/v1/class-schedules/:id",requireControl,(req,res)=>{
+app.delete("/api/v1/class-schedules/:id",requireCapability("schedule.manage"),(req,res)=>{
   const i=classScheduleStore.classes.findIndex(c=>c.id===req.params.id);
   if(i<0)return res.status(404).json({ok:false,error:"Class not found"});
   const [removed]=classScheduleStore.classes.splice(i,1);
@@ -4664,7 +4670,7 @@ app.get("/api/v1/automations",requireAuthenticated,(_req,res)=>{
   ]});
 });
 
-app.post("/api/v1/automations",requireControl,(req,res)=>{
+app.post("/api/v1/automations",requireCapability("automation.manage"),(req,res)=>{
   try{
     const event=normalizeAutomation(req.body||{});
     if(classroomAutomations.events.some(x=>x.id===event.id))return res.status(409).json({ok:false,error:"Automation ID already exists"});
@@ -4674,7 +4680,7 @@ app.post("/api/v1/automations",requireControl,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.put("/api/v1/automations/:id",requireControl,(req,res)=>{
+app.put("/api/v1/automations/:id",requireCapability("automation.manage"),(req,res)=>{
   try{
     const id=cleanId(req.params.id),idx=classroomAutomations.events.findIndex(x=>x.id===id);
     if(idx<0)return res.status(404).json({ok:false,error:"Automation not found"});
@@ -4685,13 +4691,13 @@ app.put("/api/v1/automations/:id",requireControl,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.delete("/api/v1/automations/:id",requireControl,(req,res)=>{
+app.delete("/api/v1/automations/:id",requireCapability("automation.manage"),(req,res)=>{
   const id=cleanId(req.params.id),before=classroomAutomations.events.length;
   classroomAutomations.events=classroomAutomations.events.filter(x=>x.id!==id);
   if(classroomAutomations.events.length===before)return res.status(404).json({ok:false,error:"Automation not found"});
   persistAutomations();audit({kind:"automation.delete",automationId:id});res.json({ok:true,id});
 });
-app.post("/api/v1/automations/:id/duplicate",requireControl,(req,res)=>{
+app.post("/api/v1/automations/:id/duplicate",requireCapability("automation.manage"),(req,res)=>{
   try{
     const source=classroomAutomations.events.find(e=>e.id===req.params.id);
     if(!source)return res.status(404).json({ok:false,error:"Scheduled event not found"});
@@ -4838,7 +4844,7 @@ async function buildDiagnosticsSnapshot(){
 
 // Local authentication, users and setup completion.
 app.get("/api/v1/auth/status",(req,res)=>{
-  const user=requestUser(req);res.json({ok:true,authEnabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:user?{id:user.id,username:user.username,displayName:user.displayName,role:user.role}:null,userCount:dbStore.userCount()});
+  const user=requestUser(req);res.json({ok:true,authEnabled:dbStore.authEnabled(),setupCompleted:dbStore.setupCompleted(),user:publicUser(user),userCount:dbStore.userCount()});
 });
 app.post("/api/v1/auth/login",(req,res)=>{
   const username=String(req.body?.username||""),key=loginAttemptKey(req,username),state=loginAttemptState(key),now=Date.now();
@@ -4848,10 +4854,10 @@ app.post("/api/v1/auth/login",(req,res)=>{
   clearLoginFailures(key);
   const policy=dbStore.authPolicy(),ttlHours=req.body?.remember?policy.rememberHours:policy.standardHours,sess=dbStore.createSession(user,{remoteAddr:clientAddress(req),userAgent:req.get("user-agent")||"",ttlHours});
   const secure=(req.secure||String(req.get("x-forwarded-proto")||"").toLowerCase()==="https")?"; Secure":"";
-  res.setHeader("Set-Cookie",`classroom_hub_session=${encodeURIComponent(sess.token)}; Path=/; HttpOnly; SameSite=Strict${secure}; Max-Age=${Math.round(ttlHours*3600)}`);audit({kind:"auth.login",userId:user.id,username:user.username,role:user.role,remote:clientAddress(req)});res.json({ok:true,user,expiresAt:sess.expiresAt});
+  res.setHeader("Set-Cookie",`classroom_hub_session=${encodeURIComponent(sess.token)}; Path=/; HttpOnly; SameSite=Strict${secure}; Max-Age=${Math.round(ttlHours*3600)}`);audit({kind:"auth.login",userId:user.id,username:user.username,role:user.role,remote:clientAddress(req)});res.json({ok:true,user:publicUser(user),expiresAt:sess.expiresAt});
 });
 app.post("/api/v1/auth/logout",(req,res)=>{const token=cookieValue(req,"classroom_hub_session"),user=requestUser(req);dbStore.deleteSession(token);res.setHeader("Set-Cookie","classroom_hub_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");if(user)audit({kind:"auth.logout",userId:user.id,username:user.username});res.json({ok:true})});
-app.get("/api/v1/auth/me",(req,res)=>{const user=requestUser(req);if(dbStore.authEnabled()&&!user)return res.status(401).json({ok:false,error:"Not authenticated"});res.json({ok:true,user:user?{id:user.id,username:user.username,displayName:user.displayName,role:user.role}:null,authEnabled:dbStore.authEnabled()})});
+app.get("/api/v1/auth/me",(req,res)=>{const user=requestUser(req);if(dbStore.authEnabled()&&!user)return res.status(401).json({ok:false,error:"Not authenticated"});res.json({ok:true,user:publicUser(user),authEnabled:dbStore.authEnabled()})});
 app.get("/api/v1/auth/sessions",requireAuthenticated,(req,res)=>{const user=requestUser(req);if(!user)return res.json({ok:true,sessions:[]});res.json({ok:true,sessions:dbStore.listUserSessions(user.id).map(x=>({...x,current:x.id===user.sessionId}))})});
 app.delete("/api/v1/auth/sessions/:id",requireAuthenticated,(req,res)=>{const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Not authenticated"});if(req.params.id===user.sessionId)return res.status(400).json({ok:false,error:"Use Logout to end the current session"});const removed=dbStore.deleteUserSession(user.id,req.params.id);audit({kind:"auth.session.revoke",userId:user.id,sessionId:req.params.id,removed});res.json({ok:true,removed})});
 app.post("/api/v1/auth/logout-others",requireAuthenticated,(req,res)=>{const user=requestUser(req);if(!user)return res.status(401).json({ok:false,error:"Not authenticated"});const removed=dbStore.deleteAllUserSessions(user.id,{exceptSessionId:user.sessionId});audit({kind:"auth.sessions.revoke-others",userId:user.id,removed});res.json({ok:true,removed})});
@@ -4871,7 +4877,7 @@ app.post("/api/v1/setup/administrator",(req,res)=>{
     const secure=(req.secure||String(req.get("x-forwarded-proto")||"").toLowerCase()==="https")?"; Secure":"";
     res.setHeader("Set-Cookie",`classroom_hub_session=${encodeURIComponent(sess.token)}; Path=/; HttpOnly; SameSite=Strict${secure}; Max-Age=${Math.round(policy.standardHours*3600)}`);
     audit({kind:"setup.administrator",userId:user.id,username:user.username,authEnabled:true,remote:clientAddress(req)});
-    res.status(201).json({ok:true,user,authEnabled:true,setupCompleted:true});
+    res.status(201).json({ok:true,user:publicUser(user),authEnabled:true,setupCompleted:true});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 app.get("/api/v1/admin/users",requireAdmin,(_req,res)=>res.json({ok:true,users:dbStore.listUsers(),authEnabled:dbStore.authEnabled(),policy:dbStore.authPolicy(),sessions:dbStore.listAllUserSessions()}));
@@ -5226,7 +5232,7 @@ app.get("/api/v1/diagnostics/export",requireAdmin,async(_req,res)=>{
   }catch(err){res.status(500).json({ok:false,error:err.message})}
 });
 
-app.post("/api/v1/diagnostics/test",requireControl,async(req,res)=>{
+app.post("/api/v1/diagnostics/test",requireCapability("diagnostics.run"),async(req,res)=>{
   const test=String(req.body?.test||"all");
   const results={};
   const perform=async(name,fn)=>{
@@ -5555,13 +5561,13 @@ app.get("/api/v1/veyon/computers",requireAuthenticated,async(req,res)=>{
     }});
   }catch(err){res.status(500).json({ok:false,error:err.message})}
 });
-app.post("/api/v1/veyon/discover",requireControl,async(req,res)=>{
+app.post("/api/v1/veyon/discover",requireCapability("lab.control"),async(req,res)=>{
   try{
     const computers=await veyonDiscover(req.body||{});
     res.json({ok:true,computers,summary:{found:computers.length,authenticated:computers.filter(x=>x.authenticated).length}});
   }catch(err){res.status(500).json({ok:false,error:err.message})}
 });
-app.post("/api/v1/veyon/computers",requireControl,(req,res)=>{
+app.post("/api/v1/veyon/computers",requireCapability("lab.control"),(req,res)=>{
   try{
     const ip=String(req.body?.ip||"").trim();
     if(!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip))throw new Error("Valid IPv4 address required");
@@ -5569,7 +5575,7 @@ app.post("/api/v1/veyon/computers",requireControl,(req,res)=>{
     res.json({ok:true,computer:upsertVeyonComputer(ip,{name:String(req.body?.name||ip).slice(0,120),hostname:String(req.body?.hostname||"").slice(0,120),role})});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.put("/api/v1/veyon/computers/:id",requireControl,(req,res)=>{
+app.put("/api/v1/veyon/computers/:id",requireCapability("lab.control"),(req,res)=>{
   try{
     const id=veyonComputerId(req.params.id),rec=veyonComputerStore.computers[id];
     if(!rec)return res.status(404).json({ok:false,error:"Computer not found"});
@@ -5579,7 +5585,7 @@ app.put("/api/v1/veyon/computers/:id",requireControl,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.post("/api/v1/veyon/computers/role",requireControl,(req,res)=>{
+app.post("/api/v1/veyon/computers/role",requireCapability("lab.control"),(req,res)=>{
   try{
     const ids=Array.isArray(req.body?.ids)?req.body.ids:[];
     const role=req.body?.role;
@@ -5592,7 +5598,7 @@ app.post("/api/v1/veyon/computers/role",requireControl,(req,res)=>{
     res.json({ok:true,updated});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.delete("/api/v1/veyon/computers/:id",requireControl,(req,res)=>{
+app.delete("/api/v1/veyon/computers/:id",requireCapability("lab.control"),(req,res)=>{
   const id=veyonComputerId(req.params.id),rec=veyonComputerStore.computers[id];
   if(!rec)return res.status(404).json({ok:false,error:"Computer not found"});
   delete veyonComputerStore.computers[id];veyonConnectionCache.delete(rec.ip);persistVeyonComputers();
@@ -5649,7 +5655,7 @@ app.get("/api/v1/veyon/connections",requireAuthenticated,(_req,res)=>{
     host,validUntil:r.validUntil,secondsRemaining:Math.max(0,Number(r.validUntil||0)-now),idleSeconds:Math.floor((Date.now()-Number(r.lastUsed||0))/1000)
   }))});
 });
-app.post("/api/v1/veyon/connections/close",requireControl,async(req,res)=>{
+app.post("/api/v1/veyon/connections/close",requireCapability("lab.control"),async(req,res)=>{
   try{
     const ids=Array.isArray(req.body?.ids)?req.body.ids:[];
     if(!ids.length||ids.includes("all")){
@@ -5660,7 +5666,7 @@ app.post("/api/v1/veyon/connections/close",requireControl,async(req,res)=>{
     res.json({ok:true,closed:ids.length,poolSize:veyonConnectionCache.size});
   }catch(err){res.status(500).json({ok:false,error:err.message})}
 });
-app.post("/api/v1/veyon/demo/start",requireControl,async(req,res)=>{
+app.post("/api/v1/veyon/demo/start",requireCapability("lab.control"),async(req,res)=>{
   try{
     const teacher=veyonComputerStore.computers[veyonComputerId(req.body?.teacherId||"")];
     if(!teacher)throw new Error("Teacher computer not found");
@@ -5680,7 +5686,7 @@ app.post("/api/v1/veyon/demo/start",requireControl,async(req,res)=>{
     res.json({ok:results.every(x=>x.ok),teacherId:teacher.id,teacherIp:teacher.ip,mode,results});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.post("/api/v1/veyon/demo/stop",requireControl,async(req,res)=>{
+app.post("/api/v1/veyon/demo/stop",requireCapability("lab.control"),async(req,res)=>{
   try{
     const teacher=veyonComputerStore.computers[veyonComputerId(req.body?.teacherId||"")];
     const students=(Array.isArray(req.body?.studentIds)?req.body.studentIds:[])
@@ -5693,7 +5699,7 @@ app.post("/api/v1/veyon/demo/stop",requireControl,async(req,res)=>{
     res.json({ok:true,results});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.post("/api/v1/veyon/feature",requireControl,async(req,res)=>{
+app.post("/api/v1/veyon/feature",requireCapability("lab.control"),async(req,res)=>{
   try{
     const targets=Array.isArray(req.body?.targets)?req.body.targets:[req.body?.target].filter(Boolean);
     if(!targets.length)throw new Error("At least one target is required");
@@ -5762,23 +5768,23 @@ app.get("/api/v1/lab/computers/:id/history/export",requireCapability("lab.sensit
     return res.send("\uFEFF"+lines.join("\r\n"));
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.put("/api/v1/lab/computers/:id",requireControl,(req,res)=>{
+app.put("/api/v1/lab/computers/:id",requireCapability("lab.control"),(req,res)=>{
   try{const id=cleanLabAgentId(req.params.id),rec=labComputerStore.computers[id];if(!rec)return res.status(404).json({ok:false,error:"Lab computer not found"});
     if(req.body?.name!==undefined)rec.name=String(req.body.name||"").trim().slice(0,120)||rec.hostname||id;
     if(req.body?.groups!==undefined)rec.groups=[...new Set((Array.isArray(req.body.groups)?req.body.groups:[]).map(x=>String(x).trim().toLowerCase().replace(/[^a-z0-9._-]+/g,"-")).filter(Boolean))].slice(0,20);
     rec.updatedAt=new Date().toISOString();persistLabComputers();res.json({ok:true,computer:publicLabComputer(id)})}
   catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.delete("/api/v1/lab/computers/:id",requireControl,(req,res)=>{
+app.delete("/api/v1/lab/computers/:id",requireCapability("lab.control"),(req,res)=>{
   try{const id=cleanLabAgentId(req.params.id);if(labOnline(id))return res.status(409).json({ok:false,error:"Disconnect/uninstall the agent before removing an online computer"});
     delete labComputerStore.computers[id];delete labHistoryStore.computers[id];persistLabComputers();persistLabHistory();res.json({ok:true,id})}
   catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.delete("/api/v1/lab/computers/:id/history",requireControl,(req,res)=>{
+app.delete("/api/v1/lab/computers/:id/history",requireCapability("lab.control"),(req,res)=>{
   try{const id=cleanLabAgentId(req.params.id);labHistoryStore.computers[id]=[];persistLabHistory();res.json({ok:true,id})}
   catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.post("/api/v1/lab/command",requireControl,(req,res)=>{
+app.post("/api/v1/lab/command",requireCapability("lab.control"),(req,res)=>{
   try{const action=String(req.body?.action||"").toLowerCase();let payload=req.body?.payload&&typeof req.body.payload==="object"?req.body.payload:{};
     if(action==="message"){payload={...payload,text:String(payload.text||"").slice(0,100000),title:String(payload.title||"Classroom Message").slice(0,120)};if(!payload.text.trim())throw new Error("Message text is required")}
     res.json(sendLabAgentCommand(req.body?.targets||req.body?.target||[],action,payload))}
@@ -5897,7 +5903,7 @@ app.get("/api/v1/lab/ai-monitor",requireCapability("lab.sensitive.read"),(req,re
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.put("/api/v1/lab/ai-monitor/rules",requireControl,(req,res)=>{
+app.put("/api/v1/lab/ai-monitor/rules",requireCapability("lab.control"),(req,res)=>{
   try{
     const body=req.body||{};
     if(typeof body.enabled==="boolean")labAiRulesStore.enabled=body.enabled;
@@ -5912,7 +5918,7 @@ app.put("/api/v1/lab/ai-monitor/rules",requireControl,(req,res)=>{
 });
 
 
-app.post("/api/v1/lab/ai-monitor/:id/capture",requireControl,(req,res)=>{
+app.post("/api/v1/lab/ai-monitor/:id/capture",requireCapability("lab.control"),(req,res)=>{
   try{
     const alert=labAiAlertsStore.alerts.find(a=>a.id===String(req.params.id));
     if(!alert)return res.status(404).json({ok:false,error:"Alert not found"});
@@ -5935,7 +5941,7 @@ app.post("/api/v1/lab/ai-monitor/:id/capture",requireControl,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.put("/api/v1/lab/ai-monitor/:id",requireControl,(req,res)=>{
+app.put("/api/v1/lab/ai-monitor/:id",requireCapability("lab.control"),(req,res)=>{
   try{
     const alert=labAiAlertsStore.alerts.find(a=>a.id===String(req.params.id));
     if(!alert)return res.status(404).json({ok:false,error:"Alert not found"});
@@ -5991,7 +5997,7 @@ app.get("/api/v1/presentations",requireAuthenticated,(_req,res)=>{
 });
 app.get("/api/v1/presentations/state",requireAuthenticated,(_req,res)=>res.json({ok:true,state:presentationStatePublic()}));
 
-app.post("/api/v1/presentations/folders",requireControl,(req,res)=>{
+app.post("/api/v1/presentations/folders",requireCapability("media.manage"),(req,res)=>{
   try{
     const name=cleanPresentationLabel(req.body?.name,100);
     const parentId=normalizePresentationFolderId(req.body?.parentId||"root");
@@ -6001,7 +6007,7 @@ app.post("/api/v1/presentations/folders",requireControl,(req,res)=>{
     res.json({ok:true,folder:presentationLibrary.folders[id]});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.put("/api/v1/presentations/folders/:id",requireControl,(req,res)=>{
+app.put("/api/v1/presentations/folders/:id",requireCapability("media.manage"),(req,res)=>{
   try{
     const id=String(req.params.id),folder=presentationLibrary.folders[id];
     if(!folder||id==="root")return res.status(404).json({ok:false,error:"Folder not found or cannot be changed"});
@@ -6016,7 +6022,7 @@ app.put("/api/v1/presentations/folders/:id",requireControl,(req,res)=>{
     res.json({ok:true,folder});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.delete("/api/v1/presentations/folders/:id",requireControl,(req,res)=>{
+app.delete("/api/v1/presentations/folders/:id",requireCapability("media.manage"),(req,res)=>{
   try{
     const id=String(req.params.id);
     if(id==="root"||!presentationLibrary.folders[id])return res.status(400).json({ok:false,error:"Root folder cannot be deleted"});
@@ -6031,7 +6037,7 @@ app.delete("/api/v1/presentations/folders/:id",requireControl,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.post("/api/v1/presentations/upload",requireControl,presentationUpload.single("presentation"),async(req,res)=>{
+app.post("/api/v1/presentations/upload",requireCapability("media.manage"),presentationUpload.single("presentation"),async(req,res)=>{
   if(!req.file)return res.status(400).json({ok:false,error:"No presentation uploaded"});
   const id=presentationId();
   const dir=path.join(PRESENTATIONS_DIR,id);
@@ -6074,7 +6080,7 @@ app.post("/api/v1/presentations/upload",requireControl,presentationUpload.single
     res.status(400).json({ok:false,error:err.message});
   }
 });
-app.post("/api/v1/presentations/:id/rebuild",requireControl,async(req,res)=>{
+app.post("/api/v1/presentations/:id/rebuild",requireCapability("media.manage"),async(req,res)=>{
   try{
     const id=String(req.params.id),rec=presentationLibrary.presentations[id];
     if(!rec)return res.status(404).json({ok:false,error:"Presentation not found"});
@@ -6083,7 +6089,7 @@ app.post("/api/v1/presentations/:id/rebuild",requireControl,async(req,res)=>{
     res.json({ok:true,presentation:presentationPublicRecord(rec)});
   }catch(err){res.status(500).json({ok:false,error:err.message})}
 });
-app.put("/api/v1/presentations/:id",requireControl,(req,res)=>{
+app.put("/api/v1/presentations/:id",requireCapability("media.manage"),(req,res)=>{
   try{
     const id=String(req.params.id),rec=presentationLibrary.presentations[id];
     if(!rec)return res.status(404).json({ok:false,error:"Presentation not found"});
@@ -6093,7 +6099,7 @@ app.put("/api/v1/presentations/:id",requireControl,(req,res)=>{
     res.json({ok:true,presentation:presentationPublicRecord(rec)});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.delete("/api/v1/presentations/:id",requireControl,async(req,res)=>{
+app.delete("/api/v1/presentations/:id",requireCapability("media.manage"),async(req,res)=>{
   try{
     const id=String(req.params.id);
     if(!presentationLibrary.presentations[id])return res.status(404).json({ok:false,error:"Presentation not found"});
@@ -6103,7 +6109,7 @@ app.delete("/api/v1/presentations/:id",requireControl,async(req,res)=>{
     res.json({ok:true,id});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.post("/api/v1/presentations/:id/start",requireControl,async(req,res)=>{
+app.post("/api/v1/presentations/:id/start",requireCapability("media.manage"),async(req,res)=>{
   try{
     const id=String(req.params.id),rec=presentationLibrary.presentations[id];
     if(!rec)return res.status(404).json({ok:false,error:"Presentation not found"});
@@ -6131,7 +6137,7 @@ app.post("/api/v1/presentations/:id/start",requireControl,async(req,res)=>{
     res.json({ok:true,state:presentationStatePublic()});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
-app.post("/api/v1/presentations/control",requireControl,async(req,res)=>{
+app.post("/api/v1/presentations/control",requireCapability("media.manage"),async(req,res)=>{
   try{res.json({ok:true,state:await controlPresentation(req.body?.action,req.body||{})})}
   catch(err){res.status(400).json({ok:false,error:err.message})}
 });
@@ -6169,7 +6175,7 @@ const upload = multer({
   }
 });
 
-app.post("/api/v1/media",requireControl,upload.single("media"),async(req,res)=>{
+app.post("/api/v1/media",requireCapability("media.manage"),upload.single("media"),async(req,res)=>{
   if(!req.file)return res.status(400).json({ok:false,error:"No file uploaded"});
   const stored=req.file.filename,type=classifyMedia(stored,req.file.mimetype);
   const rec={
@@ -6203,7 +6209,7 @@ app.post("/api/v1/media",requireControl,upload.single("media"),async(req,res)=>{
   res.json({ok:true,file:libraryRecordFromDisk(stored)});
 });
 
-app.post("/api/v1/media/:name/convert",requireControl,async(req,res)=>{
+app.post("/api/v1/media/:name/convert",requireCapability("media.manage"),async(req,res)=>{
   try{
     const name=safeStoredName(req.params.name),rec=mediaLibrary.files[name]||{};
     if(!fs.existsSync(path.join(MEDIA_DIR,name)))return res.status(404).json({ok:false,error:"File not found"});
@@ -6215,7 +6221,7 @@ app.post("/api/v1/media/:name/convert",requireControl,async(req,res)=>{
   }catch(err){res.status(500).json({ok:false,error:err.message})}
 });
 
-app.delete("/api/v1/media/:name",requireControl,(req,res)=>{
+app.delete("/api/v1/media/:name",requireCapability("media.manage"),(req,res)=>{
   try{
     const name=safeStoredName(req.params.name),rec=mediaLibrary.files[name]||{};
     const removed=[];
@@ -6230,7 +6236,7 @@ app.delete("/api/v1/media/:name",requireControl,(req,res)=>{
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-app.post("/api/v1/media/:name/display",requireControl,async(req,res)=>{
+app.post("/api/v1/media/:name/display",requireCapability("media.manage"),async(req,res)=>{
   try{
     const name=safeStoredName(req.params.name),full=path.join(MEDIA_DIR,name);
     if(!fs.existsSync(full))return res.status(404).json({ok:false,error:"File not found"});
@@ -6346,8 +6352,8 @@ wss.on("connection", (ws, req) => {
         if (role === "controller" || role === "admin") {
           if(!browserWebSocketOriginAllowed(req))throw new Error("Untrusted WebSocket origin");
           if(dbStore.authEnabled()){
-            const user=requestUser(req),requiredRole=role==="admin"?"admin":"operator";
-            if(!hasRole(user,requiredRole))throw new Error("Authenticated operator session required");
+            const user=requestUser(req);
+            if(role==="admin"?!hasRole(user,"admin"):!hasCapability(user,"classroom.control"))throw new Error(role==="admin"?"Administrator session required":"Permission required: classroom.control");
             ws.authUser=user;
             ws.sessionToken=cookieValue(req,"classroom_hub_session");
           }else if(!CONTROL_TOKEN||!secureTokenEqual(msg.token,CONTROL_TOKEN)){
@@ -6651,7 +6657,7 @@ wss.on("connection", (ws, req) => {
       if (msg.type === "command" && (ws.role === "controller" || ws.role === "admin")) {
         if(dbStore.authEnabled()){
           const user=dbStore.sessionUser(ws.sessionToken);
-          if(!hasRole(user,ws.role==="admin"?"admin":"operator"))throw new Error("Operator session expired or was revoked");
+          if(ws.role==="admin"?!hasRole(user,"admin"):!hasCapability(user,"classroom.control"))throw new Error("Session expired, was revoked, or no longer has classroom.control");
         }
         const result = await executeCommand(msg.command || msg, "websocket");
         return wsSend(ws, { type: "command.ack", result });

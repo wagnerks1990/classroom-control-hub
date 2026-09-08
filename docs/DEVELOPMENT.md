@@ -95,7 +95,7 @@ Verify:
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.67` is the known-good production baseline. It includes HLS Morning Announcements behavior plus the dependency, API privacy, capability, agent-enrollment, updater, and maintenance-plane hardening described in the changelog.
+At the time this document was updated, `1.0.0-alpha.68` is the known-good production baseline. It includes configurable school scheduling plus the dependency, API privacy, capability, agent-enrollment, updater, and maintenance-plane hardening described in the changelog.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 
@@ -144,7 +144,7 @@ High-value regression scenarios include:
 - automation execution at period boundaries;
 - active-class selection for multi-class events;
 - transition timers;
-- valid and invalid Bison continuation chains;
+- valid and invalid explicit continuation chains;
 - announcement priority takeover and HLS live/offline detection;
 - announcement volume/mute controls;
 - automations becoming due while announcements are live;

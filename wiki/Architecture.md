@@ -46,7 +46,7 @@ Display clients tolerate disconnect/reconnect and converge to current server sta
 
 ## Scheduler and calendar engine
 
-The scheduler evaluates normal weekdays, linked classes, cycle-day rules, no-school dates, remote days, half days, delayed starts, transition periods, Bison continuation rules, and manual execution requests.
+The scheduler evaluates normal weekdays, linked classes, cycle-day rules, no-school dates, remote days, half days, delayed starts, transition periods, explicit continuation rules, and manual execution requests.
 
 Calendar exceptions are resolved before ordinary scheduling. Deployment-specific calendars belong in persistent configuration, not public source constants.
 

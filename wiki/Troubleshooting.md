@@ -67,9 +67,9 @@ Check the actual Music Assistant player/group state and confirm no priority-audi
 
 For linked class timers, verify the manual run resolves the currently active selected class occurrence instead of falling back to the first configured class.
 
-## Wrong Bison continuation is chained
+## Wrong class continuation is chained
 
-Continuation identity is based on the same underlying base period/class. A short time gap alone is not enough. Adjacent regular classes or Bison blocks mapped to different periods must not chain.
+Continuation identity is based on an explicit link to the same underlying base period/class. A short time gap alone is not enough. Adjacent regular classes must not chain.
 
 ## MQTT / Govee says OFFLINE but MQTT is connected
 
