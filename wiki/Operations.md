@@ -7,13 +7,23 @@ This page covers day-to-day operational behavior for Classroom Control Hub.
 ```bash
 cd /opt/classroom-hub
 docker compose ps
-curl -fsS http://localhost:3000/health
+curl -fsS http://127.0.0.1:3000/health
 docker compose logs --tail=200
 ```
 
+Current expected services are `classroom-control-hub` and `classroom-control-hub-maintenance`. The previous Caddy/TLS service is intentionally absent.
+
+LAN access is currently direct HTTP:
+
+```text
+http://APPLIANCE-IP:3000/controller/
+```
+
+Restrict TCP/3000 to the trusted classroom/admin network. Keep `TRUST_PROXY_HOPS=0` unless a reviewed reverse proxy is intentionally introduced later.
+
 ## Display operations
 
-Display clients should reconnect automatically after network or backend interruptions. Verify display ID, WebSocket connectivity, version convergence, and current priority locks when a display is stale.
+Display clients should reconnect automatically after network or backend interruptions. Verify display ID, direct HTTP/WebSocket connectivity to port 3000, version convergence, and current priority locks when a display is stale.
 
 ## Morning Announcements
 
@@ -61,6 +71,10 @@ Linked Class End Time timers follow the active selected class occurrence. Contin
 
 Transition pseudo-classes are terminal standalone timer occurrences.
 
+## Scheduler readiness
+
+The backend `/health` endpoint validates database and scheduler state. If `scheduler.ok=false`, inspect the active SQLite schedule/automation records for malformed times or unsupported actions. Database-backed state is authoritative; editing only a legacy JSON mirror may not change readiness.
+
 ## School calendar operations
 
 ```text
@@ -73,7 +87,7 @@ No-school suppresses scheduled classroom operations and pauses cycle advancement
 
 Each integration reports independently. Pluto failure must not falsely mark MQTT/Govee offline. Slow optional hardware checks must not block initial Overview rendering.
 
-## Host Agent
+## Host Agent and maintenance
 
 Expected socket:
 
@@ -89,6 +103,15 @@ sudo test -S /run/classroom-control-hub/host-agent.sock
 sudo docker exec classroom-control-hub-maintenance ls -la /run/classroom-control-hub/
 ```
 
+`MAINTENANCE_TOKEN` must be non-empty and consistent across the Host Agent, main app, and maintenance service. Avoid printing the token in logs; compare presence/length instead.
+
+Shared runtime directories should remain:
+
+```text
+/opt/classroom-hub/data          root:10001 0770
+/opt/classroom-hub/data/backups  root:10001 0700
+```
+
 ## Safe Git upgrade sequence
 
 ```bash
@@ -97,14 +120,18 @@ cd /opt/classroom-hub
 git fetch origin
 git pull --ff-only origin main
 cat VERSION
-docker compose build --no-cache
-docker compose up -d
-docker compose ps
-curl -fsS http://localhost:3000/health
+sudo bash install.sh
 ```
 
-Keep a known-good rollback snapshot until the new release is verified.
+For development rebuilds after a valid install:
 
-The web updater pins its current revert snapshot, verifies its SHA-256 digest,
-and restores matching data while the application is stopped. Pending update
-requests are kept in a root-only host journal and resume after a restart.
+```bash
+docker compose build --no-cache
+docker compose up -d --remove-orphans
+docker compose ps
+curl -fsS http://127.0.0.1:3000/health
+```
+
+Keep a known-good rollback snapshot until the new release is verified. `--remove-orphans` cleans up the legacy TLS container when moving forward from a Caddy release.
+
+The web updater pins its current revert snapshot, verifies its SHA-256 digest, and restores matching data while the application is stopped. Pending update requests are kept in a root-only host journal and resume after a restart.
