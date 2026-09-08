@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-import json, os, re, shutil, socketserver, subprocess, urllib.parse
+import hmac, json, os, re, shutil, socketserver, subprocess, urllib.parse
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, timezone
 
-VERSION = "1.0.0-alpha.66"
+VERSION = "1.0.0-alpha.67"
 SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-control-hub/host-agent.sock")
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
 
@@ -129,6 +129,46 @@ APP_UPDATE_STATE_FILE=Path('/var/lib/classroom-hub/app-update-status.json')
 APP_UPDATE_REQUEST_FILE=Path('/var/lib/classroom-hub/app-update-request.json')
 APP_UPDATE_SERVICE='classroom-hub-app-update.service'
 RELEASE_REF_RE=re.compile(r'^v?\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$')
+HUB_ROOT=Path(os.environ.get('CLASSROOM_HUB_DIR','/opt/classroom-hub')).resolve()
+SERVICES_ROOT=Path(os.environ.get('CLASSROOM_SERVICES_DIR','/opt/services')).resolve()
+DOCKER_NAME_RE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
+MANAGED_CONTAINERS={'classroom-control-hub','classroom-control-hub-maintenance','mosquitto','govee2mqtt','music-assistant-server','nodered','portainer'}
+MANAGED_IMAGES={'eclipse-mosquitto:2.0.22','ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72','nodered/node-red:4.1.14-22','ghcr.io/music-assistant/server:2.9.13'}
+
+def managed_docker(args, cwd=''):
+    if not isinstance(args,list) or not args or len(args)>100 or any(not isinstance(x,str) or len(x)>4096 for x in args): raise RuntimeError('Invalid Docker request')
+    args=[x.replace('/managed/services',str(SERVICES_ROOT)).replace('/managed/classroom-hub',str(HUB_ROOT)) for x in args]
+    verb=args[0]
+    if verb=='info':
+        if len(args) not in (1,3) or len(args)==3 and (args[1]!='--format' or not args[2].startswith('{{')): raise RuntimeError('Unsupported Docker info arguments')
+    elif verb=='ps':
+        valid=args[1:] in ([],['-a']) or len(args) in (3,4) and args[-2]=='--format' and args[-1].startswith('{{') and args[1:-2] in ([],['-a'])
+        if not valid: raise RuntimeError('Unsupported Docker process-list arguments')
+    elif verb=='stats':
+        valid=args[1:] in ([],['--no-stream']) or len(args) in (3,4) and args[-2]=='--format' and args[-1].startswith('{{') and args[1:-2] in ([],['--no-stream'])
+        if not valid: raise RuntimeError('Unsupported Docker statistics arguments')
+    elif verb=='images':
+        valid=args[1:] in ([],['--filter','dangling=true']) or len(args) in (3,5) and args[-2]=='--format' and args[-1].startswith('{{') and args[1:-2] in ([],['--filter','dangling=true'])
+        if not valid: raise RuntimeError('Unsupported Docker image-list arguments')
+    elif verb in ('start','stop','restart','kill'):
+        if len(args)!=2 or args[1] not in MANAGED_CONTAINERS: raise RuntimeError('Container is outside the managed allowlist')
+    elif verb=='logs':
+        if not args[-1] in MANAGED_CONTAINERS or any(x not in ('--timestamps','--tail') and not x.isdigit() and x not in MANAGED_CONTAINERS for x in args[1:]): raise RuntimeError('Unsupported Docker log request')
+    elif verb=='inspect':
+        if len(args)!=2 or args[1] not in MANAGED_CONTAINERS: raise RuntimeError('Container is outside the managed allowlist')
+    elif verb=='rm':
+        if len(args) not in (2,3) or args[-1] not in MANAGED_CONTAINERS or (len(args)==3 and args[1]!='-f'): raise RuntimeError('Unsupported container removal')
+    elif verb=='compose':
+        if cwd!='hub' or any(x not in ('compose','config','--services','ps') for x in args): raise RuntimeError('Only read-only hub Compose inspection is allowed')
+    elif verb=='run':
+        if args[-1] not in MANAGED_IMAGES: raise RuntimeError('Integration image is not pinned or allowlisted')
+        forbidden=('--privileged','--pid','--ipc','--device','--cap-add','--security-opt','--entrypoint','--userns')
+        if any(x.startswith(forbidden) or 'docker.sock' in x or x.startswith('/') and not (x.startswith(str(SERVICES_ROOT)) or x.startswith(str(HUB_ROOT))) for x in args): raise RuntimeError('Unsafe Docker run option')
+        if '--name' not in args or args.index('--name')+1>=len(args) or args[args.index('--name')+1] not in MANAGED_CONTAINERS: raise RuntimeError('Managed container name required')
+    else: raise RuntimeError('Docker operation is not allowlisted')
+    p=run(['docker',*args],180,False)
+    if p.returncode!=0: raise RuntimeError((p.stderr or p.stdout or 'Docker operation failed').strip())
+    return {'ok':True,'stdout':p.stdout or '','stderr':p.stderr or ''}
 
 def update_job_status(include_log=False):
     state={"phase":"idle","message":"No host update has been started.","ok":None,"rebootRequired":Path('/var/run/reboot-required').exists()}
@@ -273,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
     def auth(self):
         if not TOKEN: self.send_json(503,{"ok":False,"error":"Host agent token not configured"}); return False
-        if self.headers.get('x-maintenance-token','') != TOKEN: self.send_json(401,{"ok":False,"error":"Unauthorized"}); return False
+        if not hmac.compare_digest(self.headers.get('x-maintenance-token',''), TOKEN): self.send_json(401,{"ok":False,"error":"Unauthorized"}); return False
         return True
     def body(self):
         try:
@@ -322,6 +362,8 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/app-updates/revert':
                 body=self.body()
                 return self.send_json(202,start_app_update_job({**body,"action":"revert"}))
+            if path=='/docker/exec':
+                body=self.body(); return self.send_json(200,managed_docker(body.get('args'),str(body.get('cwd') or '')))
             if path=='/cleanup/migration-retention':
                 body=self.body()
                 if str(body.get('confirm') or '')!='PRUNE_MIGRATIONS': return self.send_json(400,{"ok":False,"error":"Explicit PRUNE_MIGRATIONS confirmation required"})

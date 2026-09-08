@@ -91,7 +91,7 @@ docker build -t classroom-control-hub-maintenance:test maintenance-agent
 
 ## Current known-good baseline
 
-`1.0.0-alpha.66` is the known-good baseline at the time this page was updated. A newer `VERSION` supersedes the version number but not these invariants unless deliberately changed and documented.
+`1.0.0-alpha.67` is the known-good baseline at the time this page was updated. A newer `VERSION` supersedes the version number but not these invariants unless deliberately changed and documented.
 
 ## Testing areas
 

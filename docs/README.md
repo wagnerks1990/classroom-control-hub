@@ -14,6 +14,7 @@ This directory is the canonical technical documentation set for Classroom Contro
 - [Controller](CONTROLLER.md) — controller-specific information.
 - [Database](DATABASE.md) — SQLite storage and migration notes.
 - [Host Agent](HOST-AGENT.md) — host-level service responsibilities, migration verification, and security boundary.
+- [Windows Lab Agent](LAB-AGENT.md) — one-time enrollment, per-computer credentials, signing, removal, and privacy controls.
 - [Wiki Synchronization](WIKI-SYNC.md) — how the Git-tracked `wiki/` mirror is published to the actual GitHub Wiki.
 
 ## AI and contributor instructions

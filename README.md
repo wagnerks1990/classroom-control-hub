@@ -2,7 +2,7 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.66` — current known-good alpha baseline. The project is being hardened and rebuilt specifically for classroom and education use.
+> **Status:** `1.0.0-alpha.67` — security, deployment, privacy, agent enrollment, and recovery hardening for classroom and education use.
 
 ## What it does
 

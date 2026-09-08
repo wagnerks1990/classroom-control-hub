@@ -1,4 +1,6 @@
 {
   "room": "Classroom",
-  "displays": []
+  "devices": {},
+  "displayGroups": {},
+  "lightingGroups": []
 }

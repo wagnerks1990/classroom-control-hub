@@ -2,7 +2,7 @@
 
 Classroom Control Hub is a centralized classroom automation and control platform for displays, AV routing, lighting, media, live announcements, Background Music, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.66` — current known-good alpha baseline.
+> **Status:** `1.0.0-alpha.67` — current known-good alpha baseline.
 
 ## Start here
 
@@ -18,7 +18,7 @@ Classroom Control Hub is a centralized classroom automation and control platform
 
 ## Current verified baseline
 
-At alpha.66, the production baseline includes:
+At alpha.67, the production baseline includes:
 
 - HLS-based Morning Announcements live detection
 - working local announcement audio volume/mute control
