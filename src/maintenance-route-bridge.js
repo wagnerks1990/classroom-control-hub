@@ -62,6 +62,10 @@ function wrapVeyonStatusHandler(handler){
 
 const originalGet=express.application.get;
 express.application.get=function(route,...handlers){
+  if(route==="/api/v1/admin/config"&&handlers.length){
+    const handler=handlers[handlers.length-1];
+    originalGet.call(this,"/api/v1/internal/maintenance/config",requireMaintenance,handler);
+  }
   if(route==="/api/v1/music-assistant/status"&&handlers.length){
     const handler=handlers[handlers.length-1];
     originalGet.call(this,"/api/v1/internal/maintenance/music-assistant/status",requireMaintenance,handler);
