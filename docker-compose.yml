@@ -1,3 +1,5 @@
+# Legacy migration marker only: releases through alpha.70 used caddy:2.11.2-alpine.
+# No Caddy/TLS service exists in the current HTTP-only Compose stack.
 services:
   classroom-hub:
     build: .
