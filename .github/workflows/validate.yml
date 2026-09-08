@@ -20,7 +20,10 @@ jobs:
         run: |
           test -f src/server.js
           test -f src/storage.js
+          test -f src/startup-recovery.js
           test -f maintenance-agent/server.js
+          test -f maintenance-agent/extensions.js
+          test -f host-agent/start.py
           test -f public/controller/index.html
           test -f public/display/index.html
           test -f AGENTS.md
@@ -38,6 +41,7 @@ jobs:
         run: |
           node --check src/server.js
           node --check src/storage.js
+          node --check src/startup-recovery.js
           node --check src/school-schedule.js
           node --check src/security.js
 
@@ -52,6 +56,7 @@ jobs:
       - name: Validate maintenance syntax
         run: |
           node --check maintenance-agent/server.js
+          node --check maintenance-agent/extensions.js
 
       - name: Validate controller JavaScript
         run: node tools/validate-controller.js
@@ -60,7 +65,7 @@ jobs:
         run: npm test
 
       - name: Validate host agent Python
-        run: python -m py_compile host-agent/server.py
+        run: python -m py_compile host-agent/server.py host-agent/start.py
 
       - name: Validate installer shell syntax
         run: |
@@ -76,6 +81,12 @@ jobs:
 
       - name: Build maintenance container
         run: docker build -t classroom-control-hub-maintenance:test maintenance-agent
+
+      - name: Verify image release stamping
+        run: |
+          expected="$(cat VERSION)"
+          docker run --rm --entrypoint node classroom-control-hub:test -e "const fs=require('fs');const v=fs.readFileSync('/app/VERSION','utf8').trim();if(v!=='$expected')process.exit(1);for(const f of ['/app/public/controller/app.js','/app/public/display/index.html','/app/public/lab-agent/ClassroomHubAgent.ps1'])if(!fs.readFileSync(f,'utf8').includes(v))process.exit(2)"
+          docker run --rm --entrypoint node classroom-control-hub-maintenance:test -e "const fs=require('fs');const s=fs.readFileSync('/app/server.js','utf8');if(!s.includes('$expected'))process.exit(1)"
 
       - name: Compose direct HTTP smoke test
         run: |
@@ -100,7 +111,7 @@ jobs:
           curl -fsS http://127.0.0.1:3000/health | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{const j=JSON.parse(s);if(!j.ok)process.exit(1)})'
           cookie_jar="$RUNNER_TEMP/classroom-hub.cookies"
           curl -fsS -c "$cookie_jar" -H 'X-Setup-Token: ci-setup-token' -H 'Content-Type: application/json' \
-            --data '{"username":"ci-admin","displayName":"CI Administrator","password":"CI-Live-Test-Password-Alpha69!"}' \
+            --data '{"username":"ci-admin","displayName":"CI Administrator","password":"CI-Symbol!Password#Alpha71"}' \
             http://127.0.0.1:3000/api/v1/setup/administrator >/dev/null
           curl -fsS -b "$cookie_jar" -H 'Content-Type: application/json' -X PUT \
             --data '{"completed":true}' http://127.0.0.1:3000/api/v1/admin/setup-state >/dev/null
@@ -131,7 +142,8 @@ jobs:
         shell: pwsh
         run: |
           $agent = Get-Content public/lab-agent/ClassroomHubAgent.ps1 -Raw
-          if ($agent -notmatch "1\.0\.0-alpha\.70") { throw 'Windows agent version is not converged.' }
+          $dockerfile = Get-Content Dockerfile -Raw
+          if ($dockerfile -notmatch 'public/lab-agent/ClassroomHubAgent\.ps1') { throw 'Windows agent is not included in release-version stamping.' }
           foreach ($action in @('screenshot','refresh-history','instructor-lock','update-agent')) {
             if ($agent -notmatch "'$([regex]::Escape($action))'\s*\{") { throw "Missing Windows action: $action" }
           }
