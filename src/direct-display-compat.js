@@ -2,12 +2,12 @@
 
 // Direct classroom displays are intentionally addressed by stable configured
 // IDs (/display/tv1, /display/tv2, ...), without per-browser enrollment.
-// server.js still labels credential-less signed asset tokens with its legacy
-// compatibility marker. Keep that marker valid for protected /media and
-// /presentations fetches while the direct-display model is active.
 //
-// This does not weaken the HMAC, expiry, or enabled-display checks performed by
-// validAssetAccessToken(); it only removes the retired enrollment-policy gate.
+// server.js still uses its historical "legacy" marker for credential-less
+// signed asset tokens. Keep that marker valid for protected /media and
+// /presentations requests while the direct-display model is active. The token
+// itself remains HMAC-signed, expires normally, and is bound to an enabled
+// configured display ID.
 const { ClassroomHubStorage } = require("./storage");
 
 const prototype = ClassroomHubStorage.prototype;
@@ -21,6 +21,28 @@ if (!prototype.__directDisplayPolicyCompatInstalled) {
       directDisplayAccess: true
     };
   };
+
+  // Install direct display authentication before startup-recovery.js runs.
+  // Marking this function with __directDisplayAccess makes startup recovery
+  // recognize that the direct-display contract is already installed and avoids
+  // replacing it with an object carrying a synthetic credential ID such as
+  // "direct:tv1". Omitting a credential ID intentionally makes server.js issue
+  // the signed asset token with its compatibility marker, which the policy
+  // above authorizes without restoring browser enrollment.
+  function authenticateConfiguredDisplay(displayId) {
+    const id = String(displayId || "").trim();
+    if (!id) return null;
+    const row = this.db.prepare("SELECT id,enabled FROM display_devices WHERE id=? LIMIT 1").get(id);
+    if (!row || Number(row.enabled) === 0) return null;
+    return {
+      displayId: id,
+      label: "Configured display URL",
+      direct: true
+    };
+  }
+  authenticateConfiguredDisplay.__directDisplayAccess = true;
+  prototype.authenticateDisplay = authenticateConfiguredDisplay;
+
   Object.defineProperty(prototype, "__directDisplayPolicyCompatInstalled", {
     value: true,
     enumerable: false,
