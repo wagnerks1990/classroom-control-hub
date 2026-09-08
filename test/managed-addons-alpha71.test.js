@@ -33,6 +33,8 @@ test("supported optional integrations can be adopted or Hub-managed",()=>{
 test("native Veyon WebAPI is host-managed but remains fully configurable",()=>{
   const ext=read("maintenance-agent/extensions.js");
   const hostServer=read("host-agent/server.py");
+  const hostUnit=read("host-agent/classroom-control-hub-host-agent.service");
+  const keySync=read("host-agent/sync-veyon-key.sh");
   const bridge=read("src/maintenance-route-bridge.js");
   const ui=read("public/shared/integration-setup.js");
   assert.match(hostServer,/"veyon\.service"/);
@@ -44,8 +46,15 @@ test("native Veyon WebAPI is host-managed but remains fully configurable",()=>{
   assert.match(ext,/externalOnly:false/);
   assert.match(ext,/saveVeyonSettings/);
   assert.match(ext,/internal\/maintenance\/integration-connections/);
+  assert.match(ui,/keyName\|\|"master"/);
+  assert.match(ui,/placeholder:"master"/);
   assert.match(ui,/windowsCredentialPassword/);
   assert.match(ui,/linuxSshCredentialPrivateKey/);
+  assert.match(keySync,/VEYON_KEY_NAME:-master/);
+  assert.match(keySync,/authkeys export "\$KEY_NAME\/private"/);
+  assert.match(keySync,/authkeys export "\$KEY_NAME\/public"/);
+  assert.match(hostUnit,/ExecStartPre=\/bin\/bash \/opt\/classroom-hub\/host-agent\/sync-veyon-key\.sh/);
+  assert.match(hostUnit,/ReadWritePaths=.*\/etc\/classroom-control-hub/);
   assert.match(bridge,/internal\/maintenance\/veyon\/computers/);
   assert.match(bridge,/internal\/maintenance\/integration-connections/);
 });
