@@ -21,6 +21,15 @@ COPY src ./src
 COPY config ./config
 COPY public ./public
 
+# Stamp independently loaded client/runtime surfaces from the single release
+# VERSION file. This prevents backend/display/controller/agent drift when a new
+# alpha is cut and keeps version convergence mechanically testable.
+RUN RELEASE_VERSION="$(cat VERSION)" \
+ && sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+/${RELEASE_VERSION}/g" \
+      public/controller/app.js \
+      public/display/index.html \
+      public/lab-agent/ClassroomHubAgent.ps1
+
 RUN npx esbuild public/display/sendspin-entry.js --bundle --format=esm --target=es2022 --outfile=public/display/sendspin.bundle.js
 
 RUN groupadd --gid 10001 classroom-hub \
@@ -36,4 +45,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
 USER 10001:10001
-CMD ["node", "src/server.js"]
+CMD ["node", "src/startup-recovery.js"]

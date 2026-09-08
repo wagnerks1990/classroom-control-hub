@@ -1,18 +1,18 @@
 # Configuration
 
-Classroom Control Hub keeps public source generic while each installation supplies site-specific settings at runtime.
+Classroom Control Hub keeps public source generic while each installation supplies school-specific settings at runtime.
 
 ## Configuration layers
 
 A deployment can use:
 
-- persistent database/runtime settings configured through the controller
-- the encrypted database secret store for credentials and private keys
-- `.env` for bootstrap, host/container boundary, and migration fallback values
-- `config/` JSON files for generic defaults, schemas, and migration compatibility
-- mounted persistent directories for site-specific state
+- persistent database/runtime settings configured through the controller;
+- the encrypted database secret store for credentials and private keys;
+- `.env` for bootstrap, host/container boundary, and migration fallback values;
+- `config/` JSON files for generic defaults, schemas, and migration compatibility;
+- mounted persistent directories for site-specific and managed-integration state.
 
-Normal classroom configuration should be completed in the GUI. MQTT/Govee, Pluto, Veyon, Music Assistant, and update settings become database-authoritative after they are saved. `.env` remains necessary for the database/master-key paths, first-use and internal service credentials, port mapping, and reverse-proxy security boundaries.
+Normal classroom configuration should be completed in the GUI. MQTT/Govee, Pluto, Veyon, Music Assistant, displays, schedules, automations, and update settings become database-authoritative after they are saved.
 
 ## Standard production paths
 
@@ -30,28 +30,51 @@ Native Host Agent socket:
 /run/classroom-control-hub/host-agent.sock
 ```
 
-Older migration-era references to `/opt/classroom-control-hub`, `/run/classroom-hub/host-agent.sock`, or `HOST_Classroom_DIR` are legacy rather than preferred new configuration.
+Alpha.71 reconciles the alpha.70 database-name split. `DATABASE_FILE` is authoritative. The installer takes SQLite-safe backups of every `data/*.db`, stops the app before active-database canonicalization, verifies the migrated database with `PRAGMA quick_check`, preserves the prior file for rollback, and updates `.env` before recreation.
+
+## Current transport
+
+The appliance is temporarily HTTP-only:
+
+```env
+HUB_BIND_ADDRESS=0.0.0.0
+HUB_PORT=3000
+TRUST_PROXY_HOPS=0
+```
+
+Restrict TCP/3000 to the trusted classroom/admin network. Caddy/TLS is intentionally deferred to a later reviewed release.
 
 ## Never commit production secrets
 
-Do not commit passwords, API tokens, MQTT credentials, Music Assistant tokens, Ant Media credentials, SSH/TLS private keys, student/user data, production SQLite databases, `.env`, or backups containing runtime state.
+Do not commit passwords, API tokens, MQTT credentials, Music Assistant tokens, Ant Media credentials, SSH/private keys, student/user data, production SQLite databases, `.env`, or backups containing runtime state.
 
-Use `.env`, mounted secrets, or the encrypted application secret store.
+## Optional managed integrations
 
-## Common bootstrap and migration fallback settings
+Setup and **Infrastructure & Recovery** expose a supported add-on catalog. The controller is the appliance control plane: it discovers Docker containers already on the host, can adopt an existing supported service without recreating it, and can explicitly deploy/recreate/remove supported add-ons while preserving their managed data.
 
-### Application
+Current first-class add-ons:
 
-```env
-ROOM_NAME=Classroom
-TZ=America/New_York
-SCHEDULER_TIMEZONE=America/New_York
-HUB_PORT=3000
-```
+| Integration | Container | Managed image |
+| --- | --- | --- |
+| Mosquitto | `mosquitto` | `eclipse-mosquitto:latest` |
+| Govee2MQTT | `govee2mqtt` | `ghcr.io/wez/govee2mqtt:latest` |
+| Music Assistant | `music-assistant-server` | `ghcr.io/music-assistant/server:latest` |
+| Veyon WebAPI | `veyon-webapi` | `veyon/webapi-proxy:latest` |
 
-### MQTT / Govee
+Supported actions are intentionally distinct:
 
-Configure this under **Settings → Integrations & Hardware**. The GUI stores the password in the encrypted secret store and never returns it to the browser. These environment variables remain supported as first-start fallbacks:
+- **Adopt Existing** — record/control the existing container without recreation.
+- **Install / Deploy** — create a missing supported service from its reviewed template.
+- **Save & Recreate / Update** — explicitly replace the container using saved settings while preserving managed persistent data.
+- **Remove** — remove the supported container while preserving its managed data directory for redeploy/rollback.
+
+Existing Docker containers outside the first-class catalog can still be inventoried and safely operated through authenticated lifecycle/log/inspect controls. New arbitrary images are not accepted by the Host Agent; new `docker run` operations remain restricted to reviewed integration images.
+
+### Mosquitto
+
+Managed Mosquitto stores configuration, persistence data, and logs beneath the services root. The generated deployment requires a non-empty username and a sufficiently long password rather than enabling anonymous access.
+
+Bootstrap/migration fallbacks:
 
 ```env
 MQTT_URL=mqtt://host.docker.internal:1883
@@ -59,27 +82,23 @@ MQTT_USERNAME=
 MQTT_PASSWORD=
 ```
 
-### Pluto Mark I
+### Govee2MQTT
 
-Configure the endpoint, timeout, and read retries under **Settings → Integrations & Hardware**. Changes are validated, stored in SQLite, and applied live. These environment variables remain supported as first-start fallbacks:
-
-```env
-PLUTO_URL=
-PLUTO_TIMEOUT_MS=4000
-PLUTO_READ_RETRIES=4
-```
-
-The public default intentionally leaves `PLUTO_URL` empty. Production supplies the local endpoint through runtime configuration. An unconfigured Pluto should be shown as `NOT CONFIGURED`, not continuously probed with an empty URL.
+Managed Govee2MQTT uses host networking for LAN discovery/control and can receive MQTT/Govee credentials through the protected integration configuration path.
 
 ### Music Assistant
+
+Existing Music Assistant containers can be adopted without recreation. A Hub-managed deployment uses host networking for local discovery and keeps Music Assistant `/data` under the managed services root.
+
+Application fallback:
 
 ```env
 MUSIC_ASSISTANT_URL=http://host.docker.internal:8095
 ```
 
-### Veyon
+### Veyon WebAPI
 
-Configure the WebAPI endpoint, authentication key name, discovery subnet/range, pool limits, and encrypted private key under **Settings → Integrations & Hardware**. These environment variables remain supported as first-start fallbacks:
+Veyon can use an already-running WebAPI service/container or the supported proxy add-on. Configure the application endpoint, key name, scan subnet/range, pool limits, and encrypted private key under **Settings → Integrations & Hardware**.
 
 ```env
 VEYON_WEBAPI_URL=http://host.docker.internal:11080
@@ -87,41 +106,55 @@ VEYON_KEY_NAME=ClassroomControlHub
 VEYON_SCAN_SUBNET=
 ```
 
-### Morning Announcements
+## Pluto Mark I
+
+Configure the endpoint, timeout, and read retries under **Settings → Integrations & Hardware**. Changes are validated, stored in SQLite, and applied live.
 
 ```env
-MORNING_ANNOUNCEMENTS_URL=
+PLUTO_URL=
+PLUTO_TIMEOUT_MS=4000
+PLUTO_READ_RETRIES=4
 ```
 
-Production stream URLs and stream IDs remain outside the public repository.
+An unconfigured Pluto should be shown as `NOT CONFIGURED`, not continuously probed with an empty URL.
 
 ## Independent integration health
 
 Each integration reports its own state. A Pluto failure must not make MQTT/Govee appear offline. Slow optional integration checks must not block initial Overview rendering.
 
-Where practical, distinguish:
+Where practical, distinguish configured, connected/reachable, current state, last success, and last error.
 
-- configured
-- connected/reachable
-- current state
-- last success
-- last error
+## School and classroom identity
 
-## Persistent configuration
+The Setup Wizard and controller Settings page store school/district name, classroom name, product name, logo, favicon, timezone, and theme values in persistent application state.
 
-The controller persists operational settings such as displays, class schedules, automations, cycle/school calendar rules, Morning Announcements settings, announcement volume, Background Music settings, and integration/runtime settings.
+The product is intentionally education-specific and does not expose a neutral organization/site/space preset.
 
-These values live in persistent storage mounted into the container.
+## Display configuration
 
-## School and classroom identity and theming
+Displays use stable receiver IDs. In alpha.71 the Setup Wizard Receiver IDs field is editable rather than a disabled preview.
 
-The setup wizard and controller Settings page store school/district name,
-classroom name, product name, logo, favicon, and theme mode/colors in the SQLite
-site profile. Normal branding does not require editing `.env` or JSON.
+Rules:
 
-All browser surfaces load the secret-free `/api/v1/branding` contract. The
-product is intentionally education-specific and does not expose a neutral
-organization/site/space preset.
+- receiver IDs must be unique;
+- editing the receiver list synchronizes the display count;
+- changing the display count adds/removes trailing default IDs;
+- saving a reduced receiver set prunes every display group's member list to IDs that still exist;
+- friendly display names may change without changing receiver IDs or invalidating enrolled credentials.
+
+Enroll receivers under **Settings → Classroom Display Enrollment**. Each expiring link can be consumed once and issues a unique credential bound to the stable display ID.
+
+## Access profiles and passwords
+
+Explicitly assigned profiles are authorization boundaries and fail closed. Alpha.71 startup recovery repairs built-in profiles only when their capability array is missing/empty/invalid. The Administrator profile must resolve to:
+
+```json
+{"capabilities":["*"]}
+```
+
+Valid non-empty customized capability arrays are not overwritten.
+
+Passwords are opaque application strings. Characters such as `!`, `#`, `$`, quotes, backslashes, and semicolons are valid when they meet password-length policy. Shell troubleshooting must quote/read passwords safely because shell syntax is separate from browser/API password handling.
 
 ## Calendar and schedule rules
 
@@ -138,53 +171,23 @@ No-School
 
 Deployment-specific dates and class mappings belong in runtime state rather than public source constants.
 
-## Display configuration
-
-Displays use stable IDs and should recover current server state after browser, network, or service restarts. Backend/controller/display versions must remain synchronized during releases.
-
-Enroll receivers under **Settings → Classroom Display Enrollment**. Each
-expiring link can be consumed once and issues a unique credential bound to the
-display ID. The controller reports enrollment coverage and supports link
-cancellation, individual revocation, and full rotation. Raw credentials are not
-listed, and SQLite stores token hashes only.
-
-`DISPLAY_TOKEN` is a migration fallback for receivers provisioned before this
-feature. Disable legacy access after all enabled displays are enrolled; the GUI
-guards against disabling it while coverage is incomplete.
-
-## Morning Announcements
-
-Morning Announcements configuration includes enabled state, stream/player URL, Live Watch window, target displays, saved volume, and live-detection diagnostics.
-
-For Ant Media player URLs, HLS is the preferred live-state/playback transport when available. Manual and automatic playback share the same highest-priority state.
-
-## Background Music
-
-Background Music remains independent of normal visual automation. It yields to priority audio and resumes only after priority release/reconciliation completes.
-
 ## Recovery controls
 
-The main application is the only SQLite owner. The maintenance agent reaches
-database status, audit retention, and managed-integration settings through its
-token-bound internal API.
+The main application owns SQLite. The maintenance layer uses the token-bound internal API for database status and application configuration, and the native Host Agent for approved host/Docker operations.
 
-- `MANAGED_APP_CONTAINER` defaults to `classroom-control-hub`.
-- `RESTORE_HEALTH_TIMEOUT_MS` defaults to `60000`.
-- `RESTORE_MAX_EXPANDED_MB` defaults to `4096`.
-
-Every restore creates a pre-restore operational backup, validates archive paths
-and expanded size, verifies the SQLite snapshot with `PRAGMA quick_check`, and
-waits for application health after restart. Failed verification automatically
-restores the safety backup and reports the rollback outcome.
+Every restore creates a pre-restore operational backup, validates archive paths and expanded size, verifies SQLite, and waits for application health after restart. Failed verification automatically restores the safety backup and reports the rollback outcome.
 
 ## Configuration validation
 
-Before production deployment, verify:
+Before live deployment, verify:
 
 1. no secrets are present in tracked files;
 2. persistent directories and secret files are mounted;
 3. timezone is correct;
-4. display IDs and targets are correct;
-5. class/calendar rules resolve the expected current day;
-6. integration endpoints are reachable from the correct host/container;
-7. Host Agent service and maintenance container both see `/run/classroom-control-hub/host-agent.sock`.
+4. `DATABASE_FILE` resolves to the intended live database;
+5. Administrator has effective `*` capability;
+6. receiver IDs/groups are internally consistent;
+7. class/calendar rules resolve the expected current day;
+8. integration endpoints are reachable from the correct host/container;
+9. Host Agent and maintenance both see `/run/classroom-control-hub/host-agent.sock`;
+10. optional managed add-ons preserve their data through an explicit recreate test before classroom reliance.

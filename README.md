@@ -2,7 +2,7 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.70` — live-test hardening in progress. The next release removes the Caddy/TLS gateway and temporarily standardizes on direct HTTP while deployment/update reliability is corrected.
+> **Status:** `1.0.0-alpha.71` — live-test recovery/stabilization release with direct HTTP deployment, database/profile migration repair, setup-wizard fixes, and expanded appliance integration control.
 
 ## What it does
 
@@ -16,6 +16,8 @@ Classroom Control Hub provides a single web controller for classroom and lab ope
 - lighting integrations through MQTT
 - class schedules, cycle days, closures, delays, half-days, and remote-day rules
 - lab/client management integrations
+- appliance-wide Docker inventory/lifecycle controls
+- optional managed integration deployment/adoption
 - diagnostics, backup/recovery, and host-management tooling
 
 ## Architecture
@@ -30,7 +32,24 @@ Ubuntu host
     └── classroom-control-hub-maintenance
 ```
 
-The application and maintenance service run in containers. Host-level operations are delegated to a narrow systemd host agent instead of giving the main application broad host privileges.
+The application and maintenance service run in containers. Host-level operations are delegated to a narrow authenticated systemd Host Agent instead of giving the main application broad host privileges.
+
+### Appliance control plane
+
+The controller inventories Docker containers already present on the appliance and can perform authenticated lifecycle/diagnostic operations on discovered containers. Existing containers can be adopted without recreation.
+
+First-class optional add-ons can also be deployed/recreated from Setup or Infrastructure & Recovery using reviewed image repositories:
+
+```text
+mosquitto                 eclipse-mosquitto:latest
+govee2mqtt                ghcr.io/wez/govee2mqtt:latest
+music-assistant-server     ghcr.io/music-assistant/server:latest
+veyon-webapi               veyon/webapi-proxy:latest
+```
+
+Persistent add-on state remains under the managed services root rather than container writable layers. Removing/recreating a supported add-on preserves its managed data directory.
+
+This is intentionally **not** an unrestricted root Docker-command API: new container creation stays restricted to reviewed supported integration images, while existing containers can be discovered/adopted for safe appliance administration.
 
 ### Temporary HTTP-only deployment
 
@@ -91,6 +110,20 @@ curl -fsS http://127.0.0.1:3000/health
 `--remove-orphans` removes the legacy TLS gateway when upgrading from a release that still included it.
 
 Back up production state before upgrades and never overwrite the local `.env`, database, data, uploads, backups, or secrets with repository examples.
+
+## Alpha.71 recovery changes
+
+Alpha.71 includes the live-test fixes found while recovering alpha.70:
+
+- installer takes SQLite-safe snapshots of every `data/*.db` before migration;
+- an explicitly configured active database is preserved and database filename reconciliation is verified before container recreation;
+- built-in access profiles with missing/empty capability arrays are repaired at startup without overwriting valid custom capability lists;
+- Administrator remains `capabilities:["*"]`;
+- punctuation-heavy passwords are regression-tested through setup/login/scrypt paths;
+- maintenance startup health checks the Host Agent directly instead of waiting on the main application;
+- missing maintenance secrets, old master-key location, and shared data-root ownership are reconciled by the installer;
+- setup receiver IDs remain editable, duplicate IDs are rejected, and display groups are pruned when receivers are removed;
+- existing supported integration containers can be adopted without recreation.
 
 ## Development deployment
 
@@ -162,7 +195,7 @@ Start with:
 
 AI coding assistants should read `AGENTS.md` first and then `docs/AI-CONTEXT.md`. GitHub Copilot-specific guidance is stored in `.github/copilot-instructions.md`.
 
-Project-critical invariants include Morning Announcements priority/recovery, explicitly linked class continuations, Background Music recovery, version convergence, independent integration health, preservation of production runtime state, and the current rule that TLS/Caddy must not become a deployment health dependency until HTTPS is intentionally reintroduced.
+Project-critical invariants include Morning Announcements priority/recovery, explicitly linked class continuations, Background Music recovery, version convergence, independent integration health, database identity preservation, access-profile integrity, managed integration data preservation, and the current rule that TLS/Caddy must not become a deployment health dependency until HTTPS is intentionally reintroduced.
 
 ## Container images
 
@@ -173,11 +206,11 @@ ghcr.io/wagnerks1990/classroom-control-hub
 ghcr.io/wagnerks1990/classroom-control-hub-maintenance
 ```
 
-The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a future stable release.
+The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a future stable Classroom Control Hub release. Optional third-party integration image tags are managed separately from the Hub's own release channel.
 
 ## Project maturity
 
-This repository is currently alpha software. Production deployments should pin a specific version or known-good commit and maintain backups before upgrades.
+This repository is currently alpha software. Production deployments should pin a specific Hub version or known-good commit and maintain backups before upgrades.
 
 ## License
 

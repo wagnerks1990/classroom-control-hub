@@ -42,23 +42,26 @@ test("release version converges across independently deployed runtime surfaces",
   assert.equal(require(path.join(root,"package.json")).version,version);
   assert.equal(require(path.join(root,"maintenance-agent","package.json")).version,version);
 
-  const surfaces=[
-    "maintenance-agent/server.js",
-    "host-agent/server.py",
-    "public/lab-agent/ClassroomHubAgent.ps1",
-    "public/controller/app.js",
-    "public/display/index.html"
-  ];
-  const releasePattern=/\b\d+\.\d+\.\d+-alpha\.\d+\b/g;
-  for(const file of surfaces){
-    const found=[...new Set(read(file).match(releasePattern)||[])];
-    assert.ok(found.length,`${file} must expose the release version or load it from VERSION`);
-    assert.deepEqual(found,[version],`${file} contains a stale or divergent release version`);
+  // Native Host Agent version is supplied by the audited wrapper, while the
+  // large core implementation remains stable and importable.
+  assert.match(read("host-agent/start.py"),new RegExp(version.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
+  assert.match(read("host-agent/classroom-control-hub-host-agent.service"),/host-agent\/start\.py/);
+
+  // Large browser/agent bundles are mechanically stamped at image build time
+  // from VERSION rather than requiring manual release-number edits in each file.
+  const dockerfile=read("Dockerfile");
+  assert.match(dockerfile,/^COPY VERSION \.\/VERSION$/m,"runtime image must contain VERSION for health and update verification");
+  assert.match(dockerfile,/RELEASE_VERSION="\$\(cat VERSION\)"/);
+  for(const file of ["public/controller/app.js","public/display/index.html","public/lab-agent/ClassroomHubAgent.ps1"]){
+    assert.ok(dockerfile.includes(file),`${file} must be stamped from VERSION during the image build`);
   }
-  assert.match(read("Dockerfile"),/^COPY VERSION \.\/VERSION$/m,"runtime image must contain VERSION for health and update verification");
+  const maintenanceDockerfile=read("maintenance-agent/Dockerfile");
+  assert.match(maintenanceDockerfile,/require\('\.\/package\.json'\)\.version/);
+  assert.match(maintenanceDockerfile,/sed -i -E/);
 
   // Historical changelog entries and protocol compatibility fixtures may
   // legitimately mention older releases. Current-baseline documentation may not.
+  const releasePattern=/\b\d+\.\d+\.\d+-alpha\.\d+\b/g;
   for(const file of ["AGENTS.md","README.md","docs/AI-CONTEXT.md","docs/DEVELOPMENT.md","wiki/Home.md","wiki/Development.md"]){
     const found=[...new Set(read(file).match(releasePattern)||[])];
     assert.deepEqual(found,[version],`${file} contains a stale current-baseline version`);
@@ -128,6 +131,7 @@ test("student-sensitive and diagnostic routes use explicit authorization boundar
 test("health endpoints distinguish liveness from dependency readiness",()=>{
   const main=read("src/server.js");
   const maintenance=read("maintenance-agent/server.js");
+  const compose=read("docker-compose.yml");
   const mainHealth=main.match(/app\.get\(["']\/health["'][\s\S]*?\n\}\);/);
   assert.ok(mainHealth,"Main health endpoint was not found");
   assert.match(mainHealth[0],/database/i,"Main readiness must report database status");
@@ -139,6 +143,8 @@ test("health endpoints distinguish liveness from dependency readiness",()=>{
   assert.match(maintenanceHealth[0],/ready/i,"Maintenance health response must expose readiness");
   assert.match(maintenanceHealth[0],/res\.status\(/,"Maintenance readiness must fail when required dependencies are unavailable");
   assert.equal(/res\.json\(\{ok:true,/.test(maintenanceHealth[0]),false,"Maintenance health must not report unconditional success");
+  assert.match(compose,/\/host\/agent\/health/,"Compose maintenance health must not wait on the main application during startup");
+  assert.doesNotMatch(compose,/3010\/ready[^\n]*healthcheck/,"Compose must not reintroduce the circular maintenance/main readiness dependency");
 });
 
 test("application update and rollback restore state before starting the application",()=>{
