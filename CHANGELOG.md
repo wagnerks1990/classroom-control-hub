@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Individually enrolled classroom displays
+- Replaced the normal shared display-token workflow with one-time, expiring enrollment links and a unique revocable credential for each display browser.
+- Added controller coverage reporting, enrollment-link creation/cancellation, credential rotation/revocation, and a guarded switch for disabling legacy shared-token access.
+- Stored only SHA-256 hashes of enrollment codes and display credentials in SQLite; raw credentials are returned once to the enrolling display and never exposed by administration APIs.
+- Preserved display credentials across name and configuration changes while revoking them automatically when a display is removed.
+
 ### Database-backed classroom integration settings
 - Added structured controller settings for MQTT/Govee, Pluto AV matrix, and Veyon classroom-computer connections.
 - Stored connection settings in SQLite and MQTT/Veyon credential material in the encrypted secret store without returning secret values to browsers.

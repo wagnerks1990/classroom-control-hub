@@ -88,6 +88,12 @@ keys, and tokens belong in the encrypted secret store and must never be returned
 by browser APIs. Environment variables remain bootstrap/migration fallbacks and
 host/container boundary configuration, not the normal editing surface.
 
+Browser displays use individually enrolled, revocable credentials. Enrollment
+links are one-use and expiring; raw enrollment codes and credentials must never
+be persisted or returned by administrative read APIs. A display credential is
+bound to its stable display ID and must survive name/configuration edits. The
+shared `DISPLAY_TOKEN` exists only as a controlled migration fallback.
+
 ## Git and release workflow
 
 `main` is the source branch used by the current production Git workflow. Before changing source, inspect the latest branch head and relevant files. Do not overwrite runtime state when updating source.

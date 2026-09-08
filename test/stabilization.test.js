@@ -45,6 +45,28 @@ async function waitForServer(){
   throw new Error(`Timed out waiting for server\n${logs}`);
 }
 
+function displayHello(payload){
+  return new Promise((resolve,reject)=>{
+    const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}});
+    const timeout=setTimeout(()=>{ws.terminate();reject(new Error("Display WebSocket timed out"))},3000);
+    ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"display",deviceId:"secure-tv",clientVersion:"1.0.0-alpha.66",...payload})));
+    ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);resolve({ws,ack:msg})}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});
+    ws.on("error",reject);
+  });
+}
+
+function rejectedDisplayHello(payload){
+  return new Promise((resolve,reject)=>{
+    const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}});
+    const timeout=setTimeout(()=>{ws.terminate();reject(new Error("Unauthorized display was not rejected"))},3000);
+    let errorMessage="";
+    ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"display",deviceId:"secure-tv",clientVersion:"1.0.0-alpha.66",...payload})));
+    ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);ws.terminate();reject(new Error("Unauthorized display was accepted"))}if(msg.type==="error")errorMessage=String(msg.error||"")});
+    ws.on("close",code=>{clearTimeout(timeout);try{assert.equal(code,1008);assert.match(errorMessage,/Unauthorized display/);resolve()}catch(err){reject(err)}});
+    ws.on("error",()=>{});
+  });
+}
+
 test.before(async()=>{
   tempDir=fs.mkdtempSync(path.join(os.tmpdir(),"classroom-hub-test-"));
   const keyFile=path.join(tempDir,"master.key");
@@ -155,6 +177,67 @@ test("authenticated administrator WebSocket is accepted",async()=>{
     ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);assert.equal(msg.role,"admin");ws.close();resolve()}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});
     ws.on("error",reject);
   });
+});
+
+test("classroom displays use one-time enrollment and individually revocable credentials",async()=>{
+  let result=await request("/api/v1/admin/displays",{method:"PUT",authenticated:true,body:{devices:{"secure-tv":{name:"Secure Classroom Display",enabled:true,avOutput:1,tags:[]}},displayGroups:{all:["secure-tv"]}}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+
+  result=await request("/api/v1/admin/displays/secure-tv/enrollment",{method:"POST",authenticated:true,body:{ttlMinutes:15}});
+  assert.equal(result.response.status,201,JSON.stringify(result.json));
+  assert.match(result.json.enrollment.url,/^\/display\/\?id=secure-tv#enrollmentToken=/);
+  const enrollmentToken=new URL(result.json.enrollment.url,baseUrl).hash.slice("#enrollmentToken=".length);
+  assert.ok(enrollmentToken.length>=40);
+
+  const enrolled=await displayHello({enrollmentToken,meta:{userAgent:"Regression classroom display"}});
+  assert.equal(enrolled.ack.authMode,"new-enrollment");
+  assert.ok(enrolled.ack.credential.length>=40);
+  assert.notEqual(enrolled.ack.credential,enrollmentToken);
+  const credential=enrolled.ack.credential,credentialId=enrolled.ack.credentialId;
+  enrolled.ws.close();
+
+  result=await request("/api/v1/admin/display-credentials",{authenticated:true});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.coverage.enabled,1);
+  assert.equal(result.json.coverage.enrolled,1);
+  assert.equal(result.json.coverage.unenrolled.length,0);
+  assert.equal(result.json.displays[0].credentials[0].id,credentialId);
+  assert.equal(JSON.stringify(result.json).includes(credential),false);
+  assert.equal(JSON.stringify(result.json).includes(enrollmentToken),false);
+
+  const db=new DatabaseSync(path.join(tempDir,"hub.db"),{readOnly:true});
+  const storedCredential=db.prepare("SELECT token_hash FROM display_credentials WHERE id=?").get(credentialId);
+  const storedEnrollment=db.prepare("SELECT token_hash,consumed_at consumedAt FROM display_enrollment_codes WHERE display_id='secure-tv'").get();
+  db.close();
+  assert.equal(storedCredential.token_hash.length,64);
+  assert.notEqual(storedCredential.token_hash,credential);
+  assert.equal(storedEnrollment.token_hash.length,64);
+  assert.notEqual(storedEnrollment.token_hash,enrollmentToken);
+  assert.ok(storedEnrollment.consumedAt);
+
+  result=await request("/api/v1/admin/displays",{method:"PUT",authenticated:true,body:{devices:{"secure-tv":{name:"Renamed Classroom Display",enabled:true,avOutput:1,tags:[]}},displayGroups:{all:["secure-tv"]}}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  const reconnected=await displayHello({credential});
+  assert.equal(reconnected.ack.authMode,"credential");
+  assert.equal(reconnected.ack.credentialId,credentialId);
+  assert.equal("credential" in reconnected.ack,false);
+  reconnected.ws.close();
+
+  result=await request("/api/v1/admin/display-credentials/policy",{method:"PUT",authenticated:true,body:{legacySharedTokenAllowed:false,enrollmentTtlMinutes:20}});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.policy.legacySharedTokenAllowed,false);
+  await rejectedDisplayHello({token:"test-display-secret"});
+  await rejectedDisplayHello({enrollmentToken});
+
+  const active=await displayHello({credential});
+  const revoked=new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(new Error("Revoked display connection stayed open")),3000);
+    active.ws.on("close",code=>{clearTimeout(timeout);try{assert.equal(code,1008);resolve()}catch(err){reject(err)}});
+  });
+  result=await request(`/api/v1/admin/display-credentials/${encodeURIComponent(credentialId)}`,{method:"DELETE",authenticated:true});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  await revoked;
+  await rejectedDisplayHello({credential});
 });
 
 test("Kyle Wagner attribution is installed on every current site surface",()=>{

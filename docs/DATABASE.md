@@ -11,6 +11,7 @@ in-memory data shapes intact.
 Normalized data now includes:
 
 - site/display configuration (`site_settings`, `display_devices`)
+- per-display authentication and one-use enrollment (`display_credentials`, `display_enrollment_codes`)
 - display and lighting groups (`device_groups`, `device_group_members`)
 - hardware integrations and Govee devices (`integrations`, `integration_devices`)
 - managed Docker modules (`managed_modules`)
@@ -42,3 +43,10 @@ containers. A database backup without the master key cannot decrypt stored secre
 
 ## Schema version 3
 Alpha 4 adds `access_profiles` and `system_preferences`, retires the legacy runtime-config display overlay, and exposes the normalized configuration through supported administration APIs. The web controller is now the preferred configuration surface; direct SQLite edits are unsupported.
+
+## Schema version 7
+
+Schema 7 adds individually revocable display credentials and expiring one-use
+enrollment codes. Both tables store SHA-256 token hashes only. Credentials are
+owned by stable `display_devices` IDs, survive display renames/configuration
+updates, and cascade away when the display itself is deleted.

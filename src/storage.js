@@ -46,6 +46,27 @@ class ClassroomHubStorage{
 
       CREATE TABLE IF NOT EXISTS site_settings(key TEXT PRIMARY KEY,value_json TEXT NOT NULL,updated_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS display_devices(id TEXT PRIMARY KEY,name TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,config_json TEXT NOT NULL DEFAULT '{}',updated_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS display_credentials(
+        id TEXT PRIMARY KEY,
+        display_id TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT,
+        revoked_at TEXT,
+        FOREIGN KEY(display_id) REFERENCES display_devices(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_display_credentials_display ON display_credentials(display_id,revoked_at,last_used_at);
+      CREATE TABLE IF NOT EXISTS display_enrollment_codes(
+        id TEXT PRIMARY KEY,
+        display_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        consumed_at TEXT,
+        FOREIGN KEY(display_id) REFERENCES display_devices(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_display_enrollment_display ON display_enrollment_codes(display_id,expires_at,consumed_at);
       CREATE TABLE IF NOT EXISTS device_groups(domain TEXT NOT NULL,name TEXT NOT NULL,config_json TEXT NOT NULL DEFAULT '{}',updated_at TEXT NOT NULL,PRIMARY KEY(domain,name));
       CREATE TABLE IF NOT EXISTS device_group_members(domain TEXT NOT NULL,group_name TEXT NOT NULL,member_id TEXT NOT NULL,position INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(domain,group_name,member_id),FOREIGN KEY(domain,group_name) REFERENCES device_groups(domain,name) ON DELETE CASCADE);
 
@@ -96,6 +117,7 @@ class ClassroomHubStorage{
     this.db.prepare("INSERT OR IGNORE INTO schema_migrations(version,name,applied_at) VALUES(4,'controller ui defaults and access profiles',?)").run(iso());
     this.applyTelemetrySeparationMigration();
     this.db.prepare("INSERT OR IGNORE INTO schema_migrations(version,name,applied_at) VALUES(6,'local authentication users and setup state',?)").run(iso());
+    this.db.prepare("INSERT OR IGNORE INTO schema_migrations(version,name,applied_at) VALUES(7,'display enrollment and revocable credentials',?)").run(iso());
     this.ensureDefaultAccessProfiles();
     this.masterKey=this.loadMasterKey();
     this.migrateNormalizedObjects();
@@ -154,7 +176,7 @@ class ClassroomHubStorage{
   databaseInfo(){
     const count=t=>this.db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n;
     let size=0;try{size=fs.statSync(this.dbFile).size}catch{}
-    return {file:this.dbFile,size,objects:count("object_store"),audits:count("audit_events"),telemetry:count("telemetry_state"),secrets:count("secret_store"),certificates:count("certificates"),encryptedSecrets:!!this.masterKey,journalMode:"WAL",schemaVersion:this.db.prepare("SELECT MAX(version) v FROM schema_migrations").get().v||0,normalized:{displays:count("display_devices"),groups:count("device_groups"),integrations:count("integrations"),managedModules:count("managed_modules"),integrationDevices:count("integration_devices"),classes:count("class_schedules"),automations:count("automations"),automationActions:count("automation_actions"),automationTargets:count("automation_targets"),scenes:count("scenes"),sessions:count("sessions"),accessProfiles:count("access_profiles"),preferences:count("system_preferences"),users:count("users"),userSessions:count("user_sessions")}};
+    return {file:this.dbFile,size,objects:count("object_store"),audits:count("audit_events"),telemetry:count("telemetry_state"),secrets:count("secret_store"),certificates:count("certificates"),encryptedSecrets:!!this.masterKey,journalMode:"WAL",schemaVersion:this.db.prepare("SELECT MAX(version) v FROM schema_migrations").get().v||0,normalized:{displays:count("display_devices"),displayCredentials:count("display_credentials"),groups:count("device_groups"),integrations:count("integrations"),managedModules:count("managed_modules"),integrationDevices:count("integration_devices"),classes:count("class_schedules"),automations:count("automations"),automationActions:count("automation_actions"),automationTargets:count("automation_targets"),scenes:count("scenes"),sessions:count("sessions"),accessProfiles:count("access_profiles"),preferences:count("system_preferences"),users:count("users"),userSessions:count("user_sessions")}};
   }
 
   hasObject(namespace){return !!this.db.prepare("SELECT 1 ok FROM object_store WHERE namespace=?").get(namespace)}
@@ -216,8 +238,10 @@ class ClassroomHubStorage{
   writeNormalized(namespace,value){
     const now=iso();
     if(namespace==="devices")return this.tx(()=>{
-      this.db.exec("DELETE FROM device_group_members WHERE domain='display';DELETE FROM device_groups WHERE domain='display';DELETE FROM display_devices;");
-      for(const [id,d] of Object.entries(value?.devices||{})){const cfg={...d};delete cfg.name;delete cfg.enabled;this.db.prepare("INSERT INTO display_devices(id,name,enabled,config_json,updated_at) VALUES(?,?,?,?,?)").run(id,String(d.name||id),bool(d.enabled!==false),JSON.stringify(cfg),now)}
+      this.db.exec("DELETE FROM device_group_members WHERE domain='display';DELETE FROM device_groups WHERE domain='display';");
+      const incoming=Object.entries(value?.devices||{}),ids=incoming.map(([id])=>String(id));
+      for(const [id,d] of incoming){const cfg={...d};delete cfg.name;delete cfg.enabled;this.db.prepare(`INSERT INTO display_devices(id,name,enabled,config_json,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,config_json=excluded.config_json,updated_at=excluded.updated_at`).run(id,String(d.name||id),bool(d.enabled!==false),JSON.stringify(cfg),now)}
+      if(ids.length)this.db.prepare(`DELETE FROM display_devices WHERE id NOT IN (${ids.map(()=>"?").join(",")})`).run(...ids);else this.db.exec("DELETE FROM display_devices");
       for(const [name,members] of Object.entries(value?.displayGroups||{})){this.db.prepare("INSERT INTO device_groups(domain,name,config_json,updated_at) VALUES('display',?,?,?)").run(name,"{}",now);(members||[]).forEach((m,i)=>this.db.prepare("INSERT INTO device_group_members(domain,group_name,member_id,position) VALUES('display',?,?,?)").run(name,String(m),i))}
       this.setSetting("devices.meta",{room:value?.room||"",lightingGroups:Array.isArray(value?.lightingGroups)?value.lightingGroups:[]});return value;
     });
@@ -288,6 +312,25 @@ class ClassroomHubStorage{
   deleteAccessProfile(id){this.db.prepare("DELETE FROM access_profiles WHERE id=?").run(String(id))}
   setPreference(key,value){this.db.prepare(`INSERT INTO system_preferences(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at`).run(String(key),JSON.stringify(value),iso())}
   getPreference(key,fallback=null){const r=this.db.prepare("SELECT value_json FROM system_preferences WHERE key=?").get(String(key));return r?parseJson(r.value_json,fallback):fallback}
+
+  displayCredentialPolicy(){const p=this.getPreference("display.credentials.policy",{})||{};return {legacySharedTokenAllowed:p.legacySharedTokenAllowed!==false,enrollmentTtlMinutes:Math.max(5,Math.min(60,Number(p.enrollmentTtlMinutes)||15))}}
+  setDisplayCredentialPolicy(value={}){const current=this.displayCredentialPolicy(),next={legacySharedTokenAllowed:value.legacySharedTokenAllowed??current.legacySharedTokenAllowed,enrollmentTtlMinutes:Math.max(5,Math.min(60,Number(value.enrollmentTtlMinutes)||current.enrollmentTtlMinutes))};this.setPreference("display.credentials.policy",next);return next}
+  tokenHash(token){return crypto.createHash("sha256").update(String(token||"")).digest("hex")}
+  createDisplayEnrollment(displayId,{ttlMinutes=null}={}){
+    displayId=String(displayId||"");const display=this.db.prepare("SELECT id,name,enabled FROM display_devices WHERE id=?").get(displayId);if(!display)throw Error("Display not found");if(!display.enabled)throw Error("Enable the display before enrollment");
+    const now=new Date(),ttl=Math.max(5,Math.min(60,Number(ttlMinutes)||this.displayCredentialPolicy().enrollmentTtlMinutes)),expires=new Date(now.getTime()+ttl*60000),token=crypto.randomBytes(32).toString("base64url"),id=crypto.randomUUID();
+    this.tx(()=>{this.db.prepare("DELETE FROM display_enrollment_codes WHERE consumed_at IS NOT NULL OR expires_at<=?").run(now.toISOString());this.db.prepare("DELETE FROM display_enrollment_codes WHERE display_id=? AND consumed_at IS NULL").run(displayId);this.db.prepare("INSERT INTO display_enrollment_codes(id,display_id,token_hash,created_at,expires_at) VALUES(?,?,?,?,?)").run(id,displayId,this.tokenHash(token),now.toISOString(),expires.toISOString())});
+    return {id,displayId,displayName:display.name,token,createdAt:now.toISOString(),expiresAt:expires.toISOString()};
+  }
+  consumeDisplayEnrollment(displayId,token,{label="Classroom display"}={}){
+    displayId=String(displayId||"");const hash=this.tokenHash(token),now=iso();
+    return this.tx(()=>{const row=this.db.prepare("SELECT e.*,d.enabled FROM display_enrollment_codes e JOIN display_devices d ON d.id=e.display_id WHERE e.display_id=? AND e.token_hash=?").get(displayId,hash);if(!row||row.consumed_at||row.expires_at<=now||!row.enabled)return null;const credential=crypto.randomBytes(32).toString("base64url"),id=crypto.randomUUID();this.db.prepare("UPDATE display_enrollment_codes SET consumed_at=? WHERE id=? AND consumed_at IS NULL").run(now,row.id);this.db.prepare("INSERT INTO display_credentials(id,display_id,label,token_hash,created_at,last_used_at) VALUES(?,?,?,?,?,?)").run(id,displayId,String(label||"Classroom display").slice(0,120),this.tokenHash(credential),now,now);return {id,displayId,credential,createdAt:now}})
+  }
+  authenticateDisplay(displayId,token){const now=iso(),row=this.db.prepare(`SELECT c.id,c.display_id displayId,c.label,c.created_at createdAt,c.last_used_at lastUsedAt FROM display_credentials c JOIN display_devices d ON d.id=c.display_id WHERE c.display_id=? AND c.token_hash=? AND c.revoked_at IS NULL AND d.enabled=1`).get(String(displayId||""),this.tokenHash(token));if(!row)return null;this.db.prepare("UPDATE display_credentials SET last_used_at=? WHERE id=?").run(now,row.id);return {...row,lastUsedAt:now}}
+  listDisplayCredentials(){const now=iso(),policy=this.displayCredentialPolicy(),rows=this.db.prepare("SELECT id,display_id displayId,label,created_at createdAt,last_used_at lastUsedAt,revoked_at revokedAt FROM display_credentials ORDER BY display_id,created_at DESC").all(),pending=this.db.prepare("SELECT id,display_id displayId,created_at createdAt,expires_at expiresAt FROM display_enrollment_codes WHERE consumed_at IS NULL AND expires_at>? ORDER BY display_id,created_at DESC").all(now);return {policy,credentials:rows,pending}}
+  revokeDisplayCredential(id){const at=iso();return this.db.prepare("UPDATE display_credentials SET revoked_at=? WHERE id=? AND revoked_at IS NULL").run(at,String(id)).changes>0}
+  revokeDisplayCredentials(displayId){const at=iso();return this.db.prepare("UPDATE display_credentials SET revoked_at=? WHERE display_id=? AND revoked_at IS NULL").run(at,String(displayId)).changes}
+  cancelDisplayEnrollments(displayId){return this.db.prepare("DELETE FROM display_enrollment_codes WHERE display_id=? AND consumed_at IS NULL").run(String(displayId)).changes}
 
   authPolicy(){const p=this.getPreference("auth.policy",{});return {standardHours:Math.max(1,Math.min(168,Number(p.standardHours)||12)),rememberHours:Math.max(1,Math.min(720,Number(p.rememberHours)||168)),maxSessions:Math.max(1,Math.min(50,Number(p.maxSessions)||10))}}
   setAuthPolicy(value){const current=this.authPolicy(),next={...current,...(value||{})};next.standardHours=Math.max(1,Math.min(168,Number(next.standardHours)||12));next.rememberHours=Math.max(next.standardHours,Math.min(720,Number(next.rememberHours)||168));next.maxSessions=Math.max(1,Math.min(50,Number(next.maxSessions)||10));this.setPreference("auth.policy",next);return next}

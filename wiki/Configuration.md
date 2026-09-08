@@ -142,6 +142,16 @@ Deployment-specific dates and class mappings belong in runtime state rather than
 
 Displays use stable IDs and should recover current server state after browser, network, or service restarts. Backend/controller/display versions must remain synchronized during releases.
 
+Enroll receivers under **Settings → Classroom Display Enrollment**. Each
+expiring link can be consumed once and issues a unique credential bound to the
+display ID. The controller reports enrollment coverage and supports link
+cancellation, individual revocation, and full rotation. Raw credentials are not
+listed, and SQLite stores token hashes only.
+
+`DISPLAY_TOKEN` is a migration fallback for receivers provisioned before this
+feature. Disable legacy access after all enabled displays are enrolled; the GUI
+guards against disabling it while coverage is incomplete.
+
 ## Morning Announcements
 
 Morning Announcements configuration includes enabled state, stream/player URL, Live Watch window, target displays, saved volume, and live-detection diagnostics.
