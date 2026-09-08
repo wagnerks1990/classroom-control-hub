@@ -87,6 +87,21 @@ function adoptSynchronizedVeyonKeyName(){
   if(previous&&previous!==keyName)console.warn(`Startup recovery adopted synchronized Veyon key '${keyName}' instead of stale configured key '${previous}'.`);
 }
 
+function reconcileVeyonSecretMetadata(db){
+  const keyName=String(process.env.VEYON_KEY_NAME||"").trim();
+  if(!keyName)return;
+  const hasSecretStore=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='secret_store'").get();
+  if(!hasSecretStore)return;
+  const row=db.prepare("SELECT metadata_json FROM secret_store WHERE name='veyon.private-key'").get();
+  if(!row)return;
+  let metadata={};try{metadata=JSON.parse(row.metadata_json||"{}")||{}}catch{}
+  if(metadata.keyName===keyName)return;
+  metadata={...metadata,type:metadata.type||"private-key",integration:"veyon",keyName};
+  db.prepare("UPDATE secret_store SET metadata_json=?,updated_at=? WHERE name='veyon.private-key'")
+    .run(JSON.stringify(metadata),new Date().toISOString());
+  console.warn(`Startup recovery reconciled Veyon private-key metadata to '${keyName}'.`);
+}
+
 adoptSynchronizedVeyonKeyName();
 const dbFile=canonicalDatabaseFile();
 process.env.DATABASE_FILE=dbFile;
@@ -95,6 +110,7 @@ if(fs.existsSync(dbFile)){
   try{
     reconcileBuiltInProfiles(db);
     migrateLegacyVeyonInventory(db,dbFile);
+    reconcileVeyonSecretMetadata(db);
   }finally{db.close()}
 }
 
