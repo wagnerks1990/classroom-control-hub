@@ -14,10 +14,14 @@ command -v veyon-cli >/dev/null 2>&1 || exit 0
 # narrow so environment/configuration values cannot become command arguments.
 [[ "$KEY_NAME" =~ ^[A-Za-z][A-Za-z0-9._-]*$ ]] || { echo "Invalid VEYON_KEY_NAME: $KEY_NAME" >&2; exit 1; }
 
-has_private_key(){
+has_key(){
   local key="$1"
-  veyon-cli authkeys list details 2>/dev/null | grep -Eq "^\|[[:space:]]*${key}[[:space:]]*\|[[:space:]]*private[[:space:]]*\|"
+  local type="$2"
+  veyon-cli authkeys list details 2>/dev/null | grep -Eq "^\|[[:space:]]*${key}[[:space:]]*\|[[:space:]]*${type}[[:space:]]*\|"
 }
+
+has_private_key(){ has_key "$1" private; }
+has_public_key(){ has_key "$1" public; }
 
 # Upgrades through alpha.71 may retain VEYON_KEY_NAME=ClassroomControlHub even
 # when the appliance's actual native pair is named master. Adopt the verified
@@ -47,7 +51,13 @@ cleanup(){ rm -rf "$tmp_dir"; }
 trap cleanup EXIT
 
 veyon-cli authkeys export "$KEY_NAME/private" "$private_tmp" >/dev/null
-veyon-cli authkeys extract "$KEY_NAME" >/dev/null
+
+# Reuse the existing matching public key when present. Extracting a public key
+# from an existing private key fails if that public key already exists, so only
+# extract on hosts where the public half is actually missing.
+if ! has_public_key "$KEY_NAME"; then
+  veyon-cli authkeys extract "$KEY_NAME" >/dev/null
+fi
 veyon-cli authkeys export "$KEY_NAME/public" "$public_tmp" >/dev/null
 
 [[ -s "$private_tmp" ]] || { echo "Veyon private-key export was empty" >&2; exit 1; }
