@@ -1,12 +1,12 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Classroom Control Hub — Lab Computers</title>
 <link rel="stylesheet" href="/shared/attribution.css">
 <script src="/shared/attribution.js" defer></script>
 <style>
-:root{--bg:#0b0f12;--panel:#11171c;--card:#151d23;--border:#2a3640;--text:#eef4f7;--muted:#93a4ae;--green:#39e58c;--red:#ff6b6b;--amber:#ffc857;--blue:#66b3ff}
+:root{--bg:var(--brand-background,#0b0f12);--panel:var(--brand-surface,#11171c);--card:color-mix(in srgb,var(--brand-surface,#151d23) 88%,white);--border:#2a3640;--text:var(--brand-text,#eef4f7);--muted:#aab8c1;--green:var(--brand-primary,#39e58c);--red:#ff6b6b;--amber:#ffc857;--blue:#66b3ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,Segoe UI,Arial,sans-serif}main{padding:16px;max-width:1600px;margin:auto}
 .top,.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.top{justify-content:space-between;margin-bottom:14px}h1,h2{margin:0}.muted{color:var(--muted)}
 button,input{background:#0d1317;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px}button{cursor:pointer}.primary{background:#153f2c;border-color:#2aa866}.danger{background:#461b1b;border-color:#a33}.warn{background:#4c3814;border-color:#9a7622}
@@ -20,7 +20,7 @@ dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1
 <body>
 <main>
   <div class="top">
-    <div><h1>Lab Computers</h1><div class="muted">Classroom Control Hub v0.18.6 • outbound Windows agents • no inbound management ports</div></div>
+    <div><h1>Lab Computers</h1><div class="muted">Classroom Control Hub <span id="hubVersion">loading version…</span> • outbound Windows agents • no inbound management ports</div></div>
     <div class="toolbar"><button onclick="loadAll()">Refresh</button><span id="configState" class="pill">Loading…</span></div>
   </div>
 
@@ -270,9 +270,13 @@ dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1
 <script>
 const selected=new Set();let inventory={computers:[],summary:{total:0,online:0,offline:0}};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function encodeInlineValue(value){const bytes=new TextEncoder().encode(String(value??''));let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return btoa(binary)}
+function decodeInlineValue(value){const binary=atob(String(value||'')),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));return new TextDecoder().decode(bytes)}
+const jsArg=value=>`decodeInlineValue('${encodeInlineValue(value)}')`;
 async function api(url,opt){const r=await fetch(url,opt);let j={};try{j=await r.json()}catch{}if(!r.ok)throw Error(j.error||`${r.status} ${r.statusText}`);return j}
 function fmtUptime(s){s=Number(s)||0;const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return d?`${d}d ${h}h`:`${h}h ${m}m`}
 function fmtTime(v){const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString()}
+function cacheBustUrl(value){return `${String(value||'')}\u0026t=${Date.now()}`}
 async function loadAll(){try{inventory=await api('/api/v1/lab/computers');render();refreshAiSummary()}catch(e){computerGrid.innerHTML=`<div class="bad">${esc(e.message)}</div>`}}
 function render(){
  total.textContent=inventory.summary.total;online.textContent=inventory.summary.online;offline.textContent=inventory.summary.offline;
@@ -395,15 +399,15 @@ async function loadAiAlerts(){
         <div><b>${esc(a.profile||a.windowsUser||'Unknown user')}</b><div class="muted">${esc(a.computerName||a.hostname||a.agentId)}</div></div>
         <span class="pill ${a.status==='new'?'bad':(a.status==='acknowledged'?'warn':'')}">${esc(a.status)}</span>
       </div>
-      ${a.screenshotUrl?`<img src="${a.screenshotUrl}&t=${Date.now()}" alt="Alert screenshot" style="width:100%;max-height:220px;object-fit:cover;border-radius:7px;border:1px solid var(--border);margin-top:8px">`:'<div class="muted" style="margin-top:8px">No screenshot captured for this alert.</div>'}
+      ${a.screenshotUrl?`<img src="${esc(a.screenshotUrl)}&amp;t=${Date.now()}" alt="Alert screenshot" style="width:100%;max-height:220px;object-fit:cover;border-radius:7px;border:1px solid var(--border);margin-top:8px">`:'<div class="muted" style="margin-top:8px">No screenshot captured for this alert.</div>'}
       <div style="margin-top:8px"><b>${esc(a.title||a.domain||'AI-related site')}</b></div>
       <div class="url">${esc(a.url||'')}</div>
       <div class="muted">${esc(a.domain||'')} • ${esc(a.browser||'')} • ${fmtTime(a.visitTime)}</div>
       <div class="muted">Matched ${esc(a.ruleKind)} rule: ${esc(a.rule)}</div>
       <div class="toolbar" style="margin-top:8px">
-        ${a.screenshotUrl?`<button onclick="window.open('${a.screenshotUrl}','_blank')">Open Screenshot</button>`:`<button class="primary" onclick="captureAiAlert('${esc(a.id)}')">Capture Screen Now</button>`}
-        <button onclick="setAiAlertStatus('${esc(a.id)}','acknowledged')">Acknowledge</button>
-        <button onclick="setAiAlertStatus('${esc(a.id)}','dismissed')">Dismiss</button>
+        ${a.screenshotUrl?`<button onclick="window.open(${jsArg(a.screenshotUrl)},'_blank','noopener')">Open Screenshot</button>`:`<button class="primary" onclick="captureAiAlert(${jsArg(a.id)})">Capture Screen Now</button>`}
+        <button onclick="setAiAlertStatus(${jsArg(a.id)},'acknowledged')">Acknowledge</button>
+        <button onclick="setAiAlertStatus(${jsArg(a.id)},'dismissed')">Dismiss</button>
       </div>
     </div>`).join('')||'<div class="muted">No alerts match these filters.</div>';
   }catch(e){aiAlertList.innerHTML=`<div class="bad">${esc(e.message)}</div>`}
@@ -572,13 +576,13 @@ async function loadScreenHistory(){
     const j=await api(`/api/v1/lab/computers/${encodeURIComponent(currentScreenComputer)}/screenshots?limit=50`);
     screenHistoryMeta.textContent=`${j.screenshots.length} saved screenshot(s) • retained ${j.retentionDays} day(s)`;
     screenHistory.innerHTML=(j.screenshots||[]).map(x=>`<div class="card">
-      <img src="${x.url}&t=${Date.now()}" alt="Screenshot" style="width:100%;max-height:150px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
+      <img src="${esc(x.url)}&amp;t=${Date.now()}" alt="Screenshot" style="width:100%;max-height:150px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
       <div style="margin-top:6px"><b>${fmtTime(x.capturedAt)}</b></div>
       <div class="muted">${x.bytes?Math.round(x.bytes/1024)+' KB':''}</div>
       <div class="toolbar" style="margin-top:6px">
-        <button onclick="screenImage.src='${x.url}&t=${Date.now()}'">View</button>
-        <button onclick="window.open('${x.url}','_blank')">Full Size</button>
-        <button onclick="window.location='${x.downloadUrl}'">Download</button>
+        <button onclick="screenImage.src=${jsArg(cacheBustUrl(x.url))}">View</button>
+        <button onclick="window.open(${jsArg(x.url)},'_blank','noopener')">Full Size</button>
+        <button onclick="window.location=${jsArg(x.downloadUrl)}">Download</button>
       </div>
     </div>`).join('')||'<div class="muted">No saved screenshots yet.</div>';
   }catch(e){
@@ -612,6 +616,7 @@ function showLastCommand(id){
   }
   commandResultDialog.showModal();
 }
-loadAll();setInterval(loadAll,5000);
+fetch('/health',{cache:'no-store'}).then(r=>r.json()).then(x=>hubVersion.textContent=`v${x.version||'unknown'}`).catch(()=>hubVersion.textContent='version unavailable');
+loadAll();setInterval(()=>{if(!document.hidden)loadAll()},5000);
 </script>
 </body></html>

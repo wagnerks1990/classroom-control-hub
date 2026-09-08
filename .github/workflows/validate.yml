@@ -75,3 +75,61 @@ jobs:
 
       - name: Build maintenance container
         run: docker build -t classroom-control-hub-maintenance:test maintenance-agent
+
+      - name: Compose application and HTTPS smoke test
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          sed -i 's/^MAINTENANCE_TOKEN=.*/MAINTENANCE_TOKEN=ci-maintenance-token/' .env
+          sed -i 's/^SETUP_TOKEN=.*/SETUP_TOKEN=ci-setup-token/' .env
+          mkdir -p data
+          sudo chown -R 10001:10001 data
+          sudo install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub/veyon
+          openssl rand -hex 32 | sudo tee /etc/classroom-control-hub/master.key >/dev/null
+          sudo chown root:10001 /etc/classroom-control-hub/master.key
+          sudo chmod 0640 /etc/classroom-control-hub/master.key
+          sudo install -m 0640 -o root -g 10001 /dev/null /etc/classroom-control-hub/veyon/private.pem
+          trap 'docker compose logs --no-color || true; docker compose down -v || true' EXIT
+          docker compose build classroom-hub
+          docker compose up -d --no-deps classroom-hub caddy
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/health >/dev/null && break; sleep 2; done
+          curl -fsS http://127.0.0.1:3000/health | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{const j=JSON.parse(s);if(!j.ok)process.exit(1)})'
+          for i in $(seq 1 30); do curl -kfsS -H 'Host: localhost:443' https://127.0.0.1/health >/dev/null && break; sleep 1; done
+          curl -kfsS -H 'Host: localhost:443' https://127.0.0.1/health >/dev/null
+          cookie_jar="$RUNNER_TEMP/classroom-hub.cookies"
+          curl -kfsS -c "$cookie_jar" -H 'Host: localhost:443' -H 'X-Setup-Token: ci-setup-token' -H 'Content-Type: application/json' \
+            --data '{"username":"ci-admin","displayName":"CI Administrator","password":"CI-Live-Test-Password-Alpha69!"}' \
+            https://127.0.0.1/api/v1/setup/administrator >/dev/null
+          curl -kfsS -b "$cookie_jar" -H 'Host: localhost:443' -H 'Content-Type: application/json' -X PUT \
+            --data '{"completed":true}' https://127.0.0.1/api/v1/admin/setup-state >/dev/null
+          docker compose restart classroom-hub
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/health >/dev/null && break; sleep 1; done
+          curl -kfsS -b "$cookie_jar" -H 'Host: localhost:443' https://127.0.0.1/api/v1/admin/health \
+            | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{const j=JSON.parse(s);if(!j.ok||j.database.normalized.users!==1)process.exit(1)})'
+
+  windows-agent:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Parse Windows lab-agent scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem public/lab-agent/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors.Count) {
+              $failed = $true
+              $errors | ForEach-Object { Write-Error "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)" }
+            }
+          }
+          if ($failed) { throw 'Windows lab-agent PowerShell parsing failed.' }
+      - name: Verify Windows agent contract
+        shell: pwsh
+        run: |
+          $agent = Get-Content public/lab-agent/ClassroomHubAgent.ps1 -Raw
+          if ($agent -notmatch "1\.0\.0-alpha\.69") { throw 'Windows agent version is not converged.' }
+          foreach ($action in @('screenshot','refresh-history','instructor-lock','update-agent')) {
+            if ($agent -notmatch "'$([regex]::Escape($action))'\s*\{") { throw "Missing Windows action: $action" }
+          }

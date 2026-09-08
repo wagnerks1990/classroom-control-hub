@@ -65,8 +65,13 @@ refresh_host_agent(){
 }
 
 restore_safety_backup(){
-  local backup="$1"
+  local backup="$1" expected_sha="${2:-}"
   [[ -n "$backup" ]] || return 0
+  if [[ -n "$expected_sha" ]]; then
+    local actual_sha
+    actual_sha="$(sha256sum "$HUB_ROOT/data/backups/$backup" | awk '{print $1}')"
+    [[ "$actual_sha" == "$expected_sha" ]] || { echo "Safety backup checksum mismatch" >&2; return 1; }
+  fi
   docker exec -i -e BACKUP_NAME="$backup" classroom-control-hub-maintenance node - <<'NODE'
 const name=process.env.BACKUP_NAME,token=process.env.MAINTENANCE_TOKEN;
 fetch(`http://127.0.0.1:3010/backup/${encodeURIComponent(name)}/restore`,{method:'POST',headers:{'content-type':'application/json','x-maintenance-token':token},body:JSON.stringify({mode:'configuration-data',confirm:'RESTORE'})})
@@ -81,11 +86,10 @@ if ! flock -n 9; then write_state failed "Another application update is already 
 eval "$(REQUEST_FILE="$REQUEST_FILE" python3 - <<'PY'
 import json,os,shlex
 j=json.load(open(os.environ['REQUEST_FILE']))
-for key in ('action','targetRef','targetCommit','expectedVersion','backupName','failureBackupName','githubToken'):
+for key in ('action','targetRef','targetCommit','expectedVersion','rollbackCommit','rollbackVersion','backupName','backupSha256','failureBackupName','failureBackupSha256','githubToken'):
     print(key.upper()+'='+shlex.quote(str(j.get(key) or '')))
 PY
 )"
-rm -f "$REQUEST_FILE"
 ASKPASS_FILE="" TOKEN_FILE=""
 cleanup_credentials(){ [[ -z "$ASKPASS_FILE" ]] || rm -f "$ASKPASS_FILE"; [[ -z "$TOKEN_FILE" ]] || rm -f "$TOKEN_FILE"; }
 trap cleanup_credentials EXIT
@@ -97,10 +101,10 @@ if [[ -n "$GITHUBTOKEN" ]]; then
 fi
 
 cd "$HUB_ROOT"
-CURRENT_COMMIT="$(git rev-parse HEAD)"
-CURRENT_VERSION="$(tr -d '\r\n' < VERSION 2>/dev/null || true)"
+CURRENT_COMMIT="${ROLLBACKCOMMIT:-$(git rev-parse HEAD)}"
+CURRENT_VERSION="${ROLLBACKVERSION:-$(tr -d '\r\n' < VERSION 2>/dev/null || true)}"
 if [[ "$ACTION" == update ]]; then
-  set_state_fields "action=$ACTION" "previousCommit=$CURRENT_COMMIT" "previousVersion=$CURRENT_VERSION" "targetRef=$TARGETREF" "backupName=$BACKUPNAME"
+  set_state_fields "action=$ACTION" "previousCommit=$CURRENT_COMMIT" "previousVersion=$CURRENT_VERSION" "targetRef=$TARGETREF" "backupName=$BACKUPNAME" "backupSha256=$BACKUPSHA256"
 else
   set_state_fields "action=$ACTION" "targetRef=$TARGETREF"
 fi
@@ -113,8 +117,10 @@ rollback(){
   git checkout --detach "$CURRENT_COMMIT" || rollback_ok=false
   refresh_host_agent || rollback_ok=false
   docker compose build classroom-hub maintenance-agent || rollback_ok=false
+  docker compose stop classroom-hub || true
+  docker compose up --no-start --no-deps --force-recreate classroom-hub || rollback_ok=false
+  restore_safety_backup "$FAILUREBACKUPNAME" "$FAILUREBACKUPSHA256" || rollback_ok=false
   docker compose up -d --remove-orphans || rollback_ok=false
-  restore_safety_backup "$FAILUREBACKUPNAME" || rollback_ok=false
   health_check "$CURRENT_VERSION" || rollback_ok=false
   if [[ "$rollback_ok" == true ]]; then
     set_state_fields "rollback=true" "activeCommit=$CURRENT_COMMIT" "activeVersion=$CURRENT_VERSION"
@@ -123,6 +129,7 @@ rollback(){
     set_state_fields "rollback=failed"
     write_state rollback-failed "Update failed and automatic rollback needs administrator attention." false
   fi
+  rm -f "$REQUEST_FILE"
   exit "$rc"
 }
 trap rollback ERR
@@ -153,16 +160,24 @@ refresh_host_agent
 
 write_state building "Building the application and maintenance images for $ACTUAL_VERSION." null
 docker compose build --pull classroom-hub maintenance-agent
+if [[ "$ACTION" == revert ]]; then
+  write_state restoring "Restoring the matching pre-upgrade state before the older application starts." null
+  docker compose stop classroom-hub || true
+  docker compose up --no-start --no-deps --force-recreate classroom-hub
+  restore_safety_backup "$BACKUPNAME" "$BACKUPSHA256"
+fi
 write_state deploying "Recreating appliance containers while preserving persistent state." null
 docker compose up -d --remove-orphans
 write_state verifying "Waiting for application and database health verification." null
 health_check "$ACTUAL_VERSION"
 
-if [[ "$ACTION" == revert ]]; then restore_safety_backup "$BACKUPNAME"; health_check "$ACTUAL_VERSION"; fi
 trap - ERR
 if [[ "$ACTION" == revert ]]; then
   set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=false" "previousCommit=" "previousVersion=" "backupName="
 else
   set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=true"
 fi
+install -D -m 0755 "$HUB_ROOT/host-agent/update-runner.sh" /usr/local/libexec/classroom-control-hub/update-runner.sh
+install -D -m 0755 "$HUB_ROOT/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
+rm -f "$REQUEST_FILE"
 write_state completed "Classroom Control Hub $ACTUAL_VERSION deployed and verified successfully." true

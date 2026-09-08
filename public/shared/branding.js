@@ -1,6 +1,7 @@
 "use strict";
 
 (function(){
+  if(!document.documentElement.lang)document.documentElement.lang="en";
   const fallback={productName:"Classroom Control Hub",school:"Your School",room:"Classroom",logoUrl:"",faviconUrl:"",theme:{mode:"dark",primary:"#2aa866",accent:"#1b7a49",background:"#040705",surface:"#121923",text:"#eef4f8"}};
   const renderer=/\/(display|document-viewer|antmedia-player)(\/|$)/.test(location.pathname);
   document.documentElement.dataset.brandSurface=renderer?"renderer":"operator";

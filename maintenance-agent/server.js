@@ -22,6 +22,8 @@ const RESTORE_MAX_EXPANDED_BYTES=Math.max(64*1024*1024,Number(process.env.RESTOR
 const BACKUP_DIR=path.join(HUB_ROOT,"data","backups");
 const MASTER_KEY_FILE=String(process.env.MASTER_KEY_FILE||"/run/secrets/classroom-control-hub-master-key");
 const UPLOAD_DIR="/work/uploads";
+const APP_UID=Math.max(1,Number(process.env.APP_UID||10001));
+const APP_GID=Math.max(1,Number(process.env.APP_GID||10001));
 fs.mkdirSync(BACKUP_DIR,{recursive:true});fs.mkdirSync(UPLOAD_DIR,{recursive:true});
 app.use(express.json({limit:"8mb"}));
 function secretEqual(actual,expected){const a=Buffer.from(String(actual||"")),b=Buffer.from(String(expected||""));return a.length===b.length&&crypto.timingSafeEqual(a,b)}
@@ -30,6 +32,9 @@ app.use(auth);
 app.use(["/files","/file","/file/upload","/env","/update/stage","/update/deploy"],(_req,res)=>res.status(410).json({ok:false,error:"Direct filesystem, environment-file, and source-ZIP mutation has been removed. Use database-backed settings and verified GitHub releases."}));
 function cleanName(v){return String(v||"").replace(/[^A-Za-z0-9._-]/g,"-").slice(0,180)}
 function statInfo(p,base){const st=fs.statSync(p);return {name:path.basename(p),path:path.relative(base,p)||".",type:st.isDirectory()?"directory":"file",size:st.size,modifiedAt:st.mtime.toISOString()}}
+function sha256File(p){const hash=crypto.createHash("sha256"),fd=fs.openSync(p,"r"),buf=Buffer.allocUnsafe(1024*1024);try{let n=0,pos=0;while((n=fs.readSync(fd,buf,0,buf.length,pos))>0){hash.update(buf.subarray(0,n));pos+=n}return hash.digest("hex")}finally{fs.closeSync(fd)}}
+function writeZipAtomic(zip,dest){const partial=`${dest}.partial-${process.pid}-${Date.now()}`;try{zip.writeZip(partial);fs.renameSync(partial,dest)}finally{fs.rmSync(partial,{force:true})}}
+function applicationVersion(){try{return fs.readFileSync(path.join(HUB_ROOT,"VERSION"),"utf8").trim()}catch{return null}}
 async function run(cmd,args=[],opts={}){if(cmd==="docker")return hostAgentRequest("POST","/docker/exec",{args,cwd:opts.cwd===HUB_ROOT?"hub":""},opts.timeout||180000);const {stdout,stderr}=await execFileAsync(cmd,args,{timeout:opts.timeout||15000,maxBuffer:opts.maxBuffer||8*1024*1024,cwd:opts.cwd||undefined,env:{...process.env,...(opts.env||{})}});return {stdout,stderr}}
 async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -41,7 +46,9 @@ async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
 }
 async function mainAppStatus(){return mainAppRequest("GET","/api/v1/internal/maintenance/status",null,10000)}
 async function dockerContainers(){const r=await run("docker",["ps","-a","--format","{{json .}}"],{timeout:10000});return r.stdout.split(/\r?\n/).filter(Boolean).map(x=>{try{return JSON.parse(x)}catch{return {raw:x}}})}
-app.get("/health",async(_req,res)=>{let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}res.json({ok:true,version:"1.0.0-alpha.68",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null})});
+async function componentHealth(){let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}return {version:"1.0.0-alpha.69",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null}}
+app.get("/health",async(_req,res)=>{const state=await componentHealth(),ready=state.docker&&state.hostAgent?.ok&&state.roots.hub;res.status(ready?200:503).json({ok:ready,alive:true,ready,...state})});
+app.get("/ready",async(_req,res)=>{const state=await componentHealth(),ready=state.docker&&state.hostAgent?.ok&&state.roots.hub;res.status(ready?200:503).json({ok:ready,alive:true,ready,...state})});
 app.get("/system",async(_req,res)=>{
   const nets=os.networkInterfaces();let disk=null,hostDocker=null;
   try{disk=(await run("df",["-h","/managed/classroom-hub"])).stdout}catch{}
@@ -97,13 +104,13 @@ app.post("/app-updates/start",async(req,res)=>{try{
   const targetRef=String(req.body?.targetRef||""),expectedVersion=String(req.body?.expectedVersion||"");
   if(!/^v?\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$/.test(targetRef)||!/^v?\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$/.test(expectedVersion))return res.status(400).json({ok:false,error:"A semantic-version GitHub release tag and version are required"});
   const safety=await createOperationalBackupNamed("pre-app-update");
-  const result=await hostAgentRequest("POST","/app-updates/start",{action:"update",targetRef,expectedVersion,githubToken:String(req.body?.githubToken||""),backupName:safety.name,failureBackupName:safety.name,confirm:"INSTALL_RELEASE"},30000);
+  const result=await hostAgentRequest("POST","/app-updates/start",{action:"update",targetRef,expectedVersion,githubToken:String(req.body?.githubToken||""),backupName:safety.name,backupSha256:safety.sha256,failureBackupName:safety.name,failureBackupSha256:safety.sha256,confirm:"INSTALL_RELEASE"},30000);
   res.status(202).json({ok:true,safetyBackup:safety.name,...result});
 }catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
 app.post("/app-updates/revert",async(req,res)=>{try{
   if(String(req.body?.confirm||"")!=="REVERT_RELEASE")return res.status(400).json({ok:false,error:"Explicit REVERT_RELEASE confirmation required"});
   const safety=await createOperationalBackupNamed("pre-app-revert");
-  const result=await hostAgentRequest("POST","/app-updates/revert",{confirm:"REVERT_RELEASE",failureBackupName:safety.name},30000);
+  const result=await hostAgentRequest("POST","/app-updates/revert",{confirm:"REVERT_RELEASE",failureBackupName:safety.name,failureBackupSha256:safety.sha256},30000);
   res.status(202).json({ok:true,safetyBackup:safety.name,...result});
 }catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
 app.post("/host/updates/apply",async(req,res)=>{try{
@@ -208,20 +215,20 @@ function backupFilter(scope){
     return true;
   }
 }
-app.post("/backup/create",async(req,res)=>{try{
+app.post("/backup/create",async(req,res)=>{let dbSnapshot="";try{
   const scope=["configuration","quick","operational","diagnostic","full"].includes(req.body?.scope)?req.body.scope:"operational";
   if(scope==="full"&&req.body?.confirmSecrets!==true)return res.status(400).json({ok:false,error:"Full recovery backup contains .env and the database encryption master key. Resubmit with confirmSecrets=true."});
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-${scope}-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
-  const dbPath=path.join(HUB_ROOT,"data","classroom-control-hub.db"),dbSnapshot=path.join(UPLOAD_DIR,`db-backup-${Date.now()}.db`);
+  const dbPath=path.join(HUB_ROOT,"data","classroom-control-hub.db");dbSnapshot=path.join(UPLOAD_DIR,`db-backup-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.db`);
   let hasDbSnapshot=false;if(fs.existsSync(dbPath)){await run("sqlite3",[dbPath,`.backup '${dbSnapshot.replace(/'/g,"''")}'`],{timeout:60000});hasDbSnapshot=fs.existsSync(dbSnapshot)}
   const baseFilter=backupFilter(scope),filter=(full,rel,ent)=>{if(/classroom-hub\.db(?:-wal|-shm)?$/.test(rel))return false;return baseFilter(full,rel,ent)};
   copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);if(hasDbSnapshot)zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
   if(scope==="full"||scope==="operational"||scope==="diagnostic")copyIntoZip(zip,Classroom_ROOT,"services",filter);
   if(scope==="full"&&fs.existsSync(MASTER_KEY_FILE))zip.addLocalFile(MASTER_KEY_FILE,"recovery-secrets","classroom-hub-master.key");
-  const manifest={version:2,createdAt:new Date().toISOString(),scope,hostname:os.hostname(),hubRoot:HUB_ROOT,servicesRoot:Classroom_ROOT,databaseSnapshot:hasDbSnapshot,containsSecrets:scope==="full",requiresMasterKey:true};
-  zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify(manifest,null,2)));zip.writeZip(dest);if(hasDbSnapshot)fs.rmSync(dbSnapshot,{force:true});
-  res.json({ok:true,name,size:fs.statSync(dest).size,download:`/backup/${encodeURIComponent(name)}`,containsSecrets:scope==="full"})
-}catch(e){res.status(500).json({ok:false,error:e.message})}});
+  const manifest={version:3,createdAt:new Date().toISOString(),scope,applicationVersion:applicationVersion(),hostname:os.hostname(),hubRoot:HUB_ROOT,servicesRoot:Classroom_ROOT,databaseSnapshot:hasDbSnapshot,containsSecrets:scope==="full",requiresMasterKey:true};
+  zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify(manifest,null,2)));writeZipAtomic(zip,dest);
+  res.json({ok:true,name,size:fs.statSync(dest).size,sha256:sha256File(dest),download:`/backup/${encodeURIComponent(name)}`,containsSecrets:scope==="full"})
+}catch(e){res.status(500).json({ok:false,error:e.message})}finally{if(dbSnapshot)try{fs.rmSync(dbSnapshot,{force:true})}catch{}}});
 app.get("/backups",(_req,res)=>{const items=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR)).sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));res.json({ok:true,items})});
 app.get("/backups/catalog",(_req,res)=>{try{
   const managed=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>({...statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR),source:"managed",restorable:true}));
@@ -237,7 +244,7 @@ app.get("/backups/catalog",(_req,res)=>{try{
 
 
 app.get("/backups/retention",(_req,res)=>{try{const items=fs.readdirSync(BACKUP_DIR).filter(n=>n.endsWith(".zip")).map(n=>statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR)).sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));const automatic=items.filter(x=>/^pre-/.test(x.name));res.json({ok:true,total:items.length,automatic:automatic.length,automaticBytes:automatic.reduce((a,x)=>a+Number(x.size||0),0),items:automatic})}catch(e){res.status(500).json({ok:false,error:e.message})}});
-app.post("/backups/retention",(req,res)=>{try{const keep=Math.max(2,Math.min(250,Number(req.body?.keep||10)));if(String(req.body?.confirm||"")!=="PRUNE_AUTOMATIC_BACKUPS")return res.status(400).json({ok:false,error:"Explicit confirmation required"});const items=fs.readdirSync(BACKUP_DIR).filter(n=>/^pre-.*\.zip$/.test(n)).map(n=>statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR)).sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));const doomed=items.slice(keep);let bytes=0;for(const x of doomed){const p=path.join(BACKUP_DIR,x.name);bytes+=fs.statSync(p).size;fs.unlinkSync(p)}res.json({ok:true,keep,removed:doomed.length,bytesFreed:bytes,remaining:Math.min(items.length,keep)})}catch(e){res.status(500).json({ok:false,error:e.message})}});
+app.post("/backups/retention",async(req,res)=>{try{const keep=Math.max(2,Math.min(250,Number(req.body?.keep||10)));if(String(req.body?.confirm||"")!=="PRUNE_AUTOMATIC_BACKUPS")return res.status(400).json({ok:false,error:"Explicit confirmation required"});let pinned="";try{const job=await hostAgentRequest("GET","/app-updates/job");if(job.revertAvailable===true)pinned=String(job.backupName||"")}catch{}const items=fs.readdirSync(BACKUP_DIR).filter(n=>/^pre-.*\.zip$/.test(n)).map(n=>statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR)).sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));const doomed=items.slice(keep).filter(x=>x.name!==pinned);let bytes=0;for(const x of doomed){const p=path.join(BACKUP_DIR,x.name);bytes+=fs.statSync(p).size;fs.unlinkSync(p)}res.json({ok:true,keep,pinned:pinned||null,removed:doomed.length,bytesFreed:bytes,remaining:items.length-doomed.length})}catch(e){res.status(500).json({ok:false,error:e.message})}});
 app.get("/backup/:name",(req,res)=>{const name=cleanName(req.params.name),p=path.join(BACKUP_DIR,name);if(!fs.existsSync(p))return res.status(404).json({ok:false,error:"Backup not found"});res.download(p,name)});
 app.get("/backup/:name/inspect",(req,res)=>{try{const name=cleanName(req.params.name),p=path.join(BACKUP_DIR,name);if(!fs.existsSync(p))return res.status(404).json({ok:false,error:"Backup not found"});const zip=new AdmZip(p),entries=zip.getEntries();let manifest=null;const m=entries.find(e=>e.entryName==="backup-manifest.json");if(m)try{manifest=JSON.parse(m.getData().toString("utf8"))}catch{}res.json({ok:true,name,size:fs.statSync(p).size,manifest,entries:entries.length,preview:entries.slice(0,100).map(e=>({name:e.entryName,size:e.header.size,directory:e.isDirectory}))})}catch(e){res.status(400).json({ok:false,error:e.message})}});
 
@@ -246,20 +253,21 @@ async function createOperationalBackupNamed(prefix="pre-restore") {
   const name=`${prefix}-${new Date().toISOString().replace(/[:.]/g,"-")}.zip`;
   const dest=path.join(BACKUP_DIR,name);
   const dbPath=path.join(HUB_ROOT,"data","classroom-control-hub.db");
-  const dbSnapshot=path.join(UPLOAD_DIR,`db-backup-${Date.now()}.db`);
+  const dbSnapshot=path.join(UPLOAD_DIR,`db-backup-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.db`);
   let hasDbSnapshot=false;
-  if(fs.existsSync(dbPath)){
-    await run("sqlite3",[dbPath,`.backup '${dbSnapshot.replace(/'/g,"''")}'`],{timeout:60000});
-    hasDbSnapshot=fs.existsSync(dbSnapshot);
-  }
-  const zip=new AdmZip();
-  const filter=(full,rel,ent)=>{if(/classroom-hub\.db(?:-wal|-shm)?$/.test(rel))return false;return backupFilter("operational")(full,rel,ent)};
-  copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);
-  if(hasDbSnapshot)zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
-  zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify({version:2,scope:"operational",createdAt:new Date().toISOString(),reason:prefix},null,2)));
-  zip.writeZip(dest);
-  if(hasDbSnapshot)fs.rmSync(dbSnapshot,{force:true});
-  return {name,dest,size:fs.statSync(dest).size};
+  try{
+    if(fs.existsSync(dbPath)){
+      await run("sqlite3",[dbPath,`.backup '${dbSnapshot.replace(/'/g,"''")}'`],{timeout:60000});
+      hasDbSnapshot=fs.existsSync(dbSnapshot);
+    }
+    if(!hasDbSnapshot)throw Error("Operational backup requires a consistent Classroom Control Hub database snapshot");
+    const zip=new AdmZip();
+    const filter=(full,rel,ent)=>{if(/classroom-hub\.db(?:-wal|-shm)?$/.test(rel))return false;return backupFilter("operational")(full,rel,ent)};
+    copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);
+    zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
+    zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify({version:3,scope:"operational",createdAt:new Date().toISOString(),reason:prefix,applicationVersion:applicationVersion(),databaseSnapshot:true},null,2)));
+    writeZipAtomic(zip,dest);return {name,dest,size:fs.statSync(dest).size,sha256:sha256File(dest)};
+  }finally{fs.rmSync(dbSnapshot,{force:true})}
 }
 function backupRestorePlan(name){
   const safeName=cleanName(name);if(safeName!==String(name||"")||!safeName.endsWith(".zip"))throw Error("Invalid backup name");
@@ -299,6 +307,9 @@ function replaceRestoreContent(srcRoot,{database=false,data=false}={}){
     const src=path.join(srcRoot,"data","classroom-control-hub.db"),dst=path.join(HUB_ROOT,"data","classroom-control-hub.db");
     fs.mkdirSync(path.dirname(dst),{recursive:true});for(const suffix of ["","-wal","-shm"])fs.rmSync(dst+suffix,{force:true});fs.cpSync(src,dst);restored.push("database");
   }
+  const applyOwnership=p=>{const st=fs.lstatSync(p);if(st.isDirectory())for(const ent of fs.readdirSync(p))applyOwnership(path.join(p,ent));fs.chownSync(p,APP_UID,APP_GID)};
+  if(data){for(const ent of fs.readdirSync(path.join(HUB_ROOT,"data"))){if(ent!=="backups")applyOwnership(path.join(HUB_ROOT,"data",ent))}}
+  else if(database){applyOwnership(path.join(HUB_ROOT,"data","classroom-control-hub.db"))}
   return restored;
 }
 async function waitForMainApplication(){
@@ -344,7 +355,7 @@ app.post("/audit/prune",async(req,res)=>{try{res.json(await mainAppRequest("POST
 app.get("/diagnostics/bundle",async(_req,res)=>{try{
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-diagnostics-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
   let application=null;try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}
-  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.68",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
+  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.69",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
   zip.addFile("summary.json",Buffer.from(JSON.stringify(info,null,2)));
   try{const c=await dockerContainers();zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(c,null,2)));for(const row of c){const n=cleanName(row.Names||row.Name||"");if(!n)continue;try{const r=await run("docker",["logs","--timestamps","--tail","1000",n],{timeout:20000,maxBuffer:16*1024*1024});zip.addFile(`logs/${n}.log`,Buffer.from((r.stdout||"")+(r.stderr||"")))}catch(e){zip.addFile(`logs/${n}.error.txt`,Buffer.from(e.message))}}}catch(e){zip.addFile("docker/error.txt",Buffer.from(e.message))}
   try{const r=await run("docker",["stats","--no-stream","--format","{{json .}}"],{timeout:15000});zip.addFile("docker/stats.jsonl",Buffer.from(r.stdout||""))}catch{}

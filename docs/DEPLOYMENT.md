@@ -70,9 +70,11 @@ The supported installer path is:
 sudo bash install.sh
 ```
 
-For a manual source-build deployment:
+After the installer has created credentials, persistent-path ownership, secret
+mounts, and native services, Compose can be used for development rebuilds:
 
 ```bash
+sudo bash install.sh
 sudo docker compose build
 sudo docker compose up -d
 ```

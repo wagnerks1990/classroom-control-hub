@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -23,6 +23,8 @@ h3{font-size:13px;margin:0 0 7px}
 button,input,textarea,select{font:inherit}
 button{border:1px solid #bcc5cd;background:#f7f9fa;border-radius:8px;padding:7px 10px;cursor:pointer}
 button:hover{filter:brightness(.98)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--brand-primary,#1769e0);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation-duration:.01ms!important}}
 button.primary{background:#1769e0;border-color:#1769e0;color:#fff;font-weight:700}
 button.danger{background:#fff1f0;border-color:#dfa9a4;color:#9b2019}
 button.active{background:#dceaff;border-color:#7aa7e8}
@@ -145,7 +147,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
   <div class="top">
     <div>
       <h1>Classroom Control Hub Controller</h1>
-      <div class="muted">Classroom Control Hub • v1.0.0-alpha.68 • multi-display controller</div>
+      <div class="muted">Classroom Control Hub • v1.0.0-alpha.69 • multi-display controller</div>
     </div>
     <div id="conn" class="muted">Connecting…</div>
   </div>
@@ -661,7 +663,7 @@ window.sendText=()=>cmd('display.text',targetArg(),{text:el('text').value,color:
 window.sendBackground=()=>cmd('display.background',targetArg(),{color:el('bgColor').value});
 
 let timerClasses=[],timerClassStatusData=null;
-async function loadTimerClasses(){try{const x=await api('/api/v1/class-schedules');timerClasses=x.classes||[];timerClassStatusData={activeClass:x.activeClass,nextClass:x.nextClass};const sel=el('timerClassSelect'),old=sel.value;sel.innerHTML=timerClasses.map(c=>`<option value="${c.id}">${c.name} • ${c.startTime}–${c.endTime}</option>`).join('');if(x.activeClass)sel.value=x.activeClass.id;else if(x.nextClass)sel.value=x.nextClass.id;else if(old)sel.value=old;refreshClassTimerPreview()}catch(e){el('timerClassStatus').textContent=e.message}}
+async function loadTimerClasses(){try{const x=await api('/api/v1/class-schedules');timerClasses=x.classes||[];timerClassStatusData={activeClass:x.activeClass,nextClass:x.nextClass};const sel=el('timerClassSelect'),old=sel.value;sel.replaceChildren();for(const c of timerClasses){const option=document.createElement('option');option.value=String(c.id||'');option.textContent=`${c.name||'Class'} • ${c.startTime||''}–${c.endTime||''}`;sel.append(option)}if(x.activeClass)sel.value=x.activeClass.id;else if(x.nextClass)sel.value=x.nextClass.id;else if(old)sel.value=old;refreshClassTimerPreview()}catch(e){el('timerClassStatus').textContent=e.message}}
 function timerSourceChanged(){const on=el('timerSource').value==='class-end';el('timerClassWrap').style.display=on?'block':'none';el('timerClassStatusWrap').style.display=on?'block':'none';el('timerMinutes').disabled=on;el('timerSeconds').disabled=on;if(on)loadTimerClasses();else paintControllerTimer()}
 function selectedTimerClass(){return timerClasses.find(c=>c.id===el('timerClassSelect').value)||null}
 function selectedClassEndAt(){const c=selectedTimerClass();if(!c)return null;const [h,m]=c.endTime.split(':').map(Number),x=new Date();x.setHours(h,m,0,0);return x}
@@ -966,15 +968,19 @@ async function refreshStatus(){
 setInterval(refreshStatus,5000);
 setInterval(()=>renderTargets(window._status),1000);
 
+let reconnectDelay=1500,reconnectBlocked=false;
 function connect(){
+  if(reconnectBlocked||document.hidden)return;
   ws=new WebSocket(wsUrl());
   ws.onopen=()=>{el('conn').textContent='Connected';ws.send(JSON.stringify({type:'hello',role:'controller',token:''}))};
-  ws.onclose=()=>{el('conn').textContent='Disconnected · retrying';setTimeout(connect,1500)};
+  ws.onclose=()=>{if(reconnectBlocked)return;el('conn').textContent='Disconnected · retrying';setTimeout(connect,reconnectDelay);reconnectDelay=Math.min(30000,reconnectDelay*2)};
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
     if(m.type==='hello.ack'){
+      reconnectDelay=1500;
       devices=m.devices||{};groups=m.groups||{};window._status=m.runtime?.displays||{};
       renderTargets(window._status);setupPreview();setPreviewSize(localStorage.getItem('classroom-preview-size')||'medium');loadMedia();loadScenes();setupSettings();
+    }else if(m.type==='error'&&/authentication|permission|unauthorized/i.test(String(m.error||''))){reconnectBlocked=true;el('conn').textContent=m.error||'Permission denied';try{ws.close()}catch{}
     }else if(m.type==='device.status'){
       window._status[m.deviceId]={
         ...(window._status[m.deviceId]||{}),
@@ -985,6 +991,7 @@ function connect(){
   };
 }
 connect();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!reconnectBlocked&&(!ws||ws.readyState>1))connect()});
 </script>
 </body>
 </html>

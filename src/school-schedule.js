@@ -5,7 +5,11 @@ function uniqueStrings(values, max = 32) {
 }
 
 function validDateKey(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+  const text = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const [year, month, day] = text.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
 }
 
 function validTime(value) {
@@ -83,7 +87,7 @@ function normalizeSchoolScheduleProfile(input = {}, fallback = defaultSchoolSche
     if (!rule || typeof rule !== "object") continue;
     const periodTimes = {};
     for (const [period, times] of Object.entries(rule.periodTimes || {})) {
-      if (validTime(times?.startTime) && validTime(times?.endTime)) periodTimes[String(period).slice(0, 40)] = { startTime: times.startTime, endTime: times.endTime };
+      if (validTime(times?.startTime) && validTime(times?.endTime) && timeToMinutes(times.startTime) < timeToMinutes(times.endTime)) periodTimes[String(period).slice(0, 40)] = { startTime: times.startTime, endTime: times.endTime };
     }
     let transform = null;
     if (validTime(rule.transform?.normalStart) && validTime(rule.transform?.normalEnd) && validTime(rule.transform?.delayedStart)) {
@@ -146,5 +150,6 @@ module.exports = {
   normalizeSchoolScheduleProfile,
   effectiveTimesForRule,
   groupForCycleDay,
-  validDateKey
+  validDateKey,
+  validTime
 };

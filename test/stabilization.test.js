@@ -66,7 +66,7 @@ function rejectedDisplayHello(payload){
     ws.on("error",()=>{});
   });
 }
-function labAgentHello(payload){return new Promise((resolve,reject)=>{const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}}),timeout=setTimeout(()=>{ws.terminate();reject(new Error("Lab agent WebSocket timed out"))},3000);ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"lab-agent",agentId:"lab-pc-01",hostname:"LAB-PC-01",agentVersion:"1.0.0-alpha.68",...payload})));ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);resolve({ws,ack:msg})}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});ws.on("error",reject)})}
+function labAgentHello(payload){return new Promise((resolve,reject)=>{const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}}),timeout=setTimeout(()=>{ws.terminate();reject(new Error("Lab agent WebSocket timed out"))},3000);ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"lab-agent",agentId:"lab-pc-01",hostname:"LAB-PC-01",agentVersion:"1.0.0-alpha.69",...payload})));ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);resolve({ws,ack:msg})}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});ws.on("error",reject)})}
 
 test.before(async()=>{
   tempDir=fs.mkdtempSync(path.join(os.tmpdir(),"classroom-hub-test-"));
@@ -130,7 +130,7 @@ test("sensitive diagnostics and participation endpoints reject anonymous access"
   assert.ok([401,403].includes(result.response.status));
 
   result=await request("/api/v1/sessions/arbitrary-session");
-  assert.equal(result.response.status,503);
+  assert.equal(result.response.status,410);
 
   for(const endpoint of ["/api/v1/integrations/check","/api/v1/integrations/govee/tv/scenes","/api/v1/govee/tv/status","/api/v1/govee/tv/scenes"]){
     result=await request(endpoint);

@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.0.0-alpha.69 - 2026-09-08
+
+### Added
+
+- End-to-end live-test quality gates covering release-version convergence, Windows command parity, strict schedule values, authorization boundaries, database readiness, rollback ordering, and bounded release checks.
+- A GitHub Actions Compose smoke deployment that builds the appliance, starts the backend and Caddy gateway, and verifies HTTP and HTTPS health.
+- Windows lab-agent screenshots, Chrome/Edge/Firefox history reporting, capability advertisement, bounded command execution, active-session lock/logoff handling, protected atomic configuration, and self-update rollback.
+- SQLite integrity/readiness checks, WAL-aware size reporting, scheduler validation, and automatic retained-screenshot reconciliation.
+
+### Changed
+
+- Made class and automation changes validate and persist atomically, reject duplicate IDs and unsupported secondary actions, and protect referenced classes from deletion.
+- Made school timezone and classroom identity database-backed operational settings instead of decorative GUI values.
+- Split liveness/readiness behavior and removed classroom topology from the public health response.
+- Bound fresh Compose backend access to loopback so Caddy remains the external HTTPS boundary.
+- Hardened installation targets, migration snapshots, immutable update runners, resumable update requests, backup checksums, pinned rollback points, and release tag/version preflight.
+- Reordered first-run setup so the administrator exists before privileged integration discovery.
+- Added capability-aware controller navigation and safer rendering of database and integration values.
+
+### Fixed
+
+- Disabled or missing assigned access profiles now fail closed and invalidate affected browser and WebSocket sessions.
+- Rollback restores the matching database and data, with correct UID/GID ownership, before the older application starts.
+- Active SVG uploads are rejected, CSV formula cells are neutralized, login throttling is bounded, password verification is asynchronous, and GitHub release checks time out.
+- Strict clock and calendar validation now rejects impossible values such as `99:99` and invalid dates.
+- Presentation and media conversion preserve the last known-good render on failure and use collision-resistant staging names.
+- Removed the incomplete, site-specific legacy classroom-session experience and its missing assets; retired endpoints now return `410 Gone`.
+- Removed stale classroom-specific announcement wording and obsolete frontend version labels while preserving the Built by Kyle Wagner attribution.
+
 ## 1.0.0-alpha.68 - 2026-09-08
 
 ### Added

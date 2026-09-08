@@ -94,6 +94,11 @@ version. Every update has a pre-update operational backup. Deployment failure
 automatically restores the prior commit and backup. Revert Last Upgrade restores
 that same known-good pair after first preserving the current state.
 
+The updater runs from an immutable host-installed copy. It verifies the
+SHA-256 digest of the pinned revert backup, restores matching data before an
+older application starts, and resumes a root-journaled request after an
+unexpected restart.
+
 Automatic updates are off by default and run only during the configured
 maintenance window. Run `sudo ./install.sh` once when upgrading an older
 installation to install the native updater service.

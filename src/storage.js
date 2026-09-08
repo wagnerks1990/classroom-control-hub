@@ -25,6 +25,7 @@ class ClassroomHubStorage{
     this.db.exec(`
       PRAGMA journal_mode=WAL;
       PRAGMA synchronous=NORMAL;
+      PRAGMA busy_timeout=5000;
       PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,applied_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS object_store(namespace TEXT PRIMARY KEY,value_json TEXT NOT NULL,source_file TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
@@ -145,6 +146,8 @@ class ClassroomHubStorage{
     this.db.exec("UPDATE users SET profile_id=CASE role WHEN 'admin' THEN 'administrator' WHEN 'operator' THEN 'teacher' ELSE 'read-only' END WHERE profile_id IS NULL OR profile_id=''");
     this.masterKey=this.loadMasterKey();
     this.migrateNormalizedObjects();
+    const integrity=this.db.prepare("PRAGMA quick_check(1)").get();
+    if(String(integrity?.quick_check||"").toLowerCase()!=="ok")throw Error(`SQLite integrity check failed: ${integrity?.quick_check||"unknown error"}`);
   }
 
   applyTelemetrySeparationMigration(){
@@ -210,8 +213,22 @@ class ClassroomHubStorage{
 
   databaseInfo(){
     const count=t=>this.db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n;
-    let size=0;try{size=fs.statSync(this.dbFile).size}catch{}
-    return {file:this.dbFile,size,objects:count("object_store"),audits:count("audit_events"),telemetry:count("telemetry_state"),secrets:count("secret_store"),certificates:count("certificates"),encryptedSecrets:!!this.masterKey,journalMode:"WAL",schemaVersion:this.db.prepare("SELECT MAX(version) v FROM schema_migrations").get().v||0,normalized:{displays:count("display_devices"),displayCredentials:count("display_credentials"),labAgentCredentials:count("lab_agent_credentials"),groups:count("device_groups"),integrations:count("integrations"),managedModules:count("managed_modules"),integrationDevices:count("integration_devices"),classes:count("class_schedules"),automations:count("automations"),automationActions:count("automation_actions"),automationTargets:count("automation_targets"),scenes:count("scenes"),sessions:count("sessions"),accessProfiles:count("access_profiles"),preferences:count("system_preferences"),users:count("users"),userSessions:count("user_sessions")}};
+    const files=[this.dbFile,`${this.dbFile}-wal`,`${this.dbFile}-shm`],fileSizes={};let size=0;
+    for(const file of files){try{const bytes=fs.statSync(file).size;fileSizes[path.basename(file)]=bytes;size+=bytes}catch{}}
+    return {file:this.dbFile,size,fileSizes,objects:count("object_store"),audits:count("audit_events"),telemetry:count("telemetry_state"),secrets:count("secret_store"),certificates:count("certificates"),encryptedSecrets:!!this.masterKey,journalMode:"WAL",schemaVersion:this.db.prepare("SELECT MAX(version) v FROM schema_migrations").get().v||0,normalized:{displays:count("display_devices"),displayCredentials:count("display_credentials"),labAgentCredentials:count("lab_agent_credentials"),groups:count("device_groups"),integrations:count("integrations"),managedModules:count("managed_modules"),integrationDevices:count("integration_devices"),classes:count("class_schedules"),automations:count("automations"),automationActions:count("automation_actions"),automationTargets:count("automation_targets"),scenes:count("scenes"),sessions:count("sessions"),accessProfiles:count("access_profiles"),preferences:count("system_preferences"),users:count("users"),userSessions:count("user_sessions")}};
+  }
+
+  healthCheck(){
+    try{
+      const quick=this.db.prepare("PRAGMA quick_check(1)").get()?.quick_check||"unknown";
+      const foreignKeyErrors=this.db.prepare("PRAGMA foreign_key_check").all().length;
+      fs.accessSync(this.dbFile,fs.constants.R_OK|fs.constants.W_OK);
+      fs.accessSync(path.dirname(this.dbFile),fs.constants.W_OK);
+      // Acquiring and releasing an immediate transaction verifies that SQLite
+      // can obtain a writer lock without changing application data.
+      this.db.exec("BEGIN IMMEDIATE; ROLLBACK");
+      return {ok:String(quick).toLowerCase()==="ok"&&foreignKeyErrors===0,quickCheck:quick,foreignKeyErrors,writable:true};
+    }catch(error){return {ok:false,quickCheck:null,foreignKeyErrors:null,writable:false,error:error.message}}
   }
 
   hasObject(namespace){return !!this.db.prepare("SELECT 1 ok FROM object_store WHERE namespace=?").get(namespace)}

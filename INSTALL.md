@@ -67,7 +67,7 @@ sudo cp .env.example .env
 
 Edit `.env` for the local site before starting the stack. Keep the production `.env` local and never commit it.
 
-Then install/start:
+Then install/start (do not bypass the installer with a raw first-run Compose command):
 
 ```bash
 sudo bash install.sh

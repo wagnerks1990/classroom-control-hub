@@ -75,7 +75,9 @@ sudo docker compose ps
 curl -fsS http://localhost:3000/health
 ```
 
-Take a backup before upgrading.
+Take a backup before upgrading. The installer uses SQLite's online backup API
+for the database and excludes managed backup archives to avoid recursive,
+potentially inconsistent migration snapshots.
 
 ## Development installation
 

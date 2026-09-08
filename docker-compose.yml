@@ -30,7 +30,7 @@ services:
     container_name: classroom-control-hub
     restart: unless-stopped
     ports:
-      - "${HUB_BIND_ADDRESS:-0.0.0.0}:${HUB_PORT:-3000}:3000"
+      - "${HUB_BIND_ADDRESS:-127.0.0.1}:${HUB_PORT:-3000}:3000"
     environment:
       PORT: 3000
       ROOM_NAME: ${ROOM_NAME:-Classroom}
@@ -120,6 +120,8 @@ services:
       MANAGED_APP_CONTAINER: ${MANAGED_APP_CONTAINER:-classroom-control-hub}
       RESTORE_HEALTH_TIMEOUT_MS: ${RESTORE_HEALTH_TIMEOUT_MS:-60000}
       RESTORE_MAX_EXPANDED_MB: ${RESTORE_MAX_EXPANDED_MB:-4096}
+      APP_UID: 10001
+      APP_GID: 10001
       HOST_AGENT_SOCKET: /run/classroom-control-hub/host-agent.sock
       MASTER_KEY_FILE: /run/secrets/classroom-control-hub-master-key
     volumes:
@@ -132,7 +134,7 @@ services:
       - /opt/classroom-hub-backups:/host-backups:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/ready',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 20s
