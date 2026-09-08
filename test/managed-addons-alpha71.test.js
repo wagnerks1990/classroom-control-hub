@@ -36,9 +36,11 @@ test("setup wizard keeps receiver IDs editable and removes stale group members",
   assert.match(setup,/id="receiverIds"/);
   const receiverTag=setup.match(/<input[^>]+id="receiverIds"[^>]*>/)?.[0]||"";
   assert.doesNotMatch(receiverTag,/\bdisabled\b/);
-  assert.match(setup,/parseReceiverIds/);
-  assert.match(setup,/filter\(id=>keep\[id\]\)/,"display groups must be pruned to saved receivers");
-  assert.match(setup,/new Set\(receiverIds\)/,"receiver IDs must reject duplicates");
+  assert.match(setup,/function receiverIdList\(\)/);
+  assert.match(setup,/unique=\[\.\.\.new Set\(ids\)\]/,"receiver IDs must reject duplicates");
+  assert.match(setup,/const allowed=new Set\(ids\)/);
+  assert.match(setup,/filter\(id=>allowed\.has\(id\)\)/,"display groups must be pruned to saved receivers");
+  assert.match(setup,/groups\.all=\[\.\.\.ids\]/);
 });
 
 test("maintenance Compose health does not depend on main application readiness",()=>{
