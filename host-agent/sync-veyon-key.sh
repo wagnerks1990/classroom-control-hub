@@ -9,9 +9,13 @@ APP_GID="${APP_GID:-10001}"
 
 command -v veyon-cli >/dev/null 2>&1 || exit 0
 
+# Veyon key names are alphabetic. Reject unexpected values before using the name
+# in CLI arguments or a table-match expression.
+[[ "$KEY_NAME" =~ ^[A-Za-z]+$ ]] || { echo "Invalid VEYON_KEY_NAME: $KEY_NAME" >&2; exit 1; }
+
 # Only synchronize when the requested private key actually exists. The Hub never
 # creates or rotates native Veyon authentication keys implicitly.
-if ! veyon-cli authkeys list details 2>/dev/null | awk -v key="$KEY_NAME" '$1=="|" && $2==key && $3=="private" {found=1} END{exit found?0:1}'; then
+if ! veyon-cli authkeys list details 2>/dev/null | grep -Eq "^\|[[:space:]]*${KEY_NAME}[[:space:]]*\|[[:space:]]*private[[:space:]]*\|"; then
   exit 0
 fi
 
@@ -26,6 +30,9 @@ trap cleanup EXIT
 veyon-cli authkeys export "$KEY_NAME/private" "$private_tmp" >/dev/null
 veyon-cli authkeys extract "$KEY_NAME" >/dev/null
 veyon-cli authkeys export "$KEY_NAME/public" "$public_tmp" >/dev/null
+
+[[ -s "$private_tmp" ]] || { echo "Veyon private-key export was empty" >&2; exit 1; }
+[[ -s "$public_tmp" ]] || { echo "Veyon public-key export was empty" >&2; exit 1; }
 
 chmod 0640 "$private_tmp"
 chmod 0644 "$public_tmp"
