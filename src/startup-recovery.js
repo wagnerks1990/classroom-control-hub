@@ -73,6 +73,21 @@ function migrateLegacyVeyonInventory(db,dbFile){
   console.warn(`Startup recovery migrated ${actualCount} Veyon computers into SQLite and retired the legacy JSON file.`);
 }
 
+function adoptSynchronizedVeyonKeyName(){
+  const marker=String(process.env.VEYON_KEY_NAME_FILE||"").trim();
+  if(!marker||!fs.existsSync(marker))return;
+  let keyName="";
+  try{keyName=fs.readFileSync(marker,"utf8").trim()}catch(error){console.warn(`Synchronized Veyon key-name marker could not be read: ${error.message}`);return}
+  if(!/^[A-Za-z][A-Za-z0-9._-]*$/.test(keyName)){
+    console.warn("Synchronized Veyon key-name marker was ignored because it is invalid.");
+    return;
+  }
+  const previous=String(process.env.VEYON_KEY_NAME||"").trim();
+  process.env.VEYON_KEY_NAME=keyName;
+  if(previous&&previous!==keyName)console.warn(`Startup recovery adopted synchronized Veyon key '${keyName}' instead of stale configured key '${previous}'.`);
+}
+
+adoptSynchronizedVeyonKeyName();
 const dbFile=canonicalDatabaseFile();
 process.env.DATABASE_FILE=dbFile;
 if(fs.existsSync(dbFile)){
