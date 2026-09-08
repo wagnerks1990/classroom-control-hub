@@ -21,6 +21,15 @@ Never commit `.env`, production databases, backups, SSH keys, or certificate pri
 
 The controller should normally be reachable only through a trusted management network or authenticated reverse proxy. WebSocket forwarding must be supported, but broad public exposure is not required for ordinary classroom use.
 
+## Display credentials
+
+Provision each classroom display with a one-time enrollment link from the
+controller. The resulting credential is unique, revocable, bound to a stable
+display ID, and stored locally by that receiver. Enrollment links expire and
+cannot be reused. The database stores only SHA-256 hashes, and administration
+APIs expose metadata rather than raw tokens. Disable the legacy shared display
+token after migration coverage is complete.
+
 ## Host privileges
 
 The main application should not receive unrestricted access to the Docker socket or host filesystem merely for convenience. Host-level actions belong in the host agent with a narrow authenticated API and explicit allowlist of operations.

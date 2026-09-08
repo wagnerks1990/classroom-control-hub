@@ -4898,6 +4898,20 @@ app.put("/api/v1/admin/displays",requireAdmin,(req,res)=>{
     audit({kind:"admin.config.displays",displayCount:Object.keys(devices).length,groupCount:Object.keys(displayGroups).length});res.json({ok:true,devices,displayGroups});
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
+function displayCredentialAdminView(){
+  const security=dbStore.listDisplayCredentials(),byDisplay={};
+  for(const [id,d] of Object.entries(devices))byDisplay[id]={id,name:d.name||id,enabled:d.enabled!==false,credentials:[],pending:[]};
+  for(const c of security.credentials)if(byDisplay[c.displayId])byDisplay[c.displayId].credentials.push(c);
+  for(const p of security.pending)if(byDisplay[p.displayId])byDisplay[p.displayId].pending.push(p);
+  const values=Object.values(byDisplay),unenrolled=values.filter(d=>d.enabled&&!d.credentials.some(c=>!c.revokedAt)).map(d=>d.id);
+  return {policy:security.policy,coverage:{enabled:values.filter(d=>d.enabled).length,enrolled:values.filter(d=>d.enabled&&d.credentials.some(c=>!c.revokedAt)).length,unenrolled},displays:values};
+}
+function disconnectRevokedDisplayCredentials(ids){const set=new Set([].concat(ids||[]).map(String));for(const ws of wsClients)if(ws.role==="display"&&set.has(String(ws.displayCredentialId||""))&&ws.readyState===WebSocket.OPEN)ws.close(1008,"Display credential revoked")}
+app.get("/api/v1/admin/display-credentials",requireAdmin,(_req,res)=>res.json({ok:true,...displayCredentialAdminView()}));
+app.put("/api/v1/admin/display-credentials/policy",requireAdmin,(req,res)=>{try{const state=displayCredentialAdminView();if(req.body?.legacySharedTokenAllowed===false&&state.coverage.unenrolled.length&&req.body?.confirmDisableWithoutFullEnrollment!==true)return res.status(409).json({ok:false,error:`Enroll every enabled display before disabling legacy access. Missing: ${state.coverage.unenrolled.join(", ")}`,unenrolled:state.coverage.unenrolled});const policy=dbStore.setDisplayCredentialPolicy(req.body||{});audit({kind:"admin.display-credentials.policy",policy});res.json({ok:true,policy})}catch(err){res.status(400).json({ok:false,error:err.message})}});
+app.post("/api/v1/admin/displays/:id/enrollment",requireAdmin,(req,res)=>{try{const displayId=cleanId(req.params.id),issued=dbStore.createDisplayEnrollment(displayId,{ttlMinutes:req.body?.ttlMinutes});if(req.body?.revokeExisting===true){const active=dbStore.listDisplayCredentials().credentials.filter(x=>x.displayId===displayId&&!x.revokedAt).map(x=>x.id);dbStore.revokeDisplayCredentials(displayId);disconnectRevokedDisplayCredentials(active)}const url=`/display/?id=${encodeURIComponent(displayId)}#enrollmentToken=${encodeURIComponent(issued.token)}`;audit({kind:"admin.display-enrollment.issue",displayId,expiresAt:issued.expiresAt,revokeExisting:req.body?.revokeExisting===true});res.status(201).json({ok:true,enrollment:{id:issued.id,displayId,displayName:issued.displayName,expiresAt:issued.expiresAt,url}})}catch(err){res.status(400).json({ok:false,error:err.message})}});
+app.delete("/api/v1/admin/displays/:id/enrollment",requireAdmin,(req,res)=>{const displayId=cleanId(req.params.id),cancelled=dbStore.cancelDisplayEnrollments(displayId);audit({kind:"admin.display-enrollment.cancel",displayId,cancelled});res.json({ok:true,cancelled})});
+app.delete("/api/v1/admin/display-credentials/:id",requireAdmin,(req,res)=>{const id=String(req.params.id||""),revoked=dbStore.revokeDisplayCredential(id);if(revoked)disconnectRevokedDisplayCredentials([id]);audit({kind:"admin.display-credential.revoke",credentialId:id,revoked});res.status(revoked?200:404).json({ok:revoked,error:revoked?undefined:"Active credential not found"})});
 app.put("/api/v1/admin/hardware",requireAdmin,(req,res)=>{
   try{const value=req.body||{};dbStore.writeNormalized("hardware",value);audit({kind:"admin.config.hardware"});res.json({ok:true,hardware:value,restartRecommended:true})}catch(err){res.status(400).json({ok:false,error:err.message})}
 });
@@ -6352,17 +6366,26 @@ wss.on("connection", (ws, req) => {
         }
 
         if (role === "display") {
-          if (!DISPLAY_TOKEN || !secureTokenEqual(msg.token,DISPLAY_TOKEN)) {
-            throw new Error("Unauthorized display");
-          }
-
           const deviceId = cleanId(msg.deviceId);
           if (!devices[deviceId] || devices[deviceId].enabled === false) {
             throw new Error("Unknown or disabled display");
           }
 
+          let displayCredential=dbStore.authenticateDisplay(deviceId,msg.credential||""),issuedCredential=null,authMode="credential";
+          if(!displayCredential&&msg.enrollmentToken){
+            issuedCredential=dbStore.consumeDisplayEnrollment(deviceId,msg.enrollmentToken,{label:String(msg.meta?.userAgent||req.headers["user-agent"]||"Classroom display")});
+            if(issuedCredential)displayCredential={id:issuedCredential.id,displayId:deviceId};
+          }
+          if(!displayCredential){
+            const policy=dbStore.displayCredentialPolicy();
+            if(policy.legacySharedTokenAllowed&&DISPLAY_TOKEN&&secureTokenEqual(msg.token,DISPLAY_TOKEN))authMode="legacy-shared-token";
+            else throw new Error("Unauthorized display");
+          }else if(issuedCredential)authMode="new-enrollment";
+
           ws.role = "display";
           ws.deviceId = deviceId;
+          ws.displayCredentialId=displayCredential?.id||"";
+          ws.displayAuthMode=authMode;
           clearTimeout(ws.helloTimer);
           ws.maAudioRestored = false;
           ws.maAudioRestorePending = false;
@@ -6378,7 +6401,10 @@ wss.on("connection", (ws, req) => {
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
-            state: persistentState.displays[deviceId] || null
+            state: persistentState.displays[deviceId] || null,
+            authMode,
+            credential:issuedCredential?.credential||undefined,
+            credentialId:displayCredential?.id||undefined
           });
 
           // Re-attach persistent Music Assistant browser player bridge after display reconnect/reload.

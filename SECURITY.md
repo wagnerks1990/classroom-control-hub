@@ -24,6 +24,14 @@ Never commit:
 - Restrict Docker socket and host filesystem access to the maintenance component only.
 - Back up the database and encryption master key separately and securely.
 
+## Classroom display credentials
+
+Provision each receiver with a one-time enrollment link from the controller.
+Each display receives its own revocable credential; the database stores only
+its SHA-256 hash. Disable the legacy shared `DISPLAY_TOKEN` after all enabled
+displays are enrolled. Raw display credentials and enrollment codes must not
+appear in logs, diagnostics, database records, or administrative read APIs.
+
 ## Reporting vulnerabilities
 
 Do not publish credentials, exploit details against a live school network, or student information in public issues. Use a private contact method with the repository owner for sensitive reports.

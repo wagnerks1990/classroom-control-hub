@@ -23,6 +23,17 @@ Administrators configure MQTT/Govee, Pluto AV matrix, and Veyon classroom-comput
 
 Environment values remain first-start and migration fallbacks. Once the form is saved, its database record is authoritative. Host/container boundary settings and bootstrap credentials remain outside this screen because they are required before the application can safely open its database and serve the controller.
 
+## Classroom display enrollment
+
+Administrators enroll receivers under **Settings → Classroom Display
+Enrollment**. The panel reports enabled/enrolled coverage, creates an expiring
+one-use link, cancels an unused link, revokes an individual browser credential,
+or rotates every credential for one display. Raw credentials are never listed.
+
+Keep legacy shared-token access enabled only while migrating existing displays.
+After every enabled display is enrolled, turn it off in the same panel. The
+controller refuses to disable the migration path while coverage is incomplete.
+
 ## Cross-domain scheduled actions (alpha.17)
 
 Every scheduled event begins with an automatic **Clear Screen** against all enabled Classroom Control Hub display clients before Action 1. The reset also applies to manual **Run Now/Test Now** executions. Timer overlays are added only after the event actions finish.

@@ -173,17 +173,25 @@ Recommended conceptual record:
 
 Do not use a transient IP address as the only display identity unless the environment guarantees it is stable.
 
-Display WebSockets now fail closed when `DISPLAY_TOKEN` is empty. Provision a
-receiver once with a URL fragment so the secret is not sent in the HTTP request
-or retained in server access logs:
+Enroll each receiver under **Settings → Classroom Display Enrollment**. Create
+an expiring, one-use link for its stable display ID and open that link on the
+receiver. The enrollment secret is carried in the URL fragment, so it is not
+sent in the HTTP request or retained in server access logs:
 
 ```text
-http://hub.example/display/?id=tv1#displayToken=<generated DISPLAY_TOKEN>
+http://hub.example/display/?id=tv1#enrollmentToken=<one-time token>
 ```
 
-The display stores the token locally and removes the fragment from the visible
-URL. This shared token is a stabilization measure; the v2 design replaces it
-with individually enrolled, revocable endpoint credentials.
+The display consumes the token once, receives its own credential, stores it in
+browser local storage under that display ID, and removes the fragment from the
+visible URL. Only token hashes are stored in SQLite. Administrators can revoke
+one credential, rotate all credentials for a display, or cancel an unused link.
+
+`DISPLAY_TOKEN` is now a migration fallback for existing receivers. Legacy
+shared-token access is enabled by default during migration. Disable it from the
+controller after coverage reports that every enabled display is enrolled; the
+controller blocks an accidental early shutdown. Do not use the shared token for
+new display provisioning.
 
 ## Class schedules
 

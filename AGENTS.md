@@ -113,6 +113,14 @@ Normal visual automations do not disturb Background Music. Unmuted priority vide
 
 Every display release must keep backend/controller/display build versions converged. Avoid reload loops caused by renderer/backend version mismatch.
 
+### Display authentication
+
+Classroom receivers use individually enrolled, revocable credentials bound to
+stable display IDs. Store only hashes server-side and return a raw credential
+only once during enrollment. Configuration saves and display renames must not
+invalidate credentials; removing a display must remove its credentials. Keep
+the shared display token only as a guarded migration fallback.
+
 ## Hardware and integrations
 
 Public source must stay generic. Do not hardcode production IPs, stream IDs, credentials, school names, calendars, or tokens into tracked defaults.

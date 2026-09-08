@@ -8,7 +8,7 @@ Centralized classroom control and automation platform for displays, AV routing, 
 
 Classroom Control Hub provides a single web controller for classroom and lab operations, including:
 
-- browser-based display clients and digital signage
+- individually enrolled, revocable browser display clients and digital signage
 - scheduled classroom automations
 - priority live/morning announcements
 - Background Music through Music Assistant
