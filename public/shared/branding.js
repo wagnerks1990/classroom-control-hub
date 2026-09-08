@@ -28,4 +28,15 @@
 
   window.ControlHubBranding={apply,load:async()=>{try{const response=await fetch("/api/v1/branding",{credentials:"same-origin",cache:"no-store"});if(!response.ok)throw Error(`HTTP ${response.status}`);const value=await response.json();return apply(value.branding||{})}catch{return apply(fallback)}}};
   window.ControlHubBranding.load();
+
+  // Integration setup is shared by the first-run wizard and the controller.
+  // Keep it separate from branding internals while loading it from this common
+  // entry point so both surfaces stay in sync.
+  if(!renderer&&!document.querySelector('script[data-controlhub-integration-setup]')){
+    const script=document.createElement("script");
+    script.src="/shared/integration-setup.js";
+    script.defer=true;
+    script.dataset.controlhubIntegrationSetup="1";
+    document.head.append(script);
+  }
 })();
