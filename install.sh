@@ -52,13 +52,17 @@ if [[ -f "$TARGET/.env" || -d "$TARGET/data" ]]; then
   echo "Creating pre-migration backup at $BACKUP ..."
   rsync -a \
     --exclude data/backups/ \
-    --exclude data/classroom-control-hub.db \
-    --exclude data/classroom-control-hub.db-wal \
-    --exclude data/classroom-control-hub.db-shm \
+    --exclude 'data/*.db' \
+    --exclude 'data/*.db-wal' \
+    --exclude 'data/*.db-shm' \
     "$TARGET/" "$BACKUP/classroom-hub/"
-  if [[ -f "$TARGET/data/classroom-control-hub.db" ]]; then
+  if [[ -d "$TARGET/data" ]]; then
     mkdir -p "$BACKUP/classroom-hub/data"
-    sqlite3 "$TARGET/data/classroom-control-hub.db" ".backup '$BACKUP/classroom-hub/data/classroom-control-hub.db'"
+    while IFS= read -r -d '' db; do
+      db_name="$(basename "$db")"
+      echo "Creating SQLite-safe backup for $db_name ..."
+      sqlite3 "$db" ".backup '$BACKUP/classroom-hub/data/$db_name'"
+    done < <(find "$TARGET/data" -maxdepth 1 -type f -name '*.db' -print0)
   fi
   if [[ -d "$SERVICES" ]]; then rsync -a "$SERVICES/" "$BACKUP/services/"; fi
   docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' > "$BACKUP/docker-containers.txt" || true
