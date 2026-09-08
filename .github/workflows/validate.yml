@@ -129,7 +129,7 @@ jobs:
         shell: pwsh
         run: |
           $agent = Get-Content public/lab-agent/ClassroomHubAgent.ps1 -Raw
-          if ($agent -notmatch "1\.0\.0-alpha\.69") { throw 'Windows agent version is not converged.' }
+          if ($agent -notmatch "1\.0\.0-alpha\.70") { throw 'Windows agent version is not converged.' }
           foreach ($action in @('screenshot','refresh-history','instructor-lock','update-agent')) {
             if ($agent -notmatch "'$([regex]::Escape($action))'\s*\{") { throw "Missing Windows action: $action" }
           }
