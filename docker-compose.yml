@@ -41,7 +41,7 @@ services:
       LEGACY_JSON_MIRROR: ${LEGACY_JSON_MIRROR:-false}
       MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-}
       VEYON_WEBAPI_URL: ${VEYON_WEBAPI_URL:-http://host.docker.internal:11080}
-      VEYON_KEY_NAME: ${VEYON_KEY_NAME:-ClassroomControlHub}
+      VEYON_KEY_NAME: ${VEYON_KEY_NAME:-master}
       VEYON_PRIVATE_KEY_FILE: ${VEYON_PRIVATE_KEY_FILE:-/run/secrets/veyon-private-key}
       VEYON_SCAN_SUBNET: ${VEYON_SCAN_SUBNET:-}
       VEYON_SCAN_START: ${VEYON_SCAN_START:-1}
