@@ -25,7 +25,7 @@ jobs:
           set -euo pipefail
           test "${GITHUB_REF_TYPE}" = "tag"
           test "${GITHUB_REF_NAME#v}" = "$(tr -d '\r\n' < VERSION)"
-          node -e 'const p=require("./package.json"),v=require("fs").readFileSync("VERSION","utf8").trim();if(p.version!==v)process.exit(1)'
+          node -e 'const p=require("./package.json"),m=require("./maintenance-agent/package.json"),v=require("fs").readFileSync("VERSION","utf8").trim();if(p.version!==v||m.version!==v)process.exit(1)'
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
           checks="$(gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100")"
@@ -45,12 +45,18 @@ jobs:
           npm --prefix maintenance-agent ci --ignore-scripts --no-audit --no-fund
           npm --prefix maintenance-agent audit --omit=dev --audit-level=high
           node --check src/server.js
+          node --check src/storage.js
+          node --check src/startup-recovery.js
           node --check maintenance-agent/server.js
-          python3 -m py_compile host-agent/server.py
+          node --check maintenance-agent/extensions.js
+          python3 -m py_compile host-agent/server.py host-agent/start.py
           bash -n install.sh deploy/bootstrap.sh host-agent/update-runner.sh host-agent/app-update-runner.sh
           docker compose config >/dev/null
           docker build -t classroom-control-hub:release-gate .
           docker build -t classroom-control-hub-maintenance:release-gate maintenance-agent
+          expected="$(cat VERSION)"
+          docker run --rm --entrypoint node classroom-control-hub:release-gate -e "const fs=require('fs');const v=fs.readFileSync('/app/VERSION','utf8').trim();if(v!=='$expected')process.exit(1);for(const f of ['/app/public/controller/app.js','/app/public/display/index.html','/app/public/lab-agent/ClassroomHubAgent.ps1'])if(!fs.readFileSync(f,'utf8').includes(v))process.exit(2)"
+          docker run --rm --entrypoint node classroom-control-hub-maintenance:release-gate -e "const fs=require('fs');if(!fs.readFileSync('/app/server.js','utf8').includes('$expected'))process.exit(1)"
 
   hub:
     needs: preflight
