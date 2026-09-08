@@ -6,6 +6,16 @@ const ROLE_CAPABILITIES=Object.freeze({
   admin:["*"]
 });
 function secureTokenEqual(actual,expected){const a=Buffer.from(String(actual||"")),b=Buffer.from(String(expected||""));return a.length===b.length&&a.length>0&&crypto.timingSafeEqual(a,b)}
-function capabilitiesFor(user,profile=null){if(!user)return [];const configured=profile?.enabled!==false?profile?.config?.capabilities:null;return Array.isArray(configured)?configured:ROLE_CAPABILITIES[user.role]||[]}
+function capabilitiesFor(user,profile=null){
+  if(!user)return [];
+  // An explicitly assigned profile is an authorization boundary. If it was
+  // disabled, deleted, or cannot be resolved, fail closed instead of silently
+  // restoring the broader built-in permissions for the user's role.
+  if(user.profileId&&(!profile||profile.enabled===false))return [];
+  const configured=profile?.config?.capabilities;
+  if(profile)return Array.isArray(configured)?configured:[];
+  // Role defaults are retained only for legacy users which predate profiles.
+  return ROLE_CAPABILITIES[user.role]||[];
+}
 function hasCapability(user,capability,profile=null){const caps=capabilitiesFor(user,profile);return caps.includes("*")||caps.includes(capability)}
 module.exports={ROLE_CAPABILITIES,secureTokenEqual,capabilitiesFor,hasCapability};

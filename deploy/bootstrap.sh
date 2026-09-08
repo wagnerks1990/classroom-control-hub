@@ -4,6 +4,8 @@ set -Eeuo pipefail
 REPOSITORY_URL="${CLASSROOM_HUB_REPOSITORY_URL:-https://github.com/wagnerks1990/classroom-control-hub.git}"
 REPOSITORY_REF="${CLASSROOM_HUB_REF:-main}"
 TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
+SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"
+BACKUPS="${CLASSROOM_HUB_BACKUP_DIR:-/opt/classroom-hub-backups}"
 STAGE=""
 
 fail(){ echo "Classroom Control Hub bootstrap failed: $*" >&2; exit 1; }
@@ -18,9 +20,15 @@ if [[ "${ID:-}" != "ubuntu" || "${VERSION_ID:-}" != "24.04" ]]; then
   [[ "${CLASSROOM_HUB_ALLOW_UNSUPPORTED_OS:-false}" == "true" ]] || fail "Ubuntu Server 24.04 LTS is the supported appliance platform (detected ${PRETTY_NAME:-unknown})"
 fi
 [[ "$TARGET" == /* && "$TARGET" != "/" ]] || fail "CLASSROOM_HUB_DIR must be an absolute non-root path"
+[[ ! -L "$TARGET" ]] || fail "CLASSROOM_HUB_DIR may not be a symbolic link"
+[[ "$TARGET" =~ ^/opt/[A-Za-z0-9._/-]+$ ]] || fail "CLASSROOM_HUB_DIR contains unsupported path characters"
+TARGET_REAL="$(readlink -m "$TARGET")"
+case "$TARGET_REAL" in /|/opt|/usr|/var|/etc|/home|/root|/tmp) fail "CLASSROOM_HUB_DIR resolves to unsafe broad path $TARGET_REAL";; esac
+[[ "$TARGET_REAL" == /opt/* ]] || fail "CLASSROOM_HUB_DIR must resolve beneath /opt"
 [[ "$REPOSITORY_REF" =~ ^[A-Za-z0-9._/-]{1,160}$ ]] || fail "CLASSROOM_HUB_REF contains unsupported characters"
-if [[ -d "$TARGET" ]] && find "$TARGET" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+if [[ -d "$TARGET_REAL" ]] && find "$TARGET_REAL" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
   [[ "${CLASSROOM_HUB_REINSTALL:-false}" == "true" ]] || fail "the target $TARGET is not empty; use the web updater for an existing appliance, choose another target, or set CLASSROOM_HUB_REINSTALL=true for a deliberate installer rerun"
+  [[ -f "$TARGET_REAL/.classroom-hub-installation" || ( -f "$TARGET_REAL/docker-compose.yml" && -f "$TARGET_REAL/VERSION" ) ]] || fail "refusing to reinstall into an unrecognized directory"
 fi
 
 export DEBIAN_FRONTEND=noninteractive
@@ -49,10 +57,12 @@ echo "Downloading Classroom Control Hub ${REPOSITORY_REF} ..."
 git clone --filter=blob:none --branch "$REPOSITORY_REF" --single-branch "$REPOSITORY_URL" "$STAGE/source"
 
 echo "Installing the classroom appliance into $TARGET ..."
-CLASSROOM_HUB_DIR="$TARGET" bash "$STAGE/source/install.sh"
+CLASSROOM_HUB_DIR="$TARGET" CLASSROOM_HUB_SERVICES_DIR="$SERVICES" CLASSROOM_HUB_BACKUP_DIR="$BACKUPS" bash "$STAGE/source/install.sh"
 
 echo
 echo "One-command appliance deployment completed."
 echo "Repository: $REPOSITORY_URL"
 echo "Source ref: $REPOSITORY_REF"
 echo "Installation: $TARGET"
+echo "Services: $SERVICES"
+echo "Migration backups: $BACKUPS"

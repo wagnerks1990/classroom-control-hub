@@ -3,6 +3,7 @@ set -Eeuo pipefail
 STATE_DIR=/var/lib/classroom-hub
 STATE_FILE="$STATE_DIR/update-status.json"
 LOCK_FILE=/run/classroom-control-hub-host-update.lock
+HUB_ROOT="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
 mkdir -p "$STATE_DIR"
 write_state(){
   local phase="$1" message="$2" ok="${3:-null}"
@@ -31,6 +32,10 @@ apt-get -y upgrade
 write_state verifying "Verifying package database and Classroom Control Hub health." null
 dpkg --audit
 apt-get check
-if command -v curl >/dev/null 2>&1; then curl -fsS --max-time 10 http://127.0.0.1:3000/health || true; echo; fi
+cd "$HUB_ROOT"
+published_port="$(docker compose port classroom-hub 3000 2>/dev/null | tail -n 1 | sed 's/.*://' || true)"
+if [[ ! "$published_port" =~ ^[0-9]+$ ]] && [[ -f .env ]]; then published_port="$(sed -n 's/^[[:space:]]*HUB_PORT[[:space:]]*=[[:space:]]*//p' .env | tail -n 1 | tr -d '\r' | tr -d "\"'")"; fi
+[[ "$published_port" =~ ^[0-9]+$ ]] || published_port=3000
+curl -fsS --max-time 15 "http://127.0.0.1:${published_port}/health" >/dev/null
 write_state completed "Host update completed successfully." true
 trap - EXIT

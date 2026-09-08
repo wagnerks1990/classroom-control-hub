@@ -12,7 +12,7 @@ AI coding assistants and contributors should treat the GitHub repository `main` 
 
 ## Current baseline
 
-The current known-good baseline is `1.0.0-alpha.68`.
+The current live-test candidate baseline is `1.0.0-alpha.70`.
 
 Critical invariants:
 

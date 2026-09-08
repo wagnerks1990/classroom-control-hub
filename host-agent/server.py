@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-import hmac, json, os, re, shutil, socketserver, subprocess, urllib.parse
+import hmac, json, os, re, shutil, socketserver, subprocess, threading, urllib.parse
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, timezone
 
-VERSION = "1.0.0-alpha.68"
+VERSION = "1.0.0-alpha.70"
 SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-control-hub/host-agent.sock")
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
 
@@ -229,11 +229,17 @@ def app_update_job_status(include_log=False):
 def start_app_update_job(body):
     current=app_update_job_status(False)
     if current.get('running'): raise RuntimeError('An application update is already running')
+    if APP_UPDATE_REQUEST_FILE.exists(): raise RuntimeError('An application update request is already pending')
     action=str(body.get('action') or 'update')
     if action not in ('update','revert'): raise RuntimeError('Unsupported application update action')
-    request={"action":action,"targetRef":"","targetCommit":"","expectedVersion":"","backupName":str(body.get('backupName') or ''),"failureBackupName":str(body.get('failureBackupName') or body.get('backupName') or ''),"githubToken":str(body.get('githubToken') or '')}
+    commit=run(['git','-C',str(HUB_ROOT),'rev-parse','HEAD'],20).stdout.strip()
+    try: version=(HUB_ROOT/'VERSION').read_text().strip()
+    except Exception: version=''
+    request={"action":action,"targetRef":"","targetCommit":"","expectedVersion":"","rollbackCommit":commit,"rollbackVersion":version,"backupName":str(body.get('backupName') or ''),"backupSha256":str(body.get('backupSha256') or ''),"failureBackupName":str(body.get('failureBackupName') or body.get('backupName') or ''),"failureBackupSha256":str(body.get('failureBackupSha256') or body.get('backupSha256') or ''),"previousHubImage":"","previousMaintenanceImage":"","githubToken":str(body.get('githubToken') or '')}
     if len(request['githubToken'])>1000: raise RuntimeError('GitHub token is too long')
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',request['backupName']): raise RuntimeError('A valid pre-update backup is required')
+    if not re.fullmatch(r'[0-9a-f]{64}',request['backupSha256']): raise RuntimeError('A valid pre-update backup checksum is required')
+    if not re.fullmatch(r'[0-9a-f]{64}',request['failureBackupSha256']): raise RuntimeError('A valid failure-recovery backup checksum is required')
     if action=='update':
         ref=str(body.get('targetRef') or ''); version=str(body.get('expectedVersion') or '')
         if not RELEASE_REF_RE.fullmatch(ref): raise RuntimeError('Only semantic-version GitHub release tags are accepted')
@@ -244,14 +250,22 @@ def start_app_update_job(body):
         if current.get('revertAvailable') is not True: raise RuntimeError('No unused verified rollback point is available')
         commit=str(current.get('previousCommit') or ''); version=str(current.get('previousVersion') or '')
         backup=str(current.get('backupName') or request['backupName'])
+        backup_sha=str(current.get('backupSha256') or request['backupSha256'])
         if not re.fullmatch(r'[0-9a-f]{40}',commit): raise RuntimeError('No verified previous release is available to revert')
+        if not re.fullmatch(r'[0-9a-f]{64}',backup_sha): raise RuntimeError('No verified rollback backup checksum is available')
         failure_backup=str(body.get('failureBackupName') or '')
+        failure_backup_sha=str(body.get('failureBackupSha256') or '')
         if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',failure_backup): raise RuntimeError('A valid pre-revert backup is required')
-        request.update({"targetCommit":commit,"expectedVersion":version,"backupName":backup,"failureBackupName":failure_backup})
+        if not re.fullmatch(r'[0-9a-f]{64}',failure_backup_sha): raise RuntimeError('A valid pre-revert backup checksum is required')
+        hub_image=str(current.get('previousHubImage') or ''); maintenance_image=str(current.get('previousMaintenanceImage') or '')
+        if not re.fullmatch(r'sha256:[0-9a-f]{64}',hub_image) or not re.fullmatch(r'sha256:[0-9a-f]{64}',maintenance_image): raise RuntimeError('The immutable rollback images are no longer available')
+        request.update({"targetCommit":commit,"expectedVersion":version,"backupName":backup,"backupSha256":backup_sha,"failureBackupName":failure_backup,"failureBackupSha256":failure_backup_sha,"previousHubImage":hub_image,"previousMaintenanceImage":maintenance_image})
     APP_UPDATE_REQUEST_FILE.parent.mkdir(parents=True,exist_ok=True)
     temp=APP_UPDATE_REQUEST_FILE.with_suffix('.tmp'); temp.write_text(json.dumps(request,indent=2)); os.chmod(temp,0o600); temp.replace(APP_UPDATE_REQUEST_FILE)
     p=run(['systemctl','start','--no-block',APP_UPDATE_SERVICE],20,False)
-    if p.returncode!=0: raise RuntimeError((p.stderr or p.stdout or 'Unable to start application update service').strip())
+    if p.returncode!=0:
+        APP_UPDATE_REQUEST_FILE.unlink(missing_ok=True)
+        raise RuntimeError((p.stderr or p.stdout or 'Unable to start application update service').strip())
     return {"ok":True,"started":True,"request":{"action":action,"targetRef":request['targetRef'],"expectedVersion":request['expectedVersion'],"backupName":request['backupName']},"job":app_update_job_status(False)}
 
 def migration_snapshots():
@@ -433,6 +447,10 @@ if __name__=='__main__':
     server=UnixHTTPServer(SOCKET_PATH,Handler)
     os.chmod(SOCKET_PATH,0o660)
     print(f"Classroom Control Hub Host Agent {VERSION} listening on {SOCKET_PATH}",flush=True)
+    if APP_UPDATE_REQUEST_FILE.exists():
+        def resume_interrupted_update():
+            run(['systemctl','start','--no-block',APP_UPDATE_SERVICE],20,False)
+        threading.Timer(2.0,resume_interrupted_update).start()
     try: server.serve_forever()
     finally:
         server.server_close()

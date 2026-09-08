@@ -2,9 +2,10 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Veyon Lab Computers</title>
 <link rel="stylesheet" href="/shared/attribution.css">
+<script src="/shared/branding.js" defer></script>
 <script src="/shared/attribution.js" defer></script>
 <style>
-:root{color-scheme:dark;--bg:#0b1015;--panel:#121a22;--card:#18232d;--line:#2c3b47;--text:#edf5f0;--muted:#9eb0a8;--green:#58df91;--red:#ff7070;--amber:#f0c45c}
+:root{color-scheme:dark;--bg:var(--brand-background,#0b1015);--panel:var(--brand-surface,#121a22);--card:color-mix(in srgb,var(--brand-surface,#18232d) 88%,white);--line:#2c3b47;--text:var(--brand-text,#edf5f0);--muted:#9eb0a8;--green:var(--brand-primary,#58df91);--red:#ff7070;--amber:#f0c45c}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Arial,Helvetica,sans-serif}
 header{position:sticky;top:0;z-index:10;background:#0b1015ee;border-bottom:1px solid var(--line);padding:14px 16px;backdrop-filter:blur(8px)}
 h1{margin:0;font-size:22px}.muted{color:var(--muted)}.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
@@ -101,7 +102,7 @@ main{padding:14px}.status{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12p
   <div class="status"><span class="pill" id="apiStatus">Veyon API: checking…</span><span class="pill" id="summary">0 computers</span></div>
   <div id="grid" class="grid"></div>
 </main>
-<div id="modal" class="modal"><div id="liveModalBox" class="modalBox">
+<div id="modal" class="modal" role="dialog" aria-modal="true" aria-label="Live computer view"><div id="liveModalBox" class="modalBox">
   <div class="row liveToolbar">
     <strong id="liveTitle">Live View</strong>
     <span class="grow"></span>
@@ -124,7 +125,7 @@ main{padding:14px}.status{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12p
     <img id="liveImg" class="liveImg" alt="Live computer screen">
   </div>
 </div></div>
-<div id="infoModal" class="modal"><div class="modalBox">
+<div id="infoModal" class="modal" role="dialog" aria-modal="true" aria-label="Computer information"><div class="modalBox">
   <div class="row"><strong id="infoTitle">Details</strong><span class="grow"></span><button id="closeInfo">Close</button></div>
   <div id="infoBody" style="margin-top:10px"></div>
 </div></div>

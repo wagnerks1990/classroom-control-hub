@@ -66,7 +66,7 @@ function rejectedDisplayHello(payload){
     ws.on("error",()=>{});
   });
 }
-function labAgentHello(payload){return new Promise((resolve,reject)=>{const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}}),timeout=setTimeout(()=>{ws.terminate();reject(new Error("Lab agent WebSocket timed out"))},3000);ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"lab-agent",agentId:"lab-pc-01",hostname:"LAB-PC-01",agentVersion:"1.0.0-alpha.68",...payload})));ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);resolve({ws,ack:msg})}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});ws.on("error",reject)})}
+function labAgentHello(payload){return new Promise((resolve,reject)=>{const ws=new WebSocket(wsUrl,{headers:{Origin:baseUrl}}),timeout=setTimeout(()=>{ws.terminate();reject(new Error("Lab agent WebSocket timed out"))},3000);ws.on("open",()=>ws.send(JSON.stringify({type:"hello",role:"lab-agent",agentId:"lab-pc-01",hostname:"LAB-PC-01",agentVersion:"1.0.0-alpha.70",...payload})));ws.on("message",raw=>{const msg=JSON.parse(String(raw));if(msg.type==="hello.ack"){clearTimeout(timeout);resolve({ws,ack:msg})}else if(msg.type==="error"){clearTimeout(timeout);ws.terminate();reject(new Error(msg.error))}});ws.on("error",reject)})}
 
 test.before(async()=>{
   tempDir=fs.mkdtempSync(path.join(os.tmpdir(),"classroom-hub-test-"));
@@ -130,7 +130,7 @@ test("sensitive diagnostics and participation endpoints reject anonymous access"
   assert.ok([401,403].includes(result.response.status));
 
   result=await request("/api/v1/sessions/arbitrary-session");
-  assert.equal(result.response.status,503);
+  assert.equal(result.response.status,410);
 
   for(const endpoint of ["/api/v1/integrations/check","/api/v1/integrations/govee/tv/scenes","/api/v1/govee/tv/status","/api/v1/govee/tv/scenes"]){
     result=await request(endpoint);
@@ -203,7 +203,7 @@ test("classroom displays use one-time enrollment and individually revocable cred
 
   result=await request("/api/v1/admin/displays/secure-tv/enrollment",{method:"POST",authenticated:true,body:{ttlMinutes:15}});
   assert.equal(result.response.status,201,JSON.stringify(result.json));
-  assert.match(result.json.enrollment.url,/^\/display\/\?id=secure-tv#enrollmentToken=/);
+  assert.match(result.json.enrollment.url,/^\/display\/secure-tv#enrollmentToken=/);
   const enrollmentToken=new URL(result.json.enrollment.url,baseUrl).hash.slice("#enrollmentToken=".length);
   assert.ok(enrollmentToken.length>=40);
 
@@ -388,9 +388,9 @@ test("student-data retention is administrator-only, bounded, and database-backed
   assert.equal(result.response.status,403);
   result=await request("/api/v1/admin/privacy-retention",{method:"PUT",authenticated:true,body:{browserHistoryHours:48,screenshotDays:5,alertDays:14,auditDays:90,applyNow:true}});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
-  assert.deepEqual(result.json.policy,{browserHistoryHours:48,screenshotDays:5,alertDays:14,auditDays:90});
+  assert.deepEqual(result.json.policy,{browserHistoryEnabled:false,browserHistoryHours:48,screenshotDays:5,alertDays:14,auditDays:90});
   result=await request("/api/v1/admin/privacy-retention",{authenticated:true});
-  assert.deepEqual(result.json.policy,{browserHistoryHours:48,screenshotDays:5,alertDays:14,auditDays:90});
+  assert.deepEqual(result.json.policy,{browserHistoryEnabled:false,browserHistoryHours:48,screenshotDays:5,alertDays:14,auditDays:90});
   const db=new DatabaseSync(path.join(tempDir,"hub.db"),{readOnly:true});
   const stored=JSON.parse(db.prepare("SELECT value_json FROM system_preferences WHERE key='privacy.retention'").get().value_json);
   db.close();

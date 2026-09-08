@@ -90,9 +90,25 @@ encrypted in the application database.
 
 The native `classroom-hub-app-update.service` resolves the release tag to a Git
 commit, rebuilds the Compose services, and verifies the reported application
-version. Every update has a pre-update operational backup. Deployment failure
-automatically restores the prior commit and backup. Revert Last Upgrade restores
-that same known-good pair after first preserving the current state.
+version across the backend, maintenance service, and Host Agent, plus the HTTPS
+gateway. Every update has a pre-update operational backup. Deployment failure
+automatically restores the prior commit, exact retained container images, and
+backup. Revert Last Upgrade restores that same known-good set after first
+preserving the current state.
+
+The updater runs from an immutable host-installed copy. It verifies the
+SHA-256 digest of the pinned revert backup, restores matching data before an
+older application starts, and resumes a root-journaled request after an
+unexpected restart.
+
+Do not delete `classroom-control-hub-recovery:*` images while the controller
+offers **Revert Last Upgrade**. Clear an unneeded stored GitHub credential using
+the controller action; for this public repository no token is required. Revoke
+the old credential at GitHub when rotating or responding to exposure.
+
+Container publication is gated directly by the tag workflow's locked installs,
+dependency audits, regression tests, syntax checks, Compose validation, and both
+image builds. A matching `VERSION` and package version alone are not sufficient.
 
 Automatic updates are off by default and run only during the configured
 maintenance window. Run `sudo ./install.sh` once when upgrading an older

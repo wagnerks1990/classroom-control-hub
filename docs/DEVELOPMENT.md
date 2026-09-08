@@ -95,7 +95,7 @@ Verify:
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.68` is the known-good production baseline. It includes configurable school scheduling plus the dependency, API privacy, capability, agent-enrollment, updater, and maintenance-plane hardening described in the changelog.
+At the time this document was updated, `1.0.0-alpha.70` is the live-test candidate baseline. It includes configurable school scheduling plus the dependency, API privacy, capability, agent-enrollment, updater, recovery, and maintenance-plane hardening described in the changelog.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 

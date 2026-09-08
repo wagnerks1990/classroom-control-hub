@@ -2,7 +2,7 @@
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.68` — configurable school schedules, granular authorization, verified upgrades, and appliance hardening.
+> **Status:** `1.0.0-alpha.70` — live-test hardening, transactional recovery, and verified appliance deployment.
 
 ## What it does
 
@@ -65,15 +65,17 @@ curl -fsS http://localhost:3000/health
 
 Back up production state before upgrades and never overwrite the local `.env`, database, data, uploads, backups, or secrets with repository examples.
 
-## Quick start for development
+## Development deployment
 
 ```bash
-cp .env.example .env
-docker compose build
-docker compose up -d
+sudo bash install.sh
 ```
 
-Then open:
+The installer is required even for a first local appliance deployment because it
+creates unique credentials, owned persistence directories, secret mount files,
+the native Host Agent, and updater units. Running a raw `docker compose up` from
+a clean clone intentionally fails preflight rather than creating insecure or
+root-owned runtime state. Then open:
 
 ```text
 https://localhost

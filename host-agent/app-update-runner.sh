@@ -55,6 +55,39 @@ health_check(){
   return 1
 }
 
+appliance_health_check(){
+  local expected="$1"
+  health_check "$expected" || return 1
+  docker compose ps --status running --services | grep -qx classroom-hub || return 1
+  docker compose ps --status running --services | grep -qx maintenance-agent || return 1
+  docker compose ps --status running --services | grep -qx caddy || return 1
+  docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:3010/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok||j.version!==process.argv[1]||!j.hostAgent?.ok||j.hostAgent.version!==process.argv[1])process.exit(1)}).catch(()=>process.exit(1))" "$expected" || return 1
+  local https_port tls_host
+  https_port="$(sed -n 's/^[[:space:]]*HUB_HTTPS_PORT[[:space:]]*=[[:space:]]*//p' .env | tail -n 1 | tr -d '\r' | tr -d "\"'" || true)"
+  tls_host="$(sed -n 's/^[[:space:]]*HUB_TLS_HOST[[:space:]]*=[[:space:]]*//p' .env | tail -n 1 | tr -d '\r' | tr -d "\"'" || true)"
+  [[ "$https_port" =~ ^[0-9]+$ ]] || https_port=443
+  [[ -n "$tls_host" ]] || tls_host=localhost
+  curl -kfsS --max-time 15 --resolve "${tls_host}:${https_port}:127.0.0.1" "https://${tls_host}:${https_port}/health" >/dev/null || return 1
+}
+
+capture_recovery_image(){
+  local container="$1" label="$2" id ref
+  id="$(docker inspect --format '{{.Image}}' "$container")"
+  [[ "$id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+  ref="classroom-control-hub-recovery:${label}"
+  docker image tag "$id" "$ref"
+  printf '%s' "$id"
+}
+
+activate_image_id(){
+  local id="$1" service="$2" ref
+  [[ "$id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+  docker image inspect "$id" >/dev/null
+  ref="$(SERVICE="$service" docker compose config --format json | python3 -c 'import json,os,sys; print(json.load(sys.stdin)["services"][os.environ["SERVICE"]]["image"])')"
+  [[ -n "$ref" ]] || return 1
+  docker image tag "$id" "$ref"
+}
+
 refresh_host_agent(){
   install -D -m 0644 "$HUB_ROOT/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-hub-host-agent.service
   if [[ "$HUB_ROOT" != /opt/classroom-hub ]]; then sed -i "s#/opt/classroom-hub#$HUB_ROOT#g" /etc/systemd/system/classroom-hub-host-agent.service; fi
@@ -65,8 +98,13 @@ refresh_host_agent(){
 }
 
 restore_safety_backup(){
-  local backup="$1"
+  local backup="$1" expected_sha="${2:-}"
   [[ -n "$backup" ]] || return 0
+  if [[ -n "$expected_sha" ]]; then
+    local actual_sha
+    actual_sha="$(sha256sum "$HUB_ROOT/data/backups/$backup" | awk '{print $1}')"
+    [[ "$actual_sha" == "$expected_sha" ]] || { echo "Safety backup checksum mismatch" >&2; return 1; }
+  fi
   docker exec -i -e BACKUP_NAME="$backup" classroom-control-hub-maintenance node - <<'NODE'
 const name=process.env.BACKUP_NAME,token=process.env.MAINTENANCE_TOKEN;
 fetch(`http://127.0.0.1:3010/backup/${encodeURIComponent(name)}/restore`,{method:'POST',headers:{'content-type':'application/json','x-maintenance-token':token},body:JSON.stringify({mode:'configuration-data',confirm:'RESTORE'})})
@@ -81,11 +119,10 @@ if ! flock -n 9; then write_state failed "Another application update is already 
 eval "$(REQUEST_FILE="$REQUEST_FILE" python3 - <<'PY'
 import json,os,shlex
 j=json.load(open(os.environ['REQUEST_FILE']))
-for key in ('action','targetRef','targetCommit','expectedVersion','backupName','failureBackupName','githubToken'):
+for key in ('action','targetRef','targetCommit','expectedVersion','rollbackCommit','rollbackVersion','backupName','backupSha256','failureBackupName','failureBackupSha256','previousHubImage','previousMaintenanceImage','githubToken'):
     print(key.upper()+'='+shlex.quote(str(j.get(key) or '')))
 PY
 )"
-rm -f "$REQUEST_FILE"
 ASKPASS_FILE="" TOKEN_FILE=""
 cleanup_credentials(){ [[ -z "$ASKPASS_FILE" ]] || rm -f "$ASKPASS_FILE"; [[ -z "$TOKEN_FILE" ]] || rm -f "$TOKEN_FILE"; }
 trap cleanup_credentials EXIT
@@ -97,10 +134,12 @@ if [[ -n "$GITHUBTOKEN" ]]; then
 fi
 
 cd "$HUB_ROOT"
-CURRENT_COMMIT="$(git rev-parse HEAD)"
-CURRENT_VERSION="$(tr -d '\r\n' < VERSION 2>/dev/null || true)"
+CURRENT_COMMIT="${ROLLBACKCOMMIT:-$(git rev-parse HEAD)}"
+CURRENT_VERSION="${ROLLBACKVERSION:-$(tr -d '\r\n' < VERSION 2>/dev/null || true)}"
+CURRENT_HUB_IMAGE="$(capture_recovery_image classroom-control-hub "hub-${CURRENT_COMMIT:0:12}")"
+CURRENT_MAINTENANCE_IMAGE="$(capture_recovery_image classroom-control-hub-maintenance "maintenance-${CURRENT_COMMIT:0:12}")"
 if [[ "$ACTION" == update ]]; then
-  set_state_fields "action=$ACTION" "previousCommit=$CURRENT_COMMIT" "previousVersion=$CURRENT_VERSION" "targetRef=$TARGETREF" "backupName=$BACKUPNAME"
+  set_state_fields "action=$ACTION" "previousCommit=$CURRENT_COMMIT" "previousVersion=$CURRENT_VERSION" "previousHubImage=$CURRENT_HUB_IMAGE" "previousMaintenanceImage=$CURRENT_MAINTENANCE_IMAGE" "targetRef=$TARGETREF" "backupName=$BACKUPNAME" "backupSha256=$BACKUPSHA256"
 else
   set_state_fields "action=$ACTION" "targetRef=$TARGETREF"
 fi
@@ -112,10 +151,13 @@ rollback(){
   local rollback_ok=true
   git checkout --detach "$CURRENT_COMMIT" || rollback_ok=false
   refresh_host_agent || rollback_ok=false
-  docker compose build classroom-hub maintenance-agent || rollback_ok=false
-  docker compose up -d --remove-orphans || rollback_ok=false
-  restore_safety_backup "$FAILUREBACKUPNAME" || rollback_ok=false
-  health_check "$CURRENT_VERSION" || rollback_ok=false
+  activate_image_id "$CURRENT_HUB_IMAGE" classroom-hub || rollback_ok=false
+  activate_image_id "$CURRENT_MAINTENANCE_IMAGE" maintenance-agent || rollback_ok=false
+  docker compose stop classroom-hub || true
+  docker compose up --no-start --no-deps --force-recreate classroom-hub || rollback_ok=false
+  restore_safety_backup "$FAILUREBACKUPNAME" "$FAILUREBACKUPSHA256" || rollback_ok=false
+  docker compose up -d --no-build --remove-orphans || rollback_ok=false
+  appliance_health_check "$CURRENT_VERSION" || rollback_ok=false
   if [[ "$rollback_ok" == true ]]; then
     set_state_fields "rollback=true" "activeCommit=$CURRENT_COMMIT" "activeVersion=$CURRENT_VERSION"
     write_state rolled-back "Update failed and the previous version was restored successfully." false
@@ -123,12 +165,23 @@ rollback(){
     set_state_fields "rollback=failed"
     write_state rollback-failed "Update failed and automatic rollback needs administrator attention." false
   fi
+  rm -f "$REQUEST_FILE"
   exit "$rc"
 }
 trap rollback ERR
 
 write_state preflight "Checking the Git checkout and resolving the verified release target." null
-[[ -z "$(git status --porcelain --untracked-files=no)" ]] || { echo "Tracked source has local changes"; exit 32; }
+TRACKED_CHANGES="$(git status --porcelain --untracked-files=no)"
+if [[ -n "$TRACKED_CHANGES" ]]; then
+  if [[ -z "$(printf '%s\n' "$TRACKED_CHANGES" | awk '{print $2}' | grep -Ev '^config/(devices|hardware)\.json$')" ]]; then
+    legacy_dir="$HUB_ROOT/data/legacy-config-migration/$(date -u +%Y%m%dT%H%M%SZ)"
+    install -d -m 0700 -o 10001 -g 10001 "$legacy_dir"
+    for legacy in config/devices.json config/hardware.json; do [[ ! -f "$legacy" ]] || install -m 0600 -o 10001 -g 10001 "$legacy" "$legacy_dir/$(basename "$legacy")"; done
+    git checkout -- config/devices.json config/hardware.json
+  else
+    echo "Tracked source has unsupported local changes"; git status --short --untracked-files=no; exit 32
+  fi
+fi
 ORIGIN_URL="$(git remote get-url origin)"
 case "$ORIGIN_URL" in
   https://github.com/wagnerks1990/classroom-control-hub|https://github.com/wagnerks1990/classroom-control-hub.git|git@github.com:wagnerks1990/classroom-control-hub.git) ;;
@@ -151,18 +204,32 @@ ACTUAL_VERSION="$(tr -d '\r\n' < VERSION)"
 [[ -z "$EXPECTEDVERSION" || "$ACTUAL_VERSION" == "$EXPECTEDVERSION" ]] || { echo "Release VERSION does not match GitHub metadata"; exit 35; }
 refresh_host_agent
 
-write_state building "Building the application and maintenance images for $ACTUAL_VERSION." null
-docker compose build --pull classroom-hub maintenance-agent
+if [[ "$ACTION" == revert && -n "$PREVIOUSHUBIMAGE" && -n "$PREVIOUSMAINTENANCEIMAGE" ]]; then
+  write_state building "Activating the immutable images saved for $ACTUAL_VERSION." null
+  activate_image_id "$PREVIOUSHUBIMAGE" classroom-hub
+  activate_image_id "$PREVIOUSMAINTENANCEIMAGE" maintenance-agent
+else
+  write_state building "Building the application and maintenance images for $ACTUAL_VERSION." null
+  docker compose build --pull classroom-hub maintenance-agent
+fi
+if [[ "$ACTION" == revert ]]; then
+  write_state restoring "Restoring the matching pre-upgrade state before the older application starts." null
+  docker compose stop classroom-hub || true
+  docker compose up --no-start --no-deps --force-recreate classroom-hub
+  restore_safety_backup "$BACKUPNAME" "$BACKUPSHA256"
+fi
 write_state deploying "Recreating appliance containers while preserving persistent state." null
-docker compose up -d --remove-orphans
-write_state verifying "Waiting for application and database health verification." null
-health_check "$ACTUAL_VERSION"
+docker compose up -d --no-build --remove-orphans
+write_state verifying "Waiting for backend, HTTPS, maintenance, Host Agent, and version convergence." null
+appliance_health_check "$ACTUAL_VERSION"
 
-if [[ "$ACTION" == revert ]]; then restore_safety_backup "$BACKUPNAME"; health_check "$ACTUAL_VERSION"; fi
 trap - ERR
 if [[ "$ACTION" == revert ]]; then
-  set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=false" "previousCommit=" "previousVersion=" "backupName="
+  set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=false" "previousCommit=" "previousVersion=" "previousHubImage=" "previousMaintenanceImage=" "backupName=" "backupSha256="
 else
   set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=true"
 fi
+install -D -m 0755 "$HUB_ROOT/host-agent/update-runner.sh" /usr/local/libexec/classroom-control-hub/update-runner.sh
+install -D -m 0755 "$HUB_ROOT/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
+rm -f "$REQUEST_FILE"
 write_state completed "Classroom Control Hub $ACTUAL_VERSION deployed and verified successfully." true

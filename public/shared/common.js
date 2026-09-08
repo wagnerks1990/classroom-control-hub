@@ -14,5 +14,8 @@ export function api(path, options={}){
 }
 export function getDisplayId(){
   const m = location.pathname.match(/\/display\/([^/?#]+)/);
-  return m ? decodeURIComponent(m[1]).toLowerCase() : "";
+  // Support both the canonical /display/<id> receiver URL and the legacy
+  // static-page form /display/?id=<id>. Setup/enrollment links have used both.
+  const raw=m?.[1]||new URLSearchParams(location.search).get("id")||"";
+  try{return decodeURIComponent(raw).trim().toLowerCase()}catch{return ""}
 }

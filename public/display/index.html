@@ -1,10 +1,11 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Classroom Display</title>
 <link rel="stylesheet" href="/shared/attribution.css">
+<script src="/shared/branding.js" defer></script>
 <script src="/shared/attribution.js" defer></script>
 <style>
 :root{--logical-width:1920px;--logical-height:1080px}
@@ -41,7 +42,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#000;dis
 <script type="module">
 import {wsUrl,getDisplayId} from '/shared/common.js';
 import {SendspinPlayer} from '/display/sendspin.bundle.js';
-const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,MIN_FONT=12,DISPLAY_BUILD='1.0.0-alpha.68';
+const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,MIN_FONT=12,DISPLAY_BUILD='1.0.0-alpha.70';
 const id=getDisplayId(),preview=new URLSearchParams(location.search).get('preview')==='1';
 const displayAuth=(()=>{try{const p=new URLSearchParams(location.hash.slice(1)),legacy=p.get('displayToken'),enrollmentToken=p.get('enrollmentToken')||'';if(legacy)localStorage.setItem('classroom-hub-display-token',legacy);if(legacy||enrollmentToken)history.replaceState(null,'',location.pathname+location.search);return {legacyToken:localStorage.getItem('classroom-hub-display-token')||'',credential:localStorage.getItem(`classroom-hub-display-credential:${id}`)||'',enrollmentToken,assetAccessToken:''}}catch{return {legacyToken:'',credential:'',enrollmentToken:'',assetAccessToken:''}}})();
 function authorizeAssetUrl(value){try{const u=new URL(String(value||''),location.href);if(u.origin!==location.origin)return u.toString();if(u.pathname==='/document-viewer/'){const file=u.searchParams.get('file');if(file)u.searchParams.set('file',authorizeAssetUrl(file))}if(u.pathname.startsWith('/media/')||u.pathname.startsWith('/presentations/'))u.searchParams.set('access_token',displayAuth.assetAccessToken);return u.toString()}catch{return value}}

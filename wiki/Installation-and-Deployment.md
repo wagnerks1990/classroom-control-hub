@@ -37,6 +37,16 @@ sudo bash /tmp/classroom-hub-bootstrap.sh
 
 The bootstrap generates unique appliance credentials, verifies the running components, and prints the first-time administrator setup URL. It refuses to replace an existing deployment by default; use the controller's update/revert workflow for an installed appliance.
 
+Custom roots can be supplied when required; keep them separate and beneath
+`/opt`:
+
+```bash
+sudo CLASSROOM_HUB_DIR=/opt/classroom-hub \
+  CLASSROOM_HUB_SERVICES_DIR=/opt/classroom-services \
+  CLASSROOM_HUB_BACKUP_DIR=/opt/classroom-backups \
+  bash /tmp/classroom-hub-bootstrap.sh
+```
+
 For manual installation or migration:
 
 ```bash
@@ -62,7 +72,9 @@ has installed `classroom-hub-app-update.service`. Its GitHub repository, release
 channel, automatic-update choice, check interval, and maintenance window are
 stored in the application database. Each update creates a recovery backup and
 automatically returns to the previous commit and database/configuration state if
-the new release does not pass health verification.
+the new release does not pass full backend, HTTPS, maintenance, Host Agent, and
+version-convergence verification. Rollback uses the retained exact prior image
+IDs rather than rebuilding the former source.
 
 ```bash
 cd /opt/classroom-hub
@@ -75,7 +87,9 @@ sudo docker compose ps
 curl -fsS http://localhost:3000/health
 ```
 
-Take a backup before upgrading.
+Take a backup before upgrading. The installer uses SQLite's online backup API
+for the database and excludes managed backup archives to avoid recursive,
+potentially inconsistent migration snapshots.
 
 ## Development installation
 

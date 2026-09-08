@@ -5,11 +5,20 @@ function uniqueStrings(values, max = 32) {
 }
 
 function validDateKey(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+  const text = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const [year, month, day] = text.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
 }
 
 function validTime(value) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
+}
+
+function boundedFiniteNumber(value, fallback, minimum, maximum) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
 }
 
 function defaultSchoolScheduleProfile({ anchorDate = "" } = {}) {
@@ -83,7 +92,7 @@ function normalizeSchoolScheduleProfile(input = {}, fallback = defaultSchoolSche
     if (!rule || typeof rule !== "object") continue;
     const periodTimes = {};
     for (const [period, times] of Object.entries(rule.periodTimes || {})) {
-      if (validTime(times?.startTime) && validTime(times?.endTime)) periodTimes[String(period).slice(0, 40)] = { startTime: times.startTime, endTime: times.endTime };
+      if (validTime(times?.startTime) && validTime(times?.endTime) && timeToMinutes(times.startTime) < timeToMinutes(times.endTime)) periodTimes[String(period).slice(0, 40)] = { startTime: times.startTime, endTime: times.endTime };
     }
     let transform = null;
     if (validTime(rule.transform?.normalStart) && validTime(rule.transform?.normalEnd) && validTime(rule.transform?.delayedStart)) {
@@ -100,7 +109,7 @@ function normalizeSchoolScheduleProfile(input = {}, fallback = defaultSchoolSche
     periodCycleDays,
     exceptionRules,
     continuation: {
-      maximumGapMinutes: Math.max(0, Math.min(120, Number(input.continuation?.maximumGapMinutes ?? base.continuation?.maximumGapMinutes ?? 15))),
+      maximumGapMinutes: boundedFiniteNumber(input.continuation?.maximumGapMinutes, boundedFiniteNumber(base.continuation?.maximumGapMinutes, 15, 0, 120), 0, 120),
       legacyBisonCompatibility: input.continuation?.legacyBisonCompatibility ?? base.continuation?.legacyBisonCompatibility ?? false
     },
     updatedAt: input.updatedAt || base.updatedAt || null
@@ -146,5 +155,6 @@ module.exports = {
   normalizeSchoolScheduleProfile,
   effectiveTimesForRule,
   groupForCycleDay,
-  validDateKey
+  validDateKey,
+  validTime
 };

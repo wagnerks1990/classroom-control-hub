@@ -1,6 +1,6 @@
 {
   "name": "classroom-control-hub",
-  "version": "1.0.0-alpha.68",
+  "version": "1.0.0-alpha.70",
   "private": true,
   "license": "PolyForm-Noncommercial-1.0.0",
   "description": "Centralized classroom control and automation platform for displays, AV, lighting, media, announcements, schedules, and lab infrastructure.",

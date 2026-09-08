@@ -104,3 +104,7 @@ curl -fsS http://localhost:3000/health
 ```
 
 Keep a known-good rollback snapshot until the new release is verified.
+
+The web updater pins its current revert snapshot, verifies its SHA-256 digest,
+and restores matching data while the application is stopped. Pending update
+requests are kept in a root-only host journal and resume after a restart.

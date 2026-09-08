@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -102,8 +102,12 @@ button,input,select,textarea{
 }
 input::placeholder,textarea::placeholder{color:rgba(255,255,255,.38)}
 button{cursor:pointer;transition:background .12s ease,border-color .12s ease,transform .08s ease}
+.buttonLink{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);background:rgba(0,0,0,.28);color:var(--text);border-radius:12px;padding:8px 10px;font-weight:650;text-decoration:none}
 button:hover{background:rgba(255,255,255,.075);border-color:var(--border2)}
 button:active{transform:translateY(1px)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--brand-primary);outline-offset:2px}
+button:disabled{cursor:not-allowed;opacity:.5;filter:saturate(.35)}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 .primary,.on{
   color:#fff!important;
   border-color:rgba(42,168,102,.52)!important;
@@ -265,7 +269,7 @@ nav button{min-width:135px}
       </div>
       <div>
         <div class="brand" id="brandProductName">Classroom <span class="green">Hub</span></div>
-        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.68</span></div>
+        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.70</span></div>
         <div class="brandStatus">
           <div id="brandDateTime">Loading date/time…</div>
           <div id="brandCycle">Loading school cycle…</div>
@@ -284,7 +288,6 @@ nav button{min-width:135px}
     <button data-page="music">Background Music</button>
     <div class="navSection">Classroom</div>
     <button data-page="lab">Lab Computers</button>
-    <button data-page="sessions">Sessions</button>
     <button data-page="classes">Classes</button>
     <button data-page="schedules">Automation</button>
     <div class="navSection">Admin</div>
@@ -363,7 +366,7 @@ nav button{min-width:135px}
 
 <section id="display" class="page">
   <div class="top"><h1>Display Content</h1><span class="muted">Existing Classroom Control Hub display/session controller</span></div>
-  <iframe src="/controller/display.html"></iframe>
+  <iframe data-lazy-src="/controller/display.html" title="Classroom display controls"></iframe>
 </section>
 
 
@@ -530,7 +533,7 @@ nav button{min-width:135px}
 </section>
 
 <section id="lab" class="page">
-  <div class="top"><h1>Lab Computers</h1><span class="muted">Veyon-powered live monitoring and classroom control.</span></div>
+  <div class="top"><h1>Lab Computers</h1><span class="muted">Choose Veyon monitoring or the enrolled Windows classroom agent.</span></div>
   <details class="panel advanced">
     <summary><b>Windows Agent Enrollment</b> <span class="muted">individual, revocable computer credentials</span></summary>
     <div class="toolbar" style="margin-top:12px"><input id="labEnrollmentId" placeholder="computer-id"><input id="labEnrollmentTtl" type="number" min="5" max="60" value="15" title="Enrollment lifetime in minutes"><button class="primary" onclick="createLabAgentEnrollment()">Create One-Time Installer</button><button onclick="loadLabAgentCredentials()">Refresh</button></div>
@@ -538,7 +541,15 @@ nav button{min-width:135px}
     <div id="labEnrollmentResult" class="card" style="display:none;box-shadow:none;margin-top:10px"></div>
     <div id="labAgentCredentials" class="scroll" style="margin-top:10px">Loading agent security…</div>
   </details>
-  <iframe src="/controller/veyon.html"></iframe>
+  <div class="panel">
+    <div class="toolbar" role="tablist" aria-label="Lab computer control method">
+      <button id="labVeyonTab" type="button" role="tab" aria-selected="true" aria-controls="labVeyonFrame" class="primary" onclick="showLabConsole('veyon')">Veyon</button>
+      <button id="labWindowsTab" type="button" role="tab" aria-selected="false" aria-controls="labWindowsFrame" onclick="showLabConsole('windows')">Windows Agent</button>
+    </div>
+    <p id="labConsoleHelp" class="muted">Veyon monitoring uses the configured Veyon WebAPI integration.</p>
+  </div>
+  <iframe id="labVeyonFrame" data-lazy-src="/controller/veyon.html" title="Veyon classroom computer controls"></iframe>
+  <iframe id="labWindowsFrame" data-lazy-src="/controller/lab.html" title="Windows classroom agent controls" hidden></iframe>
 </section>
 
 <section id="media" class="page">
@@ -554,7 +565,7 @@ nav button{min-width:135px}
   </div>
   <div class="panel">
     <div class="toolbar">
-      <label>Target <select id="mediaTarget"><option>tv1</option><option>tv2</option><option>tv3</option><option>tv4</option><option>tv5</option><option>tv6</option><option>tv7</option><option>tv8</option></select></label>
+      <label>Target <select id="mediaTarget" aria-label="Media display target"></select></label>
       <label>Slide/Page seconds <input id="mediaSeconds" type="number" min="0" max="300" value="10" style="width:80px"></label>
       <label><input id="mediaLoop" type="checkbox" checked> Loop document/slides</label>
     </div>
@@ -652,11 +663,11 @@ nav button{min-width:135px}
     <label class="pill" style="margin:8px 0"><input id="schoolProfileLegacyContinuation" type="checkbox"> Enable compatibility for imported legacy continuation blocks</label>
     <div class="muted" style="margin-bottom:10px">If a date appears in more than one category, priority is: No-School → Remote → Half Day → 2-Hour Delay → 1-Hour Delay.</div>
     <div class="grid2">
-      <label><b>District No-School Dates</b><span class="muted">No classroom automation runs and the A–H cycle pauses.</span><textarea id="calendarExcludedDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
+      <label><b>District No-School Dates</b><span class="muted">No classroom automation runs and the configured school-day cycle pauses.</span><textarea id="calendarExcludedDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
       <label><b>District Remote Day Dates</b><span class="muted">The school-day cycle still advances, but classroom automation, Morning Announcements, legacy TV schedules, and scheduled Background Music do not run.</span><textarea id="calendarRemoteDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
       <label><b>District Half Day Dates</b><span class="muted">Uses the half-day period times configured in this school schedule profile.</span><textarea id="calendarHalfDayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
-      <label><b>District 1 Hour Delay Dates</b><span class="muted">School begins 8:50 AM and ends 2:45 PM. The normal day's periods are proportionally compressed into the shorter day.</span><textarea id="calendarOneHourDelayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
-      <label><b>District 2 Hour Delay Dates</b><span class="muted">School begins 9:50 AM and ends 2:45 PM. The normal day's periods are proportionally compressed into the shorter day.</span><textarea id="calendarTwoHourDelayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
+      <label><b>District 1 Hour Delay Dates</b><span class="muted">Uses the configured one-hour-delay exception times for this school.</span><textarea id="calendarOneHourDelayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
+      <label><b>District 2 Hour Delay Dates</b><span class="muted">Uses the configured two-hour-delay exception times for this school.</span><textarea id="calendarTwoHourDelayDates" rows="8" placeholder="YYYY-MM-DD" style="width:100%;resize:vertical;margin-top:6px"></textarea></label>
     </div>
     <div class="toolbar"><button class="primary" onclick="saveSchedulerCalendar()">Save School Calendar Rules</button><span id="calendarMsg" class="status"></span></div>
     <div id="districtCalendarPreview" class="muted" style="margin-top:8px"></div>
@@ -839,17 +850,11 @@ nav button{min-width:135px}
   <div class="panel">
     <h2 class="sectionTitle">How schedules work</h2>
     <div class="muted">
-      Classroom Control Hub checks the schedule every 15 seconds. Events can run on normal weekly weekdays, alternating A/B school days,
-      or exact calendar dates. District no-school dates above are globally suppressed. A/B rotation counts
-      only eligible Monday–Friday school days, so blocked dates do not advance the rotation. Events persist in
-      <code>/opt/classroom-hub/data/automations.json</code>; calendar rules persist in <code>/opt/classroom-hub/data/scheduler-calendar.json</code>.
+      Classroom Control Hub checks the schedule every 15 seconds. Events can run on normal weekly weekdays, configured rotating school days,
+      or exact calendar dates. District no-school dates above are globally suppressed. The configured rotation counts
+      only eligible Monday–Friday school days, so blocked dates do not advance the rotation. Schedule and calendar settings are saved in the Classroom Control Hub database.
     </div>
   </div>
-</section>
-
-<section id="sessions" class="page">
-  <div class="top"><h1>Classroom Sessions</h1><div class="toolbar"><button onclick="loadSession()">Refresh</button><button class="danger" onclick="clearClassroom()">CLEAR CLASSROOM</button><button onclick="resumeSessions()">Resume Sessions</button></div></div>
-  <div class="panel"><label>Session ID <input id="sessionId" value="it1-opening"></label><pre id="sessionRaw" class="raw">Load a session.</pre></div>
 </section>
 
 <section id="diagnostics" class="page">
@@ -955,7 +960,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
 <section id="settings" class="page">
   <div class="top">
     <div><h1>Settings</h1><div class="muted">Configure site identity, integrations, access profiles and advanced settings. TV/source mapping and groups are managed under Displays & AV.</div></div>
-    <div class="toolbar"><button onclick="loadAdminConfiguration()">Refresh</button><button onclick="window.open('/setup/','_blank')">Setup Wizard</button><button onclick="showPage('system')">System Management</button></div>
+    <div class="toolbar"><button onclick="loadAdminConfiguration()">Refresh</button><button onclick="window.open('/setup/','_blank','noopener')">Setup Wizard</button><button onclick="showPage('system')">System Management</button></div>
   </div>
 
   <div id="cfgSummary" class="adminHero"><div class="muted">Loading configuration summary…</div></div>
@@ -976,7 +981,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
       <div class="formField"><label>Background Color</label><input id="cfgThemeBackground" type="color" value="#040705"></div>
       <div class="formField"><label>Surface Color</label><input id="cfgThemeSurface" type="color" value="#121923"></div>
       <div class="formField"><label>Text Color</label><input id="cfgThemeText" type="color" value="#eef4f8"></div>
-      <div><button class="primary" onclick="saveAdminSite()">Save Site Settings</button></div>
+      <div><button class="primary" onclick="saveAdminSite()">Save School Settings</button></div>
     </div>
     <div id="cfgSiteMsg" class="muted" style="margin-top:8px"></div>
   </div>
@@ -1002,7 +1007,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 
   <div class="panel">
-    <div class="top" style="position:static;box-shadow:none;margin:0 0 10px"><div><h2 class="sectionTitle">Users & Authentication</h2><div class="muted">Local accounts are optional when an external access layer is used. Roles are enforced when local authentication is enabled.</div></div><div class="toolbar"><button onclick="loadAdminUsers()">Refresh</button><button onclick="toggleLocalAuth()" id="authToggleBtn">Authentication</button></div></div>
+    <div class="top" style="position:static;box-shadow:none;margin:0 0 10px"><div><h2 class="sectionTitle">Users & Authentication</h2><div class="muted">Local authentication is mandatory. Access profiles and capabilities control what each school user can view or operate.</div></div><div class="toolbar"><button onclick="loadAdminUsers()">Refresh</button><span id="authToggleBtn" class="pill">Local Authentication: ON</span></div></div>
     <div id="cfgUsers" class="scroll">Loading users…</div>
     <div class="formGrid" style="margin-top:12px"><div class="formField"><label>Username</label><input id="userUsername"></div><div class="formField"><label>Display name</label><input id="userDisplayName"></div><div class="formField"><label>Role</label><select id="userRole"><option value="viewer">Read Only</option><option value="operator">Operator / Teacher</option><option value="admin">Administrator</option></select></div><div class="formField"><label>Access profile</label><select id="userProfile"><option value="read-only">Read Only</option><option value="teacher">Teacher</option><option value="technician">Technician</option><option value="administrator">Administrator</option></select></div><div class="formField"><label>Password</label><input id="userPassword" type="password" placeholder="Minimum 10 characters"></div><div><button class="primary" onclick="saveAdminUser()">Create User</button></div></div>
     <details class="advanced" style="margin-top:12px"><summary>Session policy & active sessions</summary><div class="formGrid" style="margin-top:10px"><div class="formField"><label>Standard session (hours)</label><input id="authStandardHours" type="number" min="1" max="168"></div><div class="formField"><label>Remember me (hours)</label><input id="authRememberHours" type="number" min="1" max="720"></div><div class="formField"><label>Max sessions per user</label><input id="authMaxSessions" type="number" min="1" max="50"></div><div><button class="primary" onclick="saveAuthPolicy()">Save Session Policy</button></div></div><div id="cfgAdminSessions" class="scroll" style="margin-top:10px"></div></details>
@@ -1024,7 +1029,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   <div class="panel">
     <h2 class="sectionTitle">Student Data Retention</h2>
     <div class="muted">Set explicit limits for browser history, screenshots, monitoring alerts, and administrative audit records. Shorter limits reduce retained student data.</div>
-    <div class="formGrid" style="margin-top:10px"><label>Browser history (hours)<input id="privacyHistoryHours" type="number" min="1" max="8760"></label><label>Screenshots (days)<input id="privacyScreenshotDays" type="number" min="1" max="365"></label><label>Monitoring alerts (days)<input id="privacyAlertDays" type="number" min="1" max="365"></label><label>Audit records (days)<input id="privacyAuditDays" type="number" min="7" max="3650"></label><button class="primary" onclick="savePrivacyRetention()">Save & Apply Retention</button></div>
+    <div class="formGrid" style="margin-top:10px"><label class="pill"><input id="privacyHistoryEnabled" type="checkbox" onchange="privacyHistoryHours.disabled=!this.checked"> Collect student browser history (explicit opt-in)</label><label>Browser history (hours; 0 disables)<input id="privacyHistoryHours" type="number" min="0" max="8760"></label><label>Screenshots (days)<input id="privacyScreenshotDays" type="number" min="1" max="365"></label><label>Monitoring alerts (days)<input id="privacyAlertDays" type="number" min="1" max="365"></label><label>Audit records (days)<input id="privacyAuditDays" type="number" min="7" max="3650"></label><button class="primary" onclick="savePrivacyRetention()">Save & Apply Retention</button></div>
   </div>
 
   <details class="panel advanced">
@@ -1128,7 +1133,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
         <label>Maintenance Window End<input id="appUpdateEnd" type="time" value="04:00"></label>
       </div>
       <label class="pill" style="margin:10px 0"><input id="appUpdateAutomatic" type="checkbox"> Automatically install approved releases during the maintenance window</label>
-      <div class="toolbar"><button onclick="saveAppUpdateSettings()">Save Settings</button><button onclick="checkAppUpdate()">Check GitHub</button><button id="installAppUpdateBtn" class="primary" onclick="installAppUpdate()" disabled>Install Available Release</button><button id="revertAppUpdateBtn" class="danger" onclick="revertAppUpdate()" disabled>Revert Last Upgrade</button></div>
+      <div class="toolbar"><button onclick="saveAppUpdateSettings()">Save Settings</button><button onclick="clearAppUpdateToken()">Clear Stored Token</button><button onclick="checkAppUpdate()">Check GitHub</button><button id="installAppUpdateBtn" class="primary" onclick="installAppUpdate()" disabled>Install Available Release</button><button id="revertAppUpdateBtn" class="danger" onclick="revertAppUpdate()" disabled>Revert Last Upgrade</button></div>
       <pre id="updateOutput" class="raw">Loading release status…</pre>
       <div id="appUpdateHistory" class="scroll" style="margin-top:10px"></div>
     </div>
@@ -1141,14 +1146,14 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 </section>
 <div class="footerBrand" data-kyle-attribution="true">
-  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.68</span>
+  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.70</span>
   <span>CLASSROOM READY</span>
   <span>Built by <a href="https://github.com/wagnerks1990" target="_blank" rel="author noopener noreferrer">Kyle Wagner</a></span>
 </div>
 </main>
 </div>
-<div id="hubToast" style="display:none;position:fixed;right:18px;bottom:18px;z-index:60000;max-width:460px;padding:12px 14px;border-radius:10px;background:#16202b;border:1px solid #3a4a5a;box-shadow:0 12px 35px rgba(0,0,0,.45);font-weight:700"></div>
-<div id="loginOverlay" style="display:none;position:fixed;inset:0;z-index:50000;background:rgba(3,7,12,.96);align-items:center;justify-content:center;padding:20px"><div class="panel" style="width:min(420px,100%);margin:0"><h2>Sign in to Classroom Control Hub</h2><div class="muted">Enter your local Classroom Control Hub account.</div><div class="formField"><label>Username</label><input id="loginUser" autocomplete="username"></div><div class="formField"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div><label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="loginRemember" type="checkbox" style="width:auto"> Remember for 7 days</label><div class="toolbar"><button class="primary" onclick="performLogin()">Sign In</button></div><div id="loginMsg" class="bad" style="margin-top:8px"></div></div></div>
-<div id="accountModal" class="authModal"><div class="panel"><div class="top"><div><h2>My Account</h2><div id="accountIdentity" class="muted"></div></div><button onclick="closeAccountModal()">Close</button></div><div class="grid2" style="margin-top:12px"><div class="card"><h3>Change Password</h3><div class="formField"><label>Current password</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="formField"><label>New password</label><input id="newPassword" type="password" autocomplete="new-password"></div><div class="formField"><label>Confirm new password</label><input id="confirmPassword" type="password" autocomplete="new-password"></div><div class="toolbar"><button class="primary" onclick="changeMyPassword()">Change Password</button></div><div id="passwordMsg" class="muted"></div></div><div class="card"><div class="top"><div><h3>Active Sessions</h3><div class="muted">Current and recent signed-in browsers.</div></div><button onclick="logoutOtherSessions()">Sign out others</button></div><div id="sessionList" class="subtle">Loading…</div></div></div></div></div>
+<div id="hubToast" role="status" aria-live="polite" style="display:none;position:fixed;right:18px;bottom:18px;z-index:60000;max-width:460px;padding:12px 14px;border-radius:10px;background:#16202b;border:1px solid #3a4a5a;box-shadow:0 12px 35px rgba(0,0,0,.45);font-weight:700"></div>
+<div id="loginOverlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle" style="display:none;position:fixed;inset:0;z-index:50000;background:rgba(3,7,12,.96);align-items:center;justify-content:center;padding:20px"><div class="panel" style="width:min(420px,100%);margin:0"><h2 id="loginTitle">Sign in to Classroom Control Hub</h2><div class="muted">Enter your local Classroom Control Hub account.</div><div class="formField"><label for="loginUser">Username</label><input id="loginUser" autocomplete="username"></div><div class="formField"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div><label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="loginRemember" type="checkbox" style="width:auto"> Remember for 7 days</label><div class="toolbar"><button class="primary" onclick="performLogin()">Sign In</button></div><div id="loginMsg" class="bad" role="alert" aria-live="assertive" style="margin-top:8px"></div></div></div>
+<div id="accountModal" class="authModal" role="dialog" aria-modal="true" aria-labelledby="accountTitle"><div class="panel"><div class="top"><div><h2 id="accountTitle">My Account</h2><div id="accountIdentity" class="muted"></div></div><button onclick="closeAccountModal()" aria-label="Close account dialog">Close</button></div><div class="grid2" style="margin-top:12px"><div class="card"><h3>Change Password</h3><div class="formField"><label for="currentPassword">Current password</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="formField"><label for="newPassword">New password</label><input id="newPassword" type="password" autocomplete="new-password"></div><div class="formField"><label for="confirmPassword">Confirm new password</label><input id="confirmPassword" type="password" autocomplete="new-password"></div><div class="toolbar"><button class="primary" onclick="changeMyPassword()">Change Password</button></div><div id="passwordMsg" class="muted" aria-live="polite"></div></div><div class="card"><div class="top"><div><h3>Active Sessions</h3><div class="muted">Current and recent signed-in browsers.</div></div><button onclick="logoutOtherSessions()">Sign out others</button></div><div id="sessionList" class="subtle">Loading…</div></div></div></div></div>
 <script src="/controller/app.js"></script>
 </body></html>

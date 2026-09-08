@@ -157,6 +157,18 @@ curl -fsS http://localhost:3000/health
 
 Take a backup before upgrading and preserve runtime `.env`, databases, data, uploads, backups, and secret/key material.
 
+Web-managed updates retain and pin the backup used by **Revert Last Upgrade**.
+The backup digest is verified and matching data is restored while the
+application is stopped, before the older release starts. The exact prior hub and
+maintenance image IDs are retained locally and reused for rollback rather than
+being rebuilt. An interrupted request remains in the root-only host journal and
+resumes after restart. Do not prune `classroom-control-hub-recovery:*` images
+while **Revert Last Upgrade** is available.
+
+An update is successful only after backend, Caddy HTTPS, maintenance, Host
+Agent, database health, and version convergence checks pass. Watch capacity
+before a large update with `df -h /opt/classroom-hub` and `docker system df`.
+
 ## Controller hard refresh
 
 After frontend updates, use a hard refresh (`Ctrl+Shift+R` in common desktop browsers) if the browser continues to serve cached controller assets.

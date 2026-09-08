@@ -6,9 +6,33 @@ SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"
 SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_REAL="$(readlink -f "$SOURCE")"
 TARGET_REAL="$(readlink -m "$TARGET")"
+SERVICES_REAL="$(readlink -m "$SERVICES")"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_ROOT="${CLASSROOM_HUB_BACKUP_DIR:-/opt/classroom-hub-backups}"
+BACKUP_ROOT_REAL="$(readlink -m "$BACKUP_ROOT")"
 BACKUP="$BACKUP_ROOT/migration-$STAMP"
+
+fail(){ echo "Classroom Control Hub installer failed: $*" >&2; exit 1; }
+safe_managed_root(){
+  local label="$1" raw="$2" resolved
+  [[ "$raw" == /* ]] || fail "$label must be an absolute path"
+  [[ ! -L "$raw" ]] || fail "$label may not be a symbolic link"
+  [[ "$raw" =~ ^/opt/[A-Za-z0-9._/-]+$ ]] || fail "$label contains unsupported path characters"
+  resolved="$(readlink -m "$raw")"
+  case "$resolved" in /|/opt|/usr|/var|/etc|/home|/root|/tmp) fail "$label resolves to unsafe broad path $resolved";; esac
+  [[ "$resolved" == /opt/* ]] || fail "$label must resolve beneath /opt"
+}
+
+safe_managed_root "CLASSROOM_HUB_DIR" "$TARGET"
+safe_managed_root "CLASSROOM_HUB_SERVICES_DIR" "$SERVICES"
+safe_managed_root "CLASSROOM_HUB_BACKUP_DIR" "$BACKUP_ROOT"
+paths_overlap(){ [[ "$1" == "$2" || "$1" == "$2/"* || "$2" == "$1/"* ]]; }
+! paths_overlap "$TARGET_REAL" "$SERVICES_REAL" || fail "application and services roots must be separate, non-nested directories"
+! paths_overlap "$TARGET_REAL" "$BACKUP_ROOT_REAL" || fail "application and backup roots must be separate, non-nested directories"
+! paths_overlap "$SERVICES_REAL" "$BACKUP_ROOT_REAL" || fail "services and backup roots must be separate, non-nested directories"
+if [[ -d "$TARGET" ]] && find "$TARGET" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+  [[ -f "$TARGET/.classroom-hub-installation" || ( -f "$TARGET/docker-compose.yml" && -f "$TARGET/VERSION" ) ]] || fail "$TARGET is not an identified Classroom Control Hub installation"
+fi
 
 if [[ $EUID -ne 0 ]]; then echo "Run this installer as root (sudo)." >&2; exit 1; fi
 
@@ -17,13 +41,23 @@ docker compose version >/dev/null 2>&1 || { echo "Docker Compose plugin is requi
 command -v openssl >/dev/null 2>&1 || { apt-get update && apt-get install -y openssl; }
 command -v rsync >/dev/null 2>&1 || { apt-get update && apt-get install -y rsync; }
 command -v zip >/dev/null 2>&1 || { apt-get update && apt-get install -y zip unzip; }
+command -v sqlite3 >/dev/null 2>&1 || { apt-get update && apt-get install -y sqlite3; }
 
 mkdir -p "$BACKUP_ROOT"
 if [[ -f "$TARGET/.env" || -d "$TARGET/data" ]]; then
   echo "Existing Classroom Control Hub detected at $TARGET"
   mkdir -p "$BACKUP"
   echo "Creating pre-migration backup at $BACKUP ..."
-  rsync -a "$TARGET/" "$BACKUP/classroom-hub/"
+  rsync -a \
+    --exclude data/backups/ \
+    --exclude data/classroom-control-hub.db \
+    --exclude data/classroom-control-hub.db-wal \
+    --exclude data/classroom-control-hub.db-shm \
+    "$TARGET/" "$BACKUP/classroom-hub/"
+  if [[ -f "$TARGET/data/classroom-control-hub.db" ]]; then
+    mkdir -p "$BACKUP/classroom-hub/data"
+    sqlite3 "$TARGET/data/classroom-control-hub.db" ".backup '$BACKUP/classroom-hub/data/classroom-control-hub.db'"
+  fi
   if [[ -d "$SERVICES" ]]; then rsync -a "$SERVICES/" "$BACKUP/services/"; fi
   docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' > "$BACKUP/docker-containers.txt" || true
   docker image ls > "$BACKUP/docker-images.txt" || true
@@ -43,6 +77,7 @@ else
 fi
 
 mkdir -p "$TARGET/data/backups" "$TARGET/config/schema"
+touch "$TARGET/.classroom-hub-installation"
 chown -R 10001:10001 "$TARGET/data"
 # New schema/catalog files are safe to merge into existing site configuration.
 if [[ "$SOURCE_REAL" != "$TARGET_REAL" ]]; then
@@ -70,12 +105,24 @@ ensure_secret DISPLAY_TOKEN
 ensure_secret LAB_AGENT_TOKEN
 ensure_secret MAINTENANCE_TOKEN
 APPLIANCE_ADDRESS="$(hostname -I | awk '{print $1}')"
+[[ -n "$APPLIANCE_ADDRESS" ]] || APPLIANCE_ADDRESS="$(hostname -f)"
 CONFIGURED_TLS_HOST="$(sed -n 's/^HUB_TLS_HOST=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -z "$CONFIGURED_TLS_HOST" || "$CONFIGURED_TLS_HOST" == "localhost" ]]; then
-  sed -i "s/^HUB_TLS_HOST=.*/HUB_TLS_HOST=${APPLIANCE_ADDRESS}/" "$TARGET/.env"
+  CONFIGURED_TLS_HOST="$APPLIANCE_ADDRESS"
+  if grep -q '^HUB_TLS_HOST=' "$TARGET/.env"; then
+    sed -i "s/^HUB_TLS_HOST=.*/HUB_TLS_HOST=${CONFIGURED_TLS_HOST}/" "$TARGET/.env"
+  else
+    echo "HUB_TLS_HOST=$CONFIGURED_TLS_HOST" >> "$TARGET/.env"
+  fi
 fi
-if ! grep -q '^HOST_CLASSROOM_HUB_DIR=' "$TARGET/.env"; then echo "HOST_CLASSROOM_HUB_DIR=$TARGET" >> "$TARGET/.env"; fi
-if ! grep -q '^HOST_SERVICES_DIR=' "$TARGET/.env"; then echo "HOST_SERVICES_DIR=$SERVICES" >> "$TARGET/.env"; fi
+[[ "$CONFIGURED_TLS_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || fail "HUB_TLS_HOST must be a DNS hostname or IPv4 address"
+set_env_path(){
+  local name="$1" value="$2"
+  if grep -q "^${name}=" "$TARGET/.env"; then sed -i "s#^${name}=.*#${name}=${value}#" "$TARGET/.env"; else echo "${name}=${value}" >> "$TARGET/.env"; fi
+}
+set_env_path HOST_CLASSROOM_HUB_DIR "$TARGET"
+set_env_path HOST_SERVICES_DIR "$SERVICES"
+set_env_path HOST_BACKUP_DIR "$BACKUP_ROOT"
 chmod 600 "$TARGET/.env"
 
 # Master encryption key stays outside the application/database. It encrypts private
@@ -88,6 +135,16 @@ chown root:10001 /etc/classroom-control-hub/master.key
 chmod 640 /etc/classroom-control-hub/master.key
 if ! grep -q '^CLASSROOM_HUB_MASTER_KEY_FILE=' "$TARGET/.env"; then echo 'CLASSROOM_HUB_MASTER_KEY_FILE=/etc/classroom-control-hub/master.key' >> "$TARGET/.env"; fi
 if ! grep -q '^DATABASE_FILE=' "$TARGET/.env"; then echo 'DATABASE_FILE=/app/data/classroom-control-hub.db' >> "$TARGET/.env"; fi
+
+# Docker treats a missing bind-mounted file as a directory. Keep a secure empty
+# migration placeholder until a Veyon key is saved through the controller.
+install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub/veyon
+if [[ -d /etc/classroom-control-hub/veyon/private.pem ]]; then
+  rmdir /etc/classroom-control-hub/veyon/private.pem 2>/dev/null || fail "Veyon key path is unexpectedly a non-empty directory"
+fi
+if [[ ! -e /etc/classroom-control-hub/veyon/private.pem ]]; then
+  install -m 0640 -o root -g 10001 /dev/null /etc/classroom-control-hub/veyon/private.pem
+fi
 
 # Install the native host agent. It is intentionally outside Docker so systemd,
 # journal and host filesystem inventory do not require privileged containers or
@@ -103,6 +160,8 @@ python3 -m py_compile "$TARGET/host-agent/server.py"
 install -d -m 0750 /run/classroom-control-hub
 chmod 0755 "$TARGET/host-agent/update-runner.sh"
 chmod 0755 "$TARGET/host-agent/app-update-runner.sh"
+install -D -m 0755 "$TARGET/host-agent/update-runner.sh" /usr/local/libexec/classroom-control-hub/update-runner.sh
+install -D -m 0755 "$TARGET/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
 cat >/etc/systemd/system/classroom-hub-update.service <<UNIT
 [Unit]
 Description=Classroom Control Hub Native Host Update Runner
@@ -114,7 +173,8 @@ ConditionPathExists=$TARGET/host-agent/update-runner.sh
 Type=oneshot
 User=root
 Group=root
-ExecStart=$TARGET/host-agent/update-runner.sh
+Environment=CLASSROOM_HUB_DIR=$TARGET
+ExecStart=/usr/local/libexec/classroom-control-hub/update-runner.sh
 TimeoutStartSec=0
 Nice=10
 IOSchedulingClass=best-effort
@@ -135,7 +195,7 @@ Type=oneshot
 User=root
 Group=root
 Environment=CLASSROOM_HUB_DIR=$TARGET
-ExecStart=$TARGET/host-agent/app-update-runner.sh
+ExecStart=/usr/local/libexec/classroom-control-hub/app-update-runner.sh
 TimeoutStartSec=0
 Nice=10
 IOSchedulingClass=best-effort
@@ -156,6 +216,16 @@ CONFIGURED_HUB_PORT="$(sed -n 's/^HUB_PORT=//p' "$TARGET/.env" | tail -n 1)"
 HUB_PORT_VALUE="${HUB_PORT:-${CONFIGURED_HUB_PORT:-3000}}"
 CONFIGURED_HTTPS_PORT="$(sed -n 's/^HUB_HTTPS_PORT=//p' "$TARGET/.env" | tail -n 1)"
 HUB_HTTPS_PORT_VALUE="${HUB_HTTPS_PORT:-${CONFIGURED_HTTPS_PORT:-443}}"
+CONFIGURED_HTTP_PORT="$(sed -n 's/^HUB_HTTP_PORT=//p' "$TARGET/.env" | tail -n 1)"
+HUB_HTTP_PORT_VALUE="${HUB_HTTP_PORT:-${CONFIGURED_HTTP_PORT:-80}}"
+[[ "$HUB_PORT_VALUE" =~ ^[0-9]+$ && "$HUB_PORT_VALUE" -ge 1 && "$HUB_PORT_VALUE" -le 65535 ]] || fail "HUB_PORT must be between 1 and 65535"
+[[ "$HUB_HTTPS_PORT_VALUE" =~ ^[0-9]+$ && "$HUB_HTTPS_PORT_VALUE" -ge 1 && "$HUB_HTTPS_PORT_VALUE" -le 65535 ]] || fail "HUB_HTTPS_PORT must be between 1 and 65535"
+[[ "$HUB_HTTP_PORT_VALUE" =~ ^[0-9]+$ && "$HUB_HTTP_PORT_VALUE" -ge 1 && "$HUB_HTTP_PORT_VALUE" -le 65535 ]] || fail "HUB_HTTP_PORT must be between 1 and 65535"
+[[ "$HUB_PORT_VALUE" != "$HUB_HTTPS_PORT_VALUE" && "$HUB_PORT_VALUE" != "$HUB_HTTP_PORT_VALUE" && "$HUB_HTTP_PORT_VALUE" != "$HUB_HTTPS_PORT_VALUE" ]] || fail "HUB_PORT, HUB_HTTP_PORT, and HUB_HTTPS_PORT must be unique"
+MIN_FREE_GB="${CLASSROOM_HUB_MIN_FREE_GB:-4}"
+[[ "$MIN_FREE_GB" =~ ^[0-9]+$ ]] || fail "CLASSROOM_HUB_MIN_FREE_GB must be a non-negative integer"
+AVAILABLE_KB="$(df -Pk "$TARGET" | awk 'NR==2 {print $4}')"
+(( AVAILABLE_KB >= MIN_FREE_GB * 1024 * 1024 )) || fail "at least ${MIN_FREE_GB} GiB free is required beneath $TARGET"
 echo "Validating source for $EXPECTED_VERSION ..."
 docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/server.js
 docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/storage.js
@@ -186,6 +256,7 @@ for _ in $(seq 1 90); do
 done
 
 MAIN_VERSION="$(curl -fsS "http://127.0.0.1:${HUB_PORT_VALUE}/health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))')" || { echo "Health check failed. Previous files are retained at $BACKUP" >&2; exit 1; }
+curl -kfsS --max-time 15 --resolve "${CONFIGURED_TLS_HOST}:${HUB_HTTPS_PORT_VALUE}:127.0.0.1" "https://${CONFIGURED_TLS_HOST}:${HUB_HTTPS_PORT_VALUE}/health" >/dev/null || { echo "HTTPS gateway health check failed. Previous files are retained at $BACKUP" >&2; docker compose ps; exit 1; }
 MAINT_VERSIONS="$(docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>console.log((j.version||'')+' '+(j.hostAgent?.version||'')))")"
 MAINT_VERSION="${MAINT_VERSIONS%% *}"
 HOST_VERSION="${MAINT_VERSIONS##* }"
@@ -196,10 +267,10 @@ fi
 echo "Verified component convergence: $EXPECTED_VERSION (backend, maintenance, host agent)"
 echo
 echo "Classroom Control Hub migration completed."
-echo "Controller: https://${APPLIANCE_ADDRESS}:${HUB_HTTPS_PORT_VALUE}/controller/"
+echo "Controller: https://${CONFIGURED_TLS_HOST}:${HUB_HTTPS_PORT_VALUE}/controller/"
 SETUP_TOKEN_VALUE="$(sed -n 's/^SETUP_TOKEN=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -n "$SETUP_TOKEN_VALUE" ]]; then
-  echo "First-time setup: https://${APPLIANCE_ADDRESS}:${HUB_HTTPS_PORT_VALUE}/setup/#token=$SETUP_TOKEN_VALUE"
+  echo "First-time setup: https://${CONFIGURED_TLS_HOST}:${HUB_HTTPS_PORT_VALUE}/setup/#token=$SETUP_TOKEN_VALUE"
   echo "Treat the setup URL as a temporary administrator secret. It becomes unusable after the first administrator is created."
 fi
 echo "Local HTTPS uses an appliance-owned CA. Export it with: cd $TARGET && docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./classroom-hub-root-ca.crt"

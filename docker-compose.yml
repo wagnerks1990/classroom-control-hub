@@ -20,6 +20,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The upstream Caddy binary carries cap_net_bind_service as a file
+    # capability. Retaining only that capability allows it to execute under
+    # no-new-privileges while all listeners remain on unprivileged ports.
+    cap_add:
+      - NET_BIND_SERVICE
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -30,7 +35,7 @@ services:
     container_name: classroom-control-hub
     restart: unless-stopped
     ports:
-      - "${HUB_BIND_ADDRESS:-0.0.0.0}:${HUB_PORT:-3000}:3000"
+      - "${HUB_BIND_ADDRESS:-127.0.0.1}:${HUB_PORT:-3000}:3000"
     environment:
       PORT: 3000
       ROOM_NAME: ${ROOM_NAME:-Classroom}
@@ -56,7 +61,7 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       WS_MAX_PAYLOAD_MB: ${WS_MAX_PAYLOAD_MB:-16}
       SESSION_PARTICIPATION_ENABLED: ${SESSION_PARTICIPATION_ENABLED:-false}
-      MAINTENANCE_PROXY_ENABLED: ${MAINTENANCE_PROXY_ENABLED:-false}
+      MAINTENANCE_PROXY_ENABLED: ${MAINTENANCE_PROXY_ENABLED:-true}
       MAINTENANCE_URL: http://maintenance-agent:3010
       MUSIC_ASSISTANT_URL: ${MUSIC_ASSISTANT_URL:-http://host.docker.internal:8095}
       DATABASE_FILE: ${DATABASE_FILE:-/app/data/classroom-control-hub.db}
@@ -120,6 +125,8 @@ services:
       MANAGED_APP_CONTAINER: ${MANAGED_APP_CONTAINER:-classroom-control-hub}
       RESTORE_HEALTH_TIMEOUT_MS: ${RESTORE_HEALTH_TIMEOUT_MS:-60000}
       RESTORE_MAX_EXPANDED_MB: ${RESTORE_MAX_EXPANDED_MB:-4096}
+      APP_UID: 10001
+      APP_GID: 10001
       HOST_AGENT_SOCKET: /run/classroom-control-hub/host-agent.sock
       MASTER_KEY_FILE: /run/secrets/classroom-control-hub-master-key
     volumes:
@@ -129,10 +136,10 @@ services:
       - ${HOST_SERVICES_DIR:-/opt/services}:/managed/services:ro
       - ${HOST_SERVICES_DIR:-/opt/services}/mosquitto:/managed/services/mosquitto
       - ${HOST_SERVICES_DIR:-/opt/services}/nodered:/managed/services/nodered
-      - /opt/classroom-hub-backups:/host-backups:ro
+      - ${HOST_BACKUP_DIR:-/opt/classroom-hub-backups}:/host-backups:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/ready',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 20s

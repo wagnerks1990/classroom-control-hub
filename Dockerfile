@@ -16,6 +16,7 @@ RUN apt-get update \
 COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
+COPY VERSION ./VERSION
 COPY src ./src
 COPY config ./config
 COPY public ./public
