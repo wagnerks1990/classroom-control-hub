@@ -33,6 +33,20 @@ When `HUB_NETWORK_MODE=host` (set by Compose), integration URL resolution maps t
 
 Loopback is a **server-side** address. Displays and administrator browsers on other machines still use the appliance's LAN address. The Open Music Assistant action substitutes the current appliance hostname for a host-local API URL; do not enter `127.0.0.1` as a display's Hub address. A saved old core URL with a custom port still needs the correct actual port; compatibility resolution changes hostnames, not guessed ports.
 
+## Installer stops with invalid group 10001
+
+The host installer must resolve the application group independently of the Docker image. The reported `install: invalid group: '10001'` occurs at a host-side key/directory installation operation, before the image build and container recreation steps. It is not a Docker-network error. The exact host install implementation must be checked before attributing its numeric-ID behavior to a particular coreutils version.
+
+`install.sh` now runs `deploy/host-group.sh` before runtime backup/data/secret operations. It queries host GID 10001 through `getent`, reuses its existing group name, or creates the system group `classroom-hub` with exactly GID 10001 when both the ID and name are free. `install` receives the resolved name; numeric file ownership remains unchanged. It does not create a host login account, add members, renumber groups or use `groupadd --force`/`--non-unique`. An occupied name with a different GID, an NSS lookup error, or a failed group creation stops installation. Reusing an existing GID does not validate its membership; administrators must keep host GID 10001 restricted to trusted principals because it can read mounted Hub secrets.
+
+Recovery: retain the existing source and migration backups, preserve local edits, update the clean main checkout with `git pull --ff-only origin main`, and rerun `sudo bash install.sh`. No source-file workaround or key/database deletion is required for this group-resolution error. Rerunning the installer performs its normal backups and remaining setup; it is not a rollback and it will interrupt the Hub when it reaches container recreation. The earlier partial attempt may already have changed data permissions and canonical database configuration, so do not assume the whole installation was untouched. Never regenerate a populated master key to address this error.
+
+Inspect `getent group 10001` and `install --version` locally when resolution still fails. On success the installer prints `Using host group: <name> (GID 10001)`. Final acceptance remains the normal version/health checks and `network=host` for both core containers. A successful source pull alone does not establish a successful deployment.
+
+Regression coverage: `test/installer-host-group.test.js` exercises missing/existing groups, alternate existing names, collisions, lookup/creation failures, idempotence and installer ordering with isolated command mocks. These tests do not mutate the developer machine's account database.
+
+References: https://manpages.ubuntu.com/manpages/noble/man1/getent.1.html and https://manpages.ubuntu.com/manpages/noble/man8/groupadd.8.html
+
 ## Upgrade preflight
 
 1. Schedule an interruption. Record the current Git commit and image IDs. Make a SQLite-safe/full operational backup and back up each add-on's persistent state. Save local source changes separately with restrictive file permissions; do not discard them with `git reset --hard` or overwrite a dirty checkout.

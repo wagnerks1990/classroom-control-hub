@@ -45,6 +45,11 @@ command -v rsync >/dev/null 2>&1 || { apt-get update && apt-get install -y rsync
 command -v zip >/dev/null 2>&1 || { apt-get update && apt-get install -y zip unzip; }
 command -v sqlite3 >/dev/null 2>&1 || { apt-get update && apt-get install -y sqlite3; }
 
+# Resolve the host-side group before changing data or installing secrets.
+source "$SOURCE/deploy/host-group.sh"
+HUB_INSTALL_GROUP="$(ensure_hub_install_group)" || fail "Host group preflight failed"
+printf 'Using host group: %s (GID 10001)\n' "$HUB_INSTALL_GROUP"
+
 mkdir -p "$BACKUP_ROOT"
 if [[ -f "$TARGET/.env" || -d "$TARGET/data" ]]; then
   echo "Existing Classroom Control Hub detected at $TARGET"
@@ -160,18 +165,18 @@ chmod 600 "$TARGET/.env"
 
 mkdir -p /etc/classroom-control-hub
 if [[ ! -s /etc/classroom-control-hub/master.key && -s /etc/classroom-hub/master.key ]]; then
-  install -m 0640 -o root -g 10001 /etc/classroom-hub/master.key /etc/classroom-control-hub/master.key
+  install -m 0640 -o root -g "$HUB_INSTALL_GROUP" /etc/classroom-hub/master.key /etc/classroom-control-hub/master.key
 fi
 if [[ ! -s /etc/classroom-control-hub/master.key ]]; then openssl rand -hex 32 > /etc/classroom-control-hub/master.key; fi
 chown root:10001 /etc/classroom-control-hub/master.key
 chmod 640 /etc/classroom-control-hub/master.key
 if ! grep -q '^CLASSROOM_HUB_MASTER_KEY_FILE=' "$TARGET/.env"; then echo 'CLASSROOM_HUB_MASTER_KEY_FILE=/etc/classroom-control-hub/master.key' >> "$TARGET/.env"; fi
 
-install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub/veyon
+install -d -m 0750 -o root -g "$HUB_INSTALL_GROUP" /etc/classroom-control-hub/veyon
 if [[ -d /etc/classroom-control-hub/veyon/private.pem ]]; then
   rmdir /etc/classroom-control-hub/veyon/private.pem 2>/dev/null || fail "Veyon key path is unexpectedly a non-empty directory"
 fi
-if [[ ! -e /etc/classroom-control-hub/veyon/private.pem ]]; then install -m 0640 -o root -g 10001 /dev/null /etc/classroom-control-hub/veyon/private.pem; fi
+if [[ ! -e /etc/classroom-control-hub/veyon/private.pem ]]; then install -m 0640 -o root -g "$HUB_INSTALL_GROUP" /dev/null /etc/classroom-control-hub/veyon/private.pem; fi
 
 command -v python3 >/dev/null 2>&1 || { apt-get update && apt-get install -y python3; }
 install -D -m 0644 "$TARGET/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-hub-host-agent.service

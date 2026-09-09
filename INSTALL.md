@@ -182,3 +182,7 @@ The installer prints the pre-migration backup directory. If a migration fails, s
 When moving forward from a release that contained Caddy, use `docker compose up -d --remove-orphans` or the supported installer so the obsolete TLS container is removed.
 
 See `GITHUB-MIGRATION.md` and `docs/DEPLOYMENT.md` for the full workflow.
+
+## Host group preflight and partial-install recovery
+
+The installer now ensures host GID 10001 can be resolved before touching runtime data or secrets. It reuses an existing group or creates `classroom-hub` with the fixed ID, without changing memberships or renumbering groups. See [Host networking and migration](docs/HOST-NETWORKING.md#installer-stops-with-invalid-group-10001) for `install: invalid group` recovery and preserved-key/data requirements.

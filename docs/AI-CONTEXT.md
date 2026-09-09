@@ -8,7 +8,7 @@ This document gives AI assistants a compact operational model of Classroom Contr
 
 ## Purpose
 
-Classroom Control Hub is a centralized classroom/lab control platform. It coordinates browser displays, scheduled automations, AV routing, lighting, Morning Announcements, Background Music, class schedules, school-cycle rules, Veyon lab management, diagnostics, backup/recovery, Docker integrations, and host-management functions.
+Classroom Control Hub is a centralized classroom/lab control platform. It coordinates browser displays, scheduled automations, AV routing, lighting, Morning Announcements, Background Music, class schedules, school-cycle rules, Veyon lab management, diagnostics, backup/recovery, Docker integrations, Android/Google TV managed displays, and host-management functions.
 
 ## Runtime architecture
 
@@ -60,6 +60,7 @@ Treat these as runtime state, not replaceable source:
 - private keys and the master encryption key
 - managed integration data beneath the services root
 - site-specific hardware mappings and credentials
+- Android/Google TV managed-device inventory, ADB keys, agent package and policy state beneath `data/android-tv/`
 
 A Git update must preserve them.
 
@@ -142,11 +143,35 @@ Scheduler readiness validates stored class and automation data. Invalid class ti
 
 ## Integration model
 
-Major integrations include MQTT/Govee, Pluto Mark I, Music Assistant / Sendspin, Veyon, Ant Media / HLS, browser display clients, and the native Host Agent.
+Major integrations include MQTT/Govee, Pluto Mark I, Music Assistant / Sendspin, Veyon, Ant Media / HLS, browser display clients, Android/Google TV managed displays, and the native Host Agent.
 
 Integration health must be independent. A Pluto failure must not make MQTT/Govee appear offline. Optional/slow hardware probes should run asynchronously and must not block the Overview screen.
 
 Music Assistant managed Docker deployment uses host networking so local multicast discovery works and keeps its persistent `/data` outside the container. Veyon WebAPI may be adopted as an existing container/service or deployed using the supported proxy template where appropriate.
+
+## Android / Google TV managed-display invariants
+
+The first physically validated target is the Onn 4K Streaming Device running Android 14, product `wayne`, build `UKRB.260113.075.A1`.
+
+Preserve these invariants:
+
+- Enrollment/pairing and assignment/configuration are separate workflows.
+- Pair once to establish ADB trust and a stable managed-device ID; use Edit for school/building/room/profile/display URL changes.
+- Display Agent package is `org.classroomhub.display`.
+- Android inventory and ADB key material under `data/android-tv/` are persistent runtime state.
+- A blank Managed Displays page or permanent `Checking ADB…` after deployment may indicate Hub-to-maintenance network/proxy failure rather than lost pairing; inspect persistence before re-pairing.
+- Hub and maintenance use host networking; maintenance remains loopback-only at `127.0.0.1:${MAINTENANCE_PORT:-3010}` and token-authenticated. Do not reintroduce `maintenance-agent:3010` service-DNS assumptions.
+- Persistent ADB is opt-in and for trusted management networks only. The tested Onn preserves pairing trust but disables Wireless Debugging during reboot; the agent restores it and the managed endpoint returns on fixed port `5555`.
+- Reboot is asynchronous. Temporary ADB loss is expected; UI uses bounded `Recovering…` state rather than immediate permanent failure.
+- ADB may return before Android allows foreground kiosk launch; agent can transition through `Starting…` before `Running`.
+- Hub recovery should verify/accelerate agent launch as soon as ADB reconnects instead of waiting for the normal background policy interval.
+- Remote-shell compound scripts must be correctly quoted for Android `/system/bin/sh`; never pass an unquoted pipeline/conditional as a fragmented `sh -c` sequence.
+- Android deep sleep is not the default scheduled power method on the validated Onn because it can remove the ADB/network management path. Keep kiosk/content scheduling, HDMI-CEC panel power, and advanced Android sleep separate.
+- Managed Minimal Mode is reversible: audit first, disable only audited third-party user-0 apps, preserve `org.classroomhub.display` and Android/Google TV core services, and provide Restore Apps.
+
+Validated lifecycle: pair/enroll -> configure -> install agent -> persistent ADB bootstrap -> unattended reboot -> Wireless Debugging restored -> fixed `:5555` reconnect -> Hub Online -> agent starts -> assigned `/display/<id>` content returns. HDMI-CEC/physical panel power remains separate follow-up validation.
+
+Canonical references: `docs/ANDROID-TV-DISPLAYS.md`, `docs/PERSISTENT-ANDROID-ADB.md`, `docs/MANAGED-ANDROID-MINIMAL-MODE.md`, `docs/ANDROID-TV-SUPPORT-MATRIX.md`, `docs/ai/ANDROID-TV-CONTEXT.md`, `wiki/Android-TV-Displays.md`.
 
 ## Production configuration
 
@@ -195,10 +220,13 @@ The web-managed updater uses GitHub releases and a native systemd job. It must v
 - `docs/HOST-AGENT.md` — host agent
 - `docs/OPERATIONS.md` — operations
 - `docs/TROUBLESHOOTING.md` — troubleshooting
+- `docs/ANDROID-TV-DISPLAYS.md` — Android/Google TV management
+- `docs/PERSISTENT-ANDROID-ADB.md` — persistent wireless ADB recovery
+- `docs/MANAGED-ANDROID-MINIMAL-MODE.md` — reversible managed-display cleanup
+- `docs/ANDROID-TV-SUPPORT-MATRIX.md` — validated hardware/firmware matrix
 - `wiki/` — Git-tracked mirror of GitHub Wiki pages
 
 Update documentation in the same change whenever behavior or operational procedures change.
-
 
 ## Automation execution contract (alpha.72)
 
@@ -211,9 +239,14 @@ Update documentation in the same change whenever behavior or operational procedu
 ### Maintenance mutation boundary
 
 Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.
+
 ## Display merge review boundaries (2026-09-09)
 
 PR #27 retains one logical layout owner and adds `public/display/security.mjs` for receiver URL/proxy/identify validation. Never return a rejected raw URL from a catch block. External media is an explicit HTTP(S) signage feature, not permission to load javascript/data/file schemes or to navigate the top-level receiver. Keep external frames isolated, proxy paths same-Hub and identify resources bounded. See `docs/DISPLAY-LAYOUT-CONTRACT.md` for behavior and browser verification. Renderer revision: `single-fit-20260909-2`; this source change does not create a new semantic-version release.
+
+## Host installer group prerequisite
+
+Resolve host GID 10001 before backup/data/secret mutation. The group inside the image is not a host group record. Source `deploy/host-group.sh`, reuse an existing GID or create `classroom-hub` only when its name and ID are free, and pass the verified name to `install`. Fail closed on conflicts/lookup errors; never renumber existing groups, add host users to this secret-readable group, or regenerate keys for this error. Keep `test/installer-host-group.test.js` coverage and `docs/HOST-NETWORKING.md` recovery instructions synchronized.
 
 ## Dedicated Sendspin transport (selective PR #22 migration)
 

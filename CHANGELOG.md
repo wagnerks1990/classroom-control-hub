@@ -8,6 +8,10 @@
 - Add real-WebSocket and deterministic lifecycle regressions; leave the renderer, SDK, autoplay and host-network deployment definitions unchanged.
 - Record the selective PR #22 review and rejected legacy experiments in operational, wiki and AI documentation. No new release tag or database migration.
 
+## Unreleased - Host installer group resolution
+
+- Resolve or create the fixed host GID 10001 before data/key installation and pass its group name to `install`; preserve existing numeric ownership and fail on name conflicts or lookup errors. Add isolated regression tests and operational/wiki/AI recovery guidance.
+
 ## Unreleased - Host-network migration
 
 - Rate-limit authenticated maintenance mutations across legacy and wrapped add-on routes, preserving health polling and returning HTTP 429 with Retry-After under write floods.

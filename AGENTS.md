@@ -194,6 +194,10 @@ Never commit or reproduce live secrets. Keep `.env`, private keys, database file
 
 Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.
 
+## Host installer group prerequisite
+
+Resolve host GID 10001 before backup/data/secret mutation. The group inside the image is not a host group record. Source `deploy/host-group.sh`, reuse an existing GID or create `classroom-hub` only when its name and ID are free, and pass the verified name to `install`. Fail closed on conflicts/lookup errors; never renumber existing groups, add host users to this secret-readable group, or regenerate keys for this error. Keep `test/installer-host-group.test.js` coverage and `docs/HOST-NETWORKING.md` recovery instructions synchronized.
+
 ### Sendspin transport ownership
 
 The backend's dedicated Sendspin relay is in `src/music-assistant-sendspin.js`. It uses the configured audio port (normally 8927), not the API/web-player socket on 8095; the API token never enters raw audio frames. Keep the browser on the existing ticketed same-Hub proxy and preserve the single display-layout engine. Do not reintroduce PR #22's patch scripts or direct-browser/auto-fit experiments. See [Sendspin architecture and selective review](docs/MUSIC-ASSISTANT-SENDSPIN.md).
