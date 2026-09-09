@@ -1,0 +1,20 @@
+name: Host network migration review
+on:
+  push:
+    branches: [fix/host-networking]
+permissions:
+  contents: read
+jobs:
+  source-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Export tracked source only
+        run: git archive --format=tar HEAD > /tmp/classroom-hub-source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: classroom-hub-source
+          path: /tmp/classroom-hub-source.tar
+          retention-days: 1
