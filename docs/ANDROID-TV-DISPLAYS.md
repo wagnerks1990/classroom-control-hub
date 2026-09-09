@@ -103,7 +103,7 @@ Managed Displays includes a conservative, reversible cleanup workflow for dedica
 
 The workflow does not uninstall firmware or remove Android/Google TV core system packages. Always audit a new hardware/firmware family before applying minimal mode. The Classroom Hub agent, WebView, networking, Settings, package management, Google/Android framework components and ADB dependencies must remain intact.
 
-See `docs/ANDROID-TV-MINIMAL-MODE.md` for operational guidance.
+See `docs/MANAGED-ANDROID-MINIMAL-MODE.md` for operational guidance.
 
 ## Managed Displays refresh/recovery
 
@@ -163,7 +163,7 @@ Remote shell is administrator-grade access. Routine controls use fixed ADB argum
 ## Related documentation
 
 - `docs/PERSISTENT-ANDROID-ADB.md`
-- `docs/ANDROID-TV-MINIMAL-MODE.md`
+- `docs/MANAGED-ANDROID-MINIMAL-MODE.md`
 - `docs/ANDROID-TV-SUPPORT-MATRIX.md`
 - `wiki/Android-TV-Displays.md`
 - `docs/AI-CONTEXT.md`
