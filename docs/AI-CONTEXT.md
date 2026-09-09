@@ -207,3 +207,7 @@ Update documentation in the same change whenever behavior or operational procedu
 - Class-default display targets are a display-domain policy. They apply to primary display actions, display actions embedded in lighting/TV-led automations, and timer overlays. They never become lighting targets.
 - Timer overlay failures and action failures must be returned and persisted with actionable details rather than only the generic `Completed with action errors` status.
 - Alternating automations use the authoritative school-cycle anchor from the configured schedule profile; the controller must not depend on an editor-only anchor field.
+
+### Maintenance mutation boundary
+
+Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.

@@ -1,5 +1,6 @@
 "use strict";
 const express=require("express");
+const {rateLimit}=require("express-rate-limit");
 const {mainAppUrl, serviceHost, validPort} = require("./network");
 const http=require("http");
 const fs=require("fs");
@@ -33,6 +34,15 @@ app.use(express.json({limit:"8mb"}));
 function secretEqual(actual,expected){const a=Buffer.from(String(actual||"")),b=Buffer.from(String(expected||""));return a.length===b.length&&crypto.timingSafeEqual(a,b)}
 function auth(req,res,next){if(!TOKEN)return res.status(503).json({ok:false,error:"Maintenance token not configured"});if(!secretEqual(req.get("x-maintenance-token"),TOKEN))return res.status(401).json({ok:false,error:"Unauthorized"});next()}
 app.use(auth);
+// One appliance-wide budget prevents spoofed forwarding headers or local source
+// addresses from multiplying privileged writes. Authentication runs first; read
+// polling and startup health never consume the mutation budget.
+app.use(rateLimit({
+  windowMs:60_000,limit:30,standardHeaders:"draft-8",legacyHeaders:false,
+  keyGenerator:()=>"maintenance-mutations",
+  skip:req=>["GET","HEAD","OPTIONS"].includes(req.method),
+  message:{ok:false,error:"Too many maintenance changes. Retry after the indicated delay."}
+}));
 app.use(["/files","/file","/file/upload","/env","/update/stage","/update/deploy"],(_req,res)=>res.status(410).json({ok:false,error:"Direct filesystem, environment-file, and source-ZIP mutation has been removed. Use database-backed settings and verified GitHub releases."}));
 function cleanName(v){return String(v||"").replace(/[^A-Za-z0-9._-]/g,"-").slice(0,180)}
 function statInfo(p,base){const st=fs.statSync(p);return {name:path.basename(p),path:path.relative(base,p)||".",type:st.isDirectory()?"directory":"file",size:st.size,modifiedAt:st.mtime.toISOString()}}

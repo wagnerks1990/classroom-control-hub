@@ -189,3 +189,7 @@ Changes that alter architecture, configuration, installation, operations, recove
 ## Security
 
 Never commit or reproduce live secrets. Keep `.env`, private keys, database files, backups, and secret material out of Git. HTTP-only alpha deployments must be restricted to a trusted classroom/admin LAN until TLS is deliberately reintroduced and tested.
+
+### Maintenance mutation boundary
+
+Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.

@@ -8,6 +8,8 @@ This changes the containers' network namespace, not their ownership or filesyste
 
 The supported deployment is Docker Engine on the Linux appliance. Docker Desktop opt-in host networking and rootless Docker do not guarantee equivalent physical-LAN discovery behavior. Do not assume that a Desktop/VM host-network test validates the classroom LAN.
 
+Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.
+
 ## Listeners and addresses
 
 | Component | Default listener | Configuration / boundary |

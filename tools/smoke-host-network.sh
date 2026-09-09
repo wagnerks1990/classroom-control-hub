@@ -64,6 +64,20 @@ curl -fsS -c "$work/cookies" -H 'X-Setup-Token: ci-network-setup' -H 'Content-Ty
   "http://127.0.0.1:$hub_port/api/v1/setup/administrator" >/dev/null
 curl -fsS -b "$work/cookies" "http://127.0.0.1:$hub_port/api/v1/maintenance/health" >/dev/null
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$maint_port/health")" == 401 ]]
+# Authentication must run before rate accounting. Use an unknown integration
+# to exercise the real middleware without starting or stopping any add-on.
+[[ "$(curl -sS -X POST -o /dev/null -w '%{http_code}' "http://127.0.0.1:$maint_port/modules/ci-unknown/deploy")" == 401 ]]
+for _ in $(seq 1 30); do
+  [[ "$(curl -sS -X POST -H 'x-maintenance-token: ci-network-maintenance' -o /dev/null -w '%{http_code}' "http://127.0.0.1:$maint_port/modules/ci-unknown/deploy")" == 404 ]]
+done
+# Both the legacy route and extension-wrapped route must be blocked, regardless
+# of a forged forwarding header. Neither request is allowed to reach deployment.
+for integration in ci-unknown govee2mqtt; do
+  [[ "$(curl -sS -X POST -H 'x-maintenance-token: ci-network-maintenance' -H 'X-Forwarded-For: 198.51.100.99' -D "$work/limit-headers" -o /dev/null -w '%{http_code}' "http://127.0.0.1:$maint_port/modules/$integration/deploy")" == 429 ]]
+  grep -Eiq '^Retry-After: [0-9]+' "$work/limit-headers"
+done
+[[ ! -e "$work/services/govee2mqtt" ]]
+curl -fsS -H 'x-maintenance-token: ci-network-maintenance' "http://127.0.0.1:$maint_port/health" >/dev/null
 for name in "$main" "$maint"; do
   [[ "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$name")" == host ]]
   [[ "$(docker inspect -f '{{len .HostConfig.PortBindings}}' "$name")" == 0 ]]
@@ -74,4 +88,4 @@ curl --noproxy '*' -fsS --max-time 5 "http://$host_ip:$hub_port/health" >/dev/nu
 if curl --noproxy '*' -sS --max-time 3 "http://$host_ip:$maint_port/health" >/dev/null 2>&1; then
   echo 'Maintenance incorrectly reachable on a non-loopback host interface' >&2; exit 1
 fi
-echo 'Host-network smoke passed: custom listeners, bidirectional proxy, startup order, token auth and loopback-only maintenance.'
+echo 'Host-network smoke passed: custom listeners, bidirectional proxy, startup order, token auth, mutation rate limits and loopback-only maintenance.'
