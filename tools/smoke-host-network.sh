@@ -15,10 +15,15 @@ cleanup(){
 }
 trap cleanup EXIT
 chmod 0755 "$work"
-mkdir -p "$work/data" "$work/services"
+mkdir -p "$work/data/backups" "$work/services"
 cp VERSION "$work/VERSION"
 openssl rand -hex 32 > "$work/master.key"
-sudo chown -R 10001:10001 "$work/data" "$work/master.key"
+# Match install.sh: maintenance is root with all capabilities dropped, while
+# the unprivileged application writes data through its 10001 group. Backups
+# stay root-owned and private rather than relaxing security for the fixture.
+sudo chown root:10001 "$work/data" "$work/data/backups" "$work/master.key"
+sudo chmod 0770 "$work/data"
+sudo chmod 0700 "$work/data/backups"
 sudo chmod 0640 "$work/master.key"
 python3 tools/fixtures/host-agent-network.py "$work/agent.sock" "$(cat VERSION)" &
 fixture=$!
