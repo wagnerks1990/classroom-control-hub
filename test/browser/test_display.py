@@ -53,7 +53,7 @@ MEASURE = """() => {
  for(const [name,child,parent] of [['title','title','titleRegion'],['subtitle','subtitle','subtitleRegion'],['body','text','textLayer'],['timer','timerOverlay','timerRegion']]) {
   const el=document.getElementById(child), box=document.getElementById(parent);
   if(!el.textContent.trim() || getComputedStyle(box).display==='none')continue;
-  result.parts[name]={font:parseFloat(getComputedStyle(el).fontSize), child:rect(el), box:rect(box), text:el.textContent, scrollW:el.scrollWidth,clientW:el.clientWidth};
+  result.parts[name]={font:parseFloat(getComputedStyle(el).fontSize), child:rect(el), box:rect(box), logicalBox:{x:box.offsetLeft,y:box.offsetTop,w:box.clientWidth,h:box.clientHeight}, text:el.textContent, scrollW:el.scrollWidth,clientW:el.clientWidth};
   const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
   while(walker.nextNode()) {
    if(!walker.currentNode.textContent.trim())continue;
@@ -178,7 +178,9 @@ class DisplayBrowserTests(unittest.TestCase):
             self.assertLessEqual(child[dimension]+child[size], box[dimension]+box[size]+1, label)
 
     def signature(self, data):
-        return {name:(round(p['font'],2),*[round(p['box'][d],2) for d in ['x','y','w','h']]) for name,p in data['parts'].items()}
+        # Compare untransformed DOM geometry, not round-tripped paint coordinates.
+        # Firefox quantizes transformed rects; containment still checks those rects.
+        return {name:(round(p['font'],2),*[p['logicalBox'][d] for d in ['x','y','w','h']]) for name,p in data['parts'].items()}
 
     def test_01_p6_p7_cross_resolution_and_reload(self):
         baseline={}
