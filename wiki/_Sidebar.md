@@ -8,6 +8,7 @@
 - [Display Access](Display-Access)
 - [Automation Display Media](Automation-Display-Media)
 - [Veyon and Music Assistant](Veyon-and-Music-Assistant)
+- [Music Assistant Sendspin](Music-Assistant-Sendspin)
 - [Operations](Operations)
 - [Troubleshooting](Troubleshooting)
 - [Development](Development)

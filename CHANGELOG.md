@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — selective PR #22 Sendspin migration
+
+- Connect the existing ticketed Hub audio proxy to the configured dedicated Sendspin endpoint (default 8927), leaving token-authenticated Music Assistant API control separate.
+- Preserve initial text/binary protocol frames, existing attachment checks and host-network compatibility; validate endpoint settings before saving/opening.
+- Fix timeout, early-close and failed-send cleanup; bound pending/output buffers and include audio connections in per-IP accounting.
+- Add real-WebSocket and deterministic lifecycle regressions; leave the renderer, SDK, autoplay and host-network deployment definitions unchanged.
+- Record the selective PR #22 review and rejected legacy experiments in operational, wiki and AI documentation. No new release tag or database migration.
+
 ## Unreleased - Host-network migration
 
 - Rate-limit authenticated maintenance mutations across legacy and wrapped add-on routes, preserving health polling and returning HTTP 429 with Retry-After under write floods.
