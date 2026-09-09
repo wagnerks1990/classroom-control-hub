@@ -17,3 +17,6 @@ config/devices.local.json
 config/hardware.local.json
 public/display/fonts/
 test-results/
+
+# Host installer state, not application source.
+/.classroom-hub-installation

@@ -21,6 +21,7 @@ COPY src ./src
 COPY config ./config
 COPY public ./public
 COPY tools/prepare-display-fonts.sh ./tools/prepare-display-fonts.sh
+COPY tools/verify-image-permissions.js ./tools/verify-image-permissions.js
 RUN bash tools/prepare-display-fonts.sh
 
 # Stamp independently loaded client/runtime surfaces from the single release
@@ -33,6 +34,14 @@ RUN RELEASE_VERSION="$(cat VERSION)" \
       public/lab-agent/ClassroomHubAgent.ps1
 
 RUN npx esbuild public/display/sendspin-entry.js --bundle --format=esm --target=es2022 --outfile=public/display/sendspin.bundle.js
+
+# Local Docker contexts retain file modes. A root-edited 0600 server.js must not
+# produce an image that only root can start. Normalize packaged, non-secret
+# application files inside the image only; never chmod host data or secrets.
+RUN chmod 0755 /app \
+ && find /app/src /app/public /app/config /app/tools -type d -exec chmod 0755 {} + \
+ && find /app/src /app/public /app/config /app/tools -type f -exec chmod 0644 {} + \
+ && chmod 0644 /app/VERSION /app/package.json /app/package-lock.json
 
 RUN groupadd --gid 10001 classroom-hub \
  && useradd --uid 10001 --gid 10001 --home-dir /tmp/classroom-hub --no-create-home --shell /usr/sbin/nologin classroom-hub \
@@ -47,4 +56,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch(require('./src/network').localHttpUrl(process.env.PORT||3000,process.env.BIND_ADDRESS)+'/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
 USER 10001:10001
+# Fail the build, rather than the deployed container, on unreadable source/assets.
+RUN node tools/verify-image-permissions.js && node --check src/server.js
 CMD ["node", "--require", "./src/direct-display-compat.js", "src/startup-recovery.js"]
