@@ -135,13 +135,13 @@ function applySubtitle(p={}){
 }
 function formatTimerSeconds(total){total=Math.max(0,Math.floor(Number(total)||0));const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),sec=total%60;return h>0?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`}
 function timerSecondsNow(){const now=Date.now();if(timerState.mode==='countup'){if(timerState.running&&timerState.startedAt)return Number(timerState.elapsedSeconds||0)+Math.max(0,(now-Number(timerState.startedAt))/1000);return Number(timerState.elapsedSeconds||0)}if(timerState.running&&timerState.endAt)return Math.max(0,(Number(timerState.endAt)-now)/1000);return Math.max(0,Number(timerState.remainingSeconds??timerState.durationSeconds??0))}
-function paintTimer(){
-  if(!timerState.visible){timerOverlay.style.display='none';requestAnimationFrame(fitAllContent);return}
+function paintTimer({refit=false}={}){
+  if(!timerState.visible){timerOverlay.style.display='none';if(refit)requestAnimationFrame(fitAllContent);return}
   timerOverlay.style.display='block';timerLabel.textContent=timerState.label||'';timerLabel.style.display=timerState.label?'block':'none';timerValue.textContent=formatTimerSeconds(timerSecondsNow());
   timerOverlay.style.color=timerState.textColor||'#fff';timerOverlay.style.borderColor=timerState.borderColor||'#fff';timerOverlay.style.borderWidth=`${Math.max(0,Number(timerState.borderWidth??4))}px`;timerOverlay.style.borderRadius=`${Math.max(0,Number(timerState.borderRadius??18))}px`;timerOverlay.style.fontSize=`${Math.max(20,Number(timerState.fontSize??64))}px`;timerOverlay.style.background=timerState.background||'rgba(0,0,0,.35)';
   timerOverlay.classList.remove('timer-top','timer-center','timer-bottom');timerOverlay.classList.add(`timer-${['top','center','bottom'].includes(timerState.position)?timerState.position:'bottom'}`);
   if(timerState.mode==='countdown'&&timerState.running&&timerSecondsNow()<=0){timerState.running=false;timerState.remainingSeconds=0;timerState.endAt=null;timerValue.textContent=formatTimerSeconds(0);if(timerTick){clearInterval(timerTick);timerTick=null}}
-  requestAnimationFrame(fitAllContent);
+  if(refit)requestAnimationFrame(fitAllContent);
 }
 function applyTimer(p={}){
   const incomingInstance=p.timerInstanceId||null;
@@ -156,8 +156,12 @@ function applyTimer(p={}){
     timerState={...timerState,...p};
   }
   if(timerState.mode==='countdown'&&timerState.endAt&&Number(timerState.endAt)<=Date.now()){timerState.running=false;timerState.remainingSeconds=0;timerState.endAt=null}
-  paintTimer();
-  if(timerState.visible&&timerState.running)timerTick=setInterval(paintTimer,250);
+  paintTimer({refit:true});
+  // Countdown digits update once per second. Routine timer ticks must not
+  // trigger global title/subtitle/body auto-fit because doing so briefly resets
+  // each element to its maximum size before shrinking it again, which causes
+  // visible font-size flashing on active classroom displays.
+  if(timerState.visible&&timerState.running)timerTick=setInterval(()=>paintTimer({refit:false}),1000);
 }
 function applyState(s){
   if(!s)return;if(s.background?.color)stage.style.background=s.background.color;
