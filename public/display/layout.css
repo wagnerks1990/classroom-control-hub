@@ -1,0 +1,16 @@
+@font-face{font-family:'Classroom Display';src:url('/display/fonts/LiberationSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:block}
+@font-face{font-family:'Classroom Display';src:url('/display/fonts/LiberationSans-Bold.ttf') format('truetype');font-weight:700 900;font-style:normal;font-display:block}
+#stage{font-family:'Classroom Display',Arial,sans-serif;text-size-adjust:none;-webkit-text-size-adjust:none}
+#titleRegion,#subtitleRegion,#textLayer{min-width:0;min-height:0}
+#title,#subtitle,#text{width:100%;max-width:none;max-height:none;height:auto;min-width:0;min-height:0;flex:0 0 auto;overflow:visible;margin:0}
+#timerRegion{position:absolute;left:80px;right:80px;top:805px;height:240px;display:flex;align-items:center;justify-content:center;overflow:hidden;z-index:10000;pointer-events:none}
+#timerRegion[hidden]{display:none}
+#timerOverlay{position:static;transform:none;min-width:0;max-width:none;max-height:none;height:auto;flex:0 0 auto;margin:0;padding:.18em .55em;overflow:visible}
+#timerOverlay.timer-top,#timerOverlay.timer-center,#timerOverlay.timer-bottom{position:static;transform:none;top:auto;bottom:auto}
+#timerLabel{font-weight:700}
+#timerValue{font-size:1em;white-space:nowrap;font-variant-numeric:tabular-nums}
+#stage[data-font-status='loading'] #titleRegion,#stage[data-font-status='loading'] #subtitleRegion,#stage[data-font-status='loading'] #textLayer,#stage[data-font-status='loading'] #timerRegion{visibility:hidden}
+/* Leave ascent/descent space: tight 1.0/1.05 line boxes can fit numerically
+   while glyphs themselves extend outside a heading or timer region. */
+#title,#subtitle,#text,#timerOverlay,#timerLabel,#timerValue{line-height:1.2}
+#title,#subtitle,#text{white-space:break-spaces}

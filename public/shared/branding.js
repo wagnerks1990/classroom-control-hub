@@ -61,13 +61,7 @@
   window.ControlHubBranding={apply,load:async()=>{try{const response=await fetch("/api/v1/branding",{credentials:"same-origin",cache:"no-store"});if(!response.ok)throw Error(`HTTP ${response.status}`);const value=await response.json();return apply(value.branding||{})}catch{return apply(fallback)}}};
   window.ControlHubBranding.load();
 
-  if(location.pathname.startsWith("/display/")&&!document.querySelector('script[data-controlhub-display-autofit]')){
-    const script=document.createElement("script");
-    script.src="/shared/display-autofit.js";
-    script.defer=true;
-    script.dataset.controlhubDisplayAutofit="1";
-    document.head.append(script);
-  }
+  // Display layout is owned by the renderer's imported layout.mjs, not branding.
 
   // The controller's historical display-enrollment panel is retained in the
   // static HTML for upgrade compatibility, but its behavior is replaced with
