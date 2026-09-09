@@ -14,6 +14,14 @@ A scheduled event can therefore complete at the automation layer while a display
 
 For linked-class events, the preference is retained so display-domain actions and future cross-domain target resolution can use the class's configured display defaults. Explicit per-action display targets continue to take precedence where configured.
 
+## Linked automation occurrence metadata
+
+A class-linked automation may retain legacy standalone scheduling fields such as `time`, `scheduleMode`, or `anchorDate`, but those fields are not authoritative for how the linked event appears or runs. The resolved class occurrences are authoritative.
+
+The controller normalizes the list-card time to the first `resolvedOccurrences` time and builds the schedule description from every resolved occurrence. This prevents stale values such as an old manual time or `anchor not set` from being shown for a class-linked automation whose real class times are already known.
+
+Do not use the normalized list-card time to replace the linked-class source of truth in the scheduler. It is presentation normalization only; the backend still resolves each linked class independently.
+
 ## Stable text sizing with timer overlays
 
 Display auto-fit is a layout operation, not a timer-tick operation. The renderer may recalculate title, subtitle, body text, and timer sizing when content, timer visibility/style, viewport geometry, or display state changes. It must not globally auto-fit those regions for every countdown digit update.
@@ -29,6 +37,7 @@ When changing the display runtime, preserve this invariant: dynamic overlays may
 3. Confirm the selected media loads on the display, not merely that the automation reports `Completed`.
 4. Edit a linked-class event, enable `Use class default display targets`, save it, reopen the event, and confirm the checkbox remains enabled.
 5. Verify explicit cross-domain action targets remain unchanged after save/reload.
-6. Run a multiline `display.text` automation with a timer overlay for at least 30 seconds and confirm title, subtitle, and body font sizes remain visually stable while the countdown changes.
-7. Resize a browser preview or change fullscreen state and confirm a one-time auto-fit still occurs.
-8. Hide/show or replace the timer and confirm the body region reserves/releases timer space without a persistent resize loop.
+6. For a multi-class linked automation, confirm the list uses the first resolved class time and shows all resolved occurrence schedules instead of legacy standalone metadata.
+7. Run a multiline `display.text` automation with a timer overlay for at least 30 seconds and confirm title, subtitle, and body font sizes remain visually stable while the countdown changes.
+8. Resize a browser preview or change fullscreen state and confirm a one-time auto-fit still occurs.
+9. Hide/show or replace the timer and confirm the body region reserves/releases timer space without a persistent resize loop.
