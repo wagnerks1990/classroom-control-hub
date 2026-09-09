@@ -17,8 +17,8 @@
     "ws": "^8.18.3",
     "pdfjs-dist": "^6.2.108",
     "adm-zip": "^0.6.0",
-    "@sendspin/sendspin-js": "3.2.0",
-    "esbuild": "^0.25.9",
+    "@sendspin/sendspin-js": "5.0.0",
+    "esbuild": "^0.28.2",
     "hls.js": "^1.6.13",
     "express-rate-limit": "8.7.0"
   }
