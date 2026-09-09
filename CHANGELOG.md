@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased - Host-network migration
+
+- Rate-limit authenticated maintenance mutations across legacy and wrapped add-on routes, preserving health polling and returning HTTP 429 with Retry-After under write floods.
+
+- Use host networking for both core containers and all reviewed managed add-on deployment templates; remove bridge DNS, host-gateway and port-publishing dependencies.
+- Keep maintenance bound to loopback with a configurable port; preserve Hub bind/port settings and verify effective listeners during installation and updates.
+- Resolve exact legacy local integration aliases without rewriting remote endpoints or secrets; fix browser links and display network modes/migration warnings in the controller.
+- Map custom Mosquitto/Node-RED ports to actual service listeners. Require host mode in Host Agent container creation policy and preserve non-destructive adoption.
+- Add regression tests, host-network preflight, real-container networking smoke tests with a fake native-agent fixture, and synchronized operational/wiki/AI documentation.
 ## Unreleased — PR #27 display correction
 
 - Replace competing inline/observer fitters with one resolution-independent layout engine for title, subtitle, body and timer; grow short content, contain long content and preserve layout across timer ticks/reloads.

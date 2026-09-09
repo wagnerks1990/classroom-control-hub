@@ -4,6 +4,7 @@
 - [Architecture](Architecture)
 - [Installation and Deployment](Installation-and-Deployment)
 - [Configuration](Configuration)
+- [Host Networking](Host-Networking)
 - [Display Access](Display-Access)
 - [Automation Display Media](Automation-Display-Media)
 - [Veyon and Music Assistant](Veyon-and-Music-Assistant)

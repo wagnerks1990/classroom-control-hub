@@ -39,7 +39,7 @@ test("native Veyon WebAPI is host-managed but remains fully configurable",()=>{
   const ui=read("public/shared/integration-setup.js");
   assert.match(hostServer,/"veyon\.service"/);
   assert.match(hostServer,/"veyon-webapi\.service"/);
-  assert.match(ext,/NATIVE_VEYON_URL="http:\/\/host\.docker\.internal:11080"/);
+  assert.match(ext,/NATIVE_VEYON_URL="http:\/\/127\.0\.0\.1:11080"/);
   assert.match(ext,/nativeService:"veyon-webapi\.service"/);
   assert.match(ext,/management:"host-managed"/);
   assert.match(ext,/canRemove:false/);
@@ -104,8 +104,8 @@ test("setup wizard keeps receiver IDs editable and removes stale group members",
 
 test("maintenance Compose health does not depend on main application readiness",()=>{
   const compose=read("docker-compose.yml");
-  assert.match(compose,/3010\/host\/agent\/health/);
-  const maintenance=compose.slice(compose.indexOf("maintenance-agent:"));
+  assert.match(compose,/process\.env\.PORT\+\x27\/host\/agent\/health/);
+  const maintenance=compose.slice(compose.indexOf("  maintenance-agent:\n"));
   const health=maintenance.slice(maintenance.indexOf("healthcheck:"),maintenance.indexOf("security_opt:"));
-  assert.doesNotMatch(health,/3010\/ready/);
+  assert.doesNotMatch(health,/\/ready/);
 });

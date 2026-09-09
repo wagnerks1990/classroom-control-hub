@@ -31,7 +31,7 @@ Veyon itself also supports logon/username-password authentication, but the curre
 
 Open the Veyon WebAPI integration configuration and review:
 
-- WebAPI URL (`http://host.docker.internal:11080` is the normal container-to-host value);
+- WebAPI URL (`http://127.0.0.1:11080` is the normal container-to-host value);
 - Veyon authentication key name (`master` is the appliance default);
 - Veyon private-key import/storage status;
 - Veyon public-key/deployment metadata;
@@ -77,7 +77,7 @@ A valid long-lived Music Assistant access token is required.
 
 The token is encrypted in the Classroom Control Hub database. Save & Verify performs an authenticated Music Assistant API check. Missing or rejected credentials leave the integration in setup-required/authentication-required state.
 
-When the server-side URL uses `host.docker.internal:8095`, the Open Music Assistant button converts it to the current appliance hostname for browser access.
+When the server-side URL uses `127.0.0.1:8095`, the Open Music Assistant button converts it to the current appliance hostname for browser access.
 
 ## Troubleshooting
 

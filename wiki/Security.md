@@ -1,5 +1,7 @@
 # Security
 
+See [Host Networking](Host-Networking) for the current Linux container topology, loopback-only maintenance API, explicit add-on migration, listener ports and recovery rules.
+
 Classroom Control Hub controls real classroom infrastructure and should be treated as an administrative system.
 
 ## Core principles

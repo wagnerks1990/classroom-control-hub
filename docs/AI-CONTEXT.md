@@ -1,5 +1,9 @@
 # AI Project Context
 
+## Host-network deployment contract
+
+The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
+
 This document gives AI assistants a compact operational model of Classroom Control Hub. `AGENTS.md` is the primary contributor contract; this document expands the technical context.
 
 ## Purpose
@@ -204,6 +208,9 @@ Update documentation in the same change whenever behavior or operational procedu
 - Timer overlay failures and action failures must be returned and persisted with actionable details rather than only the generic `Completed with action errors` status.
 - Alternating automations use the authoritative school-cycle anchor from the configured schedule profile; the controller must not depend on an editor-only anchor field.
 
+### Maintenance mutation boundary
+
+Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.
 ## Display merge review boundaries (2026-09-09)
 
 PR #27 retains one logical layout owner and adds `public/display/security.mjs` for receiver URL/proxy/identify validation. Never return a rejected raw URL from a catch block. External media is an explicit HTTP(S) signage feature, not permission to load javascript/data/file schemes or to navigate the top-level receiver. Keep external frames isolated, proxy paths same-Hub and identify resources bounded. See `docs/DISPLAY-LAYOUT-CONTRACT.md` for behavior and browser verification. Renderer revision: `single-fit-20260909-2`; this source change does not create a new semantic-version release.

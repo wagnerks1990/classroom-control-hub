@@ -1,5 +1,9 @@
 # Security Policy
 
+## Host-network deployment contract
+
+The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
+
 Classroom Control Hub can control real classroom displays, AV equipment, lighting, media, and lab infrastructure. Treat every deployment as an administrative system.
 
 ## Do not commit secrets
@@ -49,3 +53,7 @@ public issue reports.
 ## Reporting vulnerabilities
 
 Do not publish credentials, exploit details against a live school network, or student information in public issues. Use a private contact method with the repository owner for sensitive reports.
+
+### Maintenance mutation boundary
+
+Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.

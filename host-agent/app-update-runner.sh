@@ -42,14 +42,7 @@ PY
 health_check(){
   local expected="$1"
   for _ in $(seq 1 90); do
-    local published_port=""
-    published_port="$(docker compose port classroom-hub 3000 2>/dev/null | tail -n 1 | sed 's/.*://')"
-    if [[ -z "$published_port" && -f .env ]]; then
-      published_port="$(sed -n 's/^[[:space:]]*HUB_PORT[[:space:]]*=[[:space:]]*//p' .env | tail -n 1 | tr -d '\r' | tr -d "\"'")"
-    fi
-    [[ "$published_port" =~ ^[0-9]+$ ]] || published_port=3000
-    if body="$(curl -fsS --max-time 10 "http://127.0.0.1:${published_port}/health" 2>/dev/null)" && \
-       EXPECTED="$expected" BODY="$body" python3 -c 'import json,os; j=json.loads(os.environ["BODY"]); raise SystemExit(0 if j.get("ok") and (not os.environ["EXPECTED"] or j.get("version")==os.environ["EXPECTED"]) else 1)'; then return 0; fi
+    if docker compose exec -T classroom-hub node -e "const port=Number(process.env.PORT||3000);let host=process.env.BIND_ADDRESS||'127.0.0.1';if(host==='0.0.0.0')host='127.0.0.1';if(host==='::'||host==='[::]')host='[::1]';if(host.includes(':')&&!host.startsWith('['))host='['+host+']';fetch('http://'+host+':'+port+'/health',{signal:AbortSignal.timeout(10000)}).then(async r=>{const j=await r.json();if(!r.ok||!j.ok||(process.argv[1]&&j.version!==process.argv[1]))process.exit(1)}).catch(()=>process.exit(1))" "$expected" >/dev/null 2>&1; then return 0; fi
     sleep 2
   done
   return 1
@@ -60,7 +53,7 @@ appliance_health_check(){
   health_check "$expected" || return 1
   docker compose ps --status running --services | grep -qx classroom-hub || return 1
   docker compose ps --status running --services | grep -qx maintenance-agent || return 1
-  docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:3010/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok||j.version!==process.argv[1]||!j.hostAgent?.ok||j.hostAgent.version!==process.argv[1])process.exit(1)}).catch(()=>process.exit(1))" "$expected" || return 1
+  docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3010)+'/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok||j.version!==process.argv[1]||!j.hostAgent?.ok||j.hostAgent.version!==process.argv[1])process.exit(1)}).catch(()=>process.exit(1))" "$expected" || return 1
 }
 
 capture_recovery_image(){
@@ -92,7 +85,8 @@ ensure_runtime_layout(){
     if grep -q '^MAINTENANCE_TOKEN=' .env; then sed -i "s/^MAINTENANCE_TOKEN=.*/MAINTENANCE_TOKEN=${value}/" .env; else printf 'MAINTENANCE_TOKEN=%s\n' "$value" >> .env; fi
   fi
   sed -i '/^HUB_TLS_HOST=/d;/^HUB_HTTPS_PORT=/d;/^HUB_HTTP_PORT=/d' .env
-  if grep -q '^HUB_BIND_ADDRESS=' .env; then sed -i 's/^HUB_BIND_ADDRESS=.*/HUB_BIND_ADDRESS=0.0.0.0/' .env; else echo 'HUB_BIND_ADDRESS=0.0.0.0' >> .env; fi
+  # Preserve explicit loopback/LAN bindings rather than widening host exposure.
+  if ! grep -q '^HUB_BIND_ADDRESS=' .env; then echo 'HUB_BIND_ADDRESS=0.0.0.0' >> .env; fi
   if grep -q '^TRUST_PROXY_HOPS=' .env; then sed -i 's/^TRUST_PROXY_HOPS=.*/TRUST_PROXY_HOPS=0/' .env; else echo 'TRUST_PROXY_HOPS=0' >> .env; fi
   chmod 0600 .env
   install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub

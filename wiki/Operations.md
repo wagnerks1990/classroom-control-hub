@@ -1,5 +1,7 @@
 # Operations
 
+See [Host Networking](Host-Networking) for the current Linux container topology, loopback-only maintenance API, explicit add-on migration, listener ports and recovery rules.
+
 This page covers day-to-day operational behavior for Classroom Control Hub.
 
 ## Service health

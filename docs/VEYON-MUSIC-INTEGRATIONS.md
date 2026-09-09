@@ -71,7 +71,7 @@ The Music Assistant long-lived token is stored encrypted in SQLite as `musicassi
 
 The guided configuration surface exposes:
 
-- WebAPI URL, normally `http://host.docker.internal:11080` from containers;
+- WebAPI URL, normally `http://127.0.0.1:11080` from containers;
 - authentication key name, default `master` for this appliance profile;
 - private key import/replacement state;
 - public key metadata for endpoint deployment;
@@ -111,7 +111,7 @@ Music Assistant uses a two-phase setup when the server is not already installed:
 5. Classroom Control Hub stores the token encrypted and performs an authenticated API check;
 6. only after authentication succeeds is Music Assistant considered ready.
 
-The setup/controller card includes an **Open Music Assistant** action. When the container-facing URL uses `host.docker.internal`, the browser link substitutes the current Hub hostname so an administrator can open port 8095 from the workstation browser.
+The setup/controller card includes an **Open Music Assistant** action. When the container-facing URL uses `127.0.0.1`, the browser link substitutes the current Hub hostname so an administrator can open port 8095 from the workstation browser.
 
 ## Music Assistant API validation
 

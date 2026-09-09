@@ -2,14 +2,17 @@
 # No Caddy/TLS service exists in the current HTTP-only Compose stack.
 services:
   classroom-hub:
-    build: .
+    build:
+      context: .
+      network: host
     image: ghcr.io/wagnerks1990/classroom-control-hub:${CLASSROOM_CONTROL_HUB_TAG:-alpha}
     container_name: classroom-control-hub
     restart: unless-stopped
-    ports:
-      - "${HUB_BIND_ADDRESS:-0.0.0.0}:${HUB_PORT:-3000}:3000"
+    network_mode: host
     environment:
-      PORT: 3000
+      PORT: ${HUB_PORT:-3000}
+      BIND_ADDRESS: ${HUB_BIND_ADDRESS:-0.0.0.0}
+      HUB_NETWORK_MODE: host
       ROOM_NAME: ${ROOM_NAME:-Classroom}
       TZ: ${TZ:-America/New_York}
       SCHEDULER_TIMEZONE: ${SCHEDULER_TIMEZONE:-America/New_York}
@@ -17,7 +20,7 @@ services:
       PLUTO_URL: ${PLUTO_URL:-}
       PLUTO_TIMEOUT_MS: ${PLUTO_TIMEOUT_MS:-4000}
       PLUTO_READ_RETRIES: ${PLUTO_READ_RETRIES:-4}
-      MQTT_URL: ${MQTT_URL:-mqtt://host.docker.internal:1883}
+      MQTT_URL: ${MQTT_URL:-mqtt://127.0.0.1:1883}
       MQTT_USERNAME: ${MQTT_USERNAME:-}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       MQTT_LEGACY_BRIDGE: ${MQTT_LEGACY_BRIDGE:-true}
@@ -34,13 +37,13 @@ services:
       WS_MAX_PAYLOAD_MB: ${WS_MAX_PAYLOAD_MB:-16}
       SESSION_PARTICIPATION_ENABLED: ${SESSION_PARTICIPATION_ENABLED:-false}
       MAINTENANCE_PROXY_ENABLED: ${MAINTENANCE_PROXY_ENABLED:-true}
-      MAINTENANCE_URL: http://maintenance-agent:3010
-      MUSIC_ASSISTANT_URL: ${MUSIC_ASSISTANT_URL:-http://host.docker.internal:8095}
+      MAINTENANCE_URL: http://127.0.0.1:${MAINTENANCE_PORT:-3010}
+      MUSIC_ASSISTANT_URL: ${MUSIC_ASSISTANT_URL:-http://127.0.0.1:8095}
       DATABASE_FILE: ${DATABASE_FILE:-/app/data/classroom-control-hub.db}
       MASTER_KEY_FILE: ${MASTER_KEY_FILE:-/run/secrets/classroom-control-hub-master-key}
       LEGACY_JSON_MIRROR: ${LEGACY_JSON_MIRROR:-false}
       MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-}
-      VEYON_WEBAPI_URL: ${VEYON_WEBAPI_URL:-http://host.docker.internal:11080}
+      VEYON_WEBAPI_URL: ${VEYON_WEBAPI_URL:-http://127.0.0.1:11080}
       VEYON_KEY_NAME: ${VEYON_KEY_NAME:-master}
       VEYON_KEY_NAME_FILE: /run/secrets/veyon-key-name
       VEYON_PRIVATE_KEY_FILE: ${VEYON_PRIVATE_KEY_FILE:-/run/secrets/veyon-private-key}
@@ -57,8 +60,6 @@ services:
       SESSION_EFFECT_DURATION_MS: ${SESSION_EFFECT_DURATION_MS:-7000}
       SESSION_CLEAR_GAP_MS: ${SESSION_CLEAR_GAP_MS:-1200}
       SESSION_SPOTLIGHT_ROTATE_MS: ${SESSION_SPOTLIGHT_ROTATE_MS:-9000}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
       - ./config:/app/config:ro
@@ -69,7 +70,7 @@ services:
       maintenance-agent:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch(require('./src/network').localHttpUrl(process.env.PORT,process.env.BIND_ADDRESS)+'/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 30s
@@ -83,19 +84,27 @@ services:
       - /tmp:size=512m,mode=1777
 
   maintenance-agent:
-    build: ./maintenance-agent
+    build:
+      context: ./maintenance-agent
+      network: host
     # Host system management is delegated to the native Classroom Control Hub Host Agent
-    # over a local Unix socket; the container does not enter host namespaces.
+    # over a local Unix socket. Only the network namespace is shared; PID and
+    # mount namespaces remain isolated and no Docker socket is mounted.
     image: ghcr.io/wagnerks1990/classroom-control-hub-maintenance:${CLASSROOM_CONTROL_HUB_TAG:-alpha}
     container_name: classroom-control-hub-maintenance
     restart: unless-stopped
+    network_mode: host
     environment:
-      PORT: 3010
+      PORT: ${MAINTENANCE_PORT:-3010}
+      BIND_ADDRESS: 127.0.0.1
+      HUB_NETWORK_MODE: host
       TZ: ${TZ:-America/New_York}
       MAINTENANCE_TOKEN: ${MAINTENANCE_TOKEN:-}
       MANAGED_HUB_ROOT: /managed/classroom-hub
       MANAGED_SERVICES_ROOT: /managed/services
-      MAIN_APP_URL: http://classroom-hub:3000
+      MAIN_APP_URL: ${MAIN_APP_URL:-}
+      MAIN_APP_PORT: ${HUB_PORT:-3000}
+      MAIN_APP_BIND_ADDRESS: ${HUB_BIND_ADDRESS:-0.0.0.0}
       MANAGED_APP_CONTAINER: ${MANAGED_APP_CONTAINER:-classroom-control-hub}
       RESTORE_HEALTH_TIMEOUT_MS: ${RESTORE_HEALTH_TIMEOUT_MS:-60000}
       RESTORE_MAX_EXPANDED_MB: ${RESTORE_MAX_EXPANDED_MB:-4096}
@@ -119,7 +128,7 @@ services:
       - ${HOST_BACKUP_DIR:-/opt/classroom-hub-backups}:/host-backups:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "const fs=require('fs');if(!fs.existsSync('/managed/classroom-hub'))process.exit(1);fetch('http://127.0.0.1:3010/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(async r=>{const j=await r.json();if(!r.ok||!j.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "const fs=require('fs');if(!fs.existsSync('/managed/classroom-hub'))process.exit(1);fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(async r=>{const j=await r.json();if(!r.ok||!j.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 20s
@@ -132,4 +141,4 @@ services:
     tmpfs:
       - /tmp:size=256m,mode=1777
       - /work/uploads:size=1024m,mode=1770
-    # Deliberately not published to the host. Access is proxied by Classroom Control Hub.
+    # Loopback-only listener. Access from the LAN is proxied by Classroom Control Hub.

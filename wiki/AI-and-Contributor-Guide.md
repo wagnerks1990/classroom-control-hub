@@ -1,5 +1,7 @@
 # AI and Contributor Guide
 
+See [Host Networking](Host-Networking) for the current Linux container topology, loopback-only maintenance API, explicit add-on migration, listener ports and recovery rules.
+
 AI coding assistants and contributors should treat the GitHub repository `main` branch as the source of truth.
 
 ## Read first

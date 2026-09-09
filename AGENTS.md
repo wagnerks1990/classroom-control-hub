@@ -1,5 +1,9 @@
 # AI and Contributor Operating Contract
 
+## Host-network deployment contract
+
+The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
+
 This file is the authoritative project context for AI coding assistants and human contributors working on Classroom Control Hub.
 
 ## Source of truth
@@ -185,3 +189,7 @@ Changes that alter architecture, configuration, installation, operations, recove
 ## Security
 
 Never commit or reproduce live secrets. Keep `.env`, private keys, database files, backups, and secret material out of Git. HTTP-only alpha deployments must be restricted to a trusted classroom/admin LAN until TLS is deliberately reintroduced and tested.
+
+### Maintenance mutation boundary
+
+Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.

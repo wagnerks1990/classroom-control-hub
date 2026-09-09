@@ -1,5 +1,9 @@
 # Classroom Control Hub
 
+## Host-network deployment contract
+
+The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
+
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
 > **Status:** `1.0.0-alpha.71` — live-test recovery/stabilization release with direct HTTP deployment, database/profile migration repair, setup-wizard fixes, and expanded appliance integration control.
