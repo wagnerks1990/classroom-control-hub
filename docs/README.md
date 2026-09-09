@@ -8,6 +8,8 @@ This directory is the canonical technical documentation set for Classroom Contro
 
 ## Documentation index
 
+- [Music Assistant Sendspin](MUSIC-ASSISTANT-SENDSPIN.md) — dedicated audio transport, PR #22 selective review, regression coverage and migration acceptance.
+
 - [AI Project Context](AI-CONTEXT.md) — compact current architecture, production conventions, behavioral invariants, and AI handoff context.
 - [Architecture](ARCHITECTURE.md) — system components, process boundaries, persistence, scheduling, priority arbitration, and service relationships.
 - [Deployment](DEPLOYMENT.md) — Docker Compose deployment, persistent storage, host-agent placement, Git updates, backups, and rollback.

@@ -247,3 +247,13 @@ PR #27 retains one logical layout owner and adds `public/display/security.mjs` f
 ## Host installer group prerequisite
 
 Resolve host GID 10001 before backup/data/secret mutation. The group inside the image is not a host group record. Source `deploy/host-group.sh`, reuse an existing GID or create `classroom-hub` only when its name and ID are free, and pass the verified name to `install`. Fail closed on conflicts/lookup errors; never renumber existing groups, add host users to this secret-readable group, or regenerate keys for this error. Keep `test/installer-host-group.test.js` coverage and `docs/HOST-NETWORKING.md` recovery instructions synchronized.
+
+## Dedicated Sendspin transport (selective PR #22 migration)
+
+TVs retain PR #27's ticketed, same-Hub socket validation. The backend alone connects to the configured `sendspinHost:sendspinPort` (normally `:8927/sendspin`) using `src/music-assistant-sendspin.js`. Music Assistant control remains on the authenticated API; never send its token/auth preamble to the raw Sendspin port or consume the first audio/protocol frame as an auth reply. Preserve PR #28's exact host-alias mapping and saved remote/IPv6 settings. The relay bounds buffers and cancels connection timers on all close/error paths.
+
+Do not restore the stashed legacy `server.js`, run PR #22 patch scripts, merge its old font-sizing code, or switch receivers to direct MA sockets. No renderer, SDK, autoplay, database, enrollment or Compose changes are part of this migration. See [Music Assistant Sendspin](MUSIC-ASSISTANT-SENDSPIN.md) for the file-by-file review, tests and upgrade acceptance procedure.
+
+## Music Assistant route budgets
+
+The touched status endpoint allows 120 requests per 60 seconds appliance-wide. Configuration saves and TV bridge attach/detach share a separate 30-request/60-second budget. The limiters run before the existing authorization handlers, return HTTP 429 with Retry-After, use fixed keys unaffected by forwarding headers, and reset on process restart. Status polling cannot consume the mutation budget. These limits do not throttle raw audio frames or internal scheduled music operations. The locked express-rate-limit version matches the already reviewed maintenance dependency. Actual HTTP regression tests exercise both limits and their independence.

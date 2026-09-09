@@ -16,6 +16,8 @@ const scryptAsync = promisify(crypto.scrypt);
 const multer = require("multer");
 const mqtt = require("mqtt");
 const { WebSocketServer, WebSocket } = require("ws");
+const {rateLimit}=require("express-rate-limit");
+const {sendspinEndpoint, relaySendspin} = require("./music-assistant-sendspin");
 const AdmZip = require("adm-zip");
 const {ClassroomHubStorage,keyForFile} = require("./storage");
 const {applicationVersion}=require("./version");
@@ -5108,7 +5110,7 @@ app.delete("/api/v1/admin/access-profiles/:id",requireAdmin,(req,res)=>{try{dbSt
 
 // Music Assistant integration - server-side token proxy. The long-lived MA token is
 // encrypted in Classroom Control Hub and is never returned to controller browsers.
-function musicAssistantConfig(){const p=dbStore.getPreference("musicassistant.config",{})||{};const url=serviceUrl(p.url||process.env.MUSIC_ASSISTANT_URL||"http://127.0.0.1:8095", ["music-assistant", "music-assistant-server"]).replace(/\/$/,"");let host="127.0.0.1";try{host=new URL(url).hostname||host}catch{};return {url,tvBridgeEnabled:p.tvBridgeEnabled!==false,sendspinHost:serviceHost(p.sendspinHost||host,["music-assistant","music-assistant-server"]),sendspinPort:Number(p.sendspinPort||8927)}}
+function musicAssistantConfig(){const p=dbStore.getPreference("musicassistant.config",{})||{};const url=serviceUrl(p.url||process.env.MUSIC_ASSISTANT_URL||"http://127.0.0.1:8095", ["music-assistant", "music-assistant-server"]).replace(/\/$/,"");let host="127.0.0.1";try{host=new URL(url).hostname||host}catch{};return {url,tvBridgeEnabled:p.tvBridgeEnabled!==false,sendspinHost:serviceHost(p.sendspinHost||host,["music-assistant","music-assistant-server"]),sendspinPort:p.sendspinPort??8927}}
 function musicAssistantToken(){try{return String(dbStore.getSecret("musicassistant.token")||"")}catch{return ""}}
 
 const MUSIC_ASSISTANT_TV_DEFAULT_VOLUME=20;
@@ -5327,14 +5329,26 @@ app.post("/api/v1/music-assistant/background/favorites",requireControl,(req,res)
 app.delete("/api/v1/music-assistant/background/favorites/:id",requireControl,(req,res)=>{const id=String(req.params.id||""),list=backgroundMusicFavorites().filter(x=>String(x.id)!==id);dbStore.setPreference("musicassistant.background.favorites",list);const cfg=backgroundMusicSchedule();if(cfg.favoriteId===id){cfg.favoriteId="";dbStore.setPreference("musicassistant.background.schedule",cfg)}res.json({ok:true,favorites:list})});
 app.post("/api/v1/music-assistant/background/control",requireControl,async(req,res)=>{try{const action=String(req.body?.action||"");if(action==="play"){const r=await backgroundMusicStart({favoriteId:req.body?.favoriteId,playerId:req.body?.playerId,reason:"manual"});return res.json({ok:true,action,...r})}if(action==="pause"){await backgroundMusicPause("manual");backgroundMusicRuntime.manualStopped=true;return res.json({ok:true,action})}if(action==="stop"){await backgroundMusicStop("manual");backgroundMusicRuntime.manualStopped=true;return res.json({ok:true,action})}if(action==="resume"){backgroundMusicRuntime.manualStopped=false;await backgroundMusicResume("manual");return res.json({ok:true,action})}return res.status(400).json({ok:false,error:"Unknown Background Music action"})}catch(e){res.status(502).json({ok:false,error:e.message})}});
 
-app.get("/api/v1/music-assistant/status",requireControl,async(_req,res)=>{const cfg=musicAssistantConfig(),configured=!!musicAssistantToken();try{let players=[];if(configured){try{players=await musicAssistantCommand("players/all",{return_protocol_players:true})}catch{players=await musicAssistantCommand("players/all",{})}}players=Array.isArray(players)?players:[];const playerIds=new Set(players.flatMap(p=>[p?.player_id,p?.id,p?.provider_id].filter(Boolean).map(String)));const bridgeStatus=Object.fromEntries(Object.entries(runtime.displays||{}).map(([id,v])=>{const m=v?.musicAssistant||null;if(!m)return [id,null];const keys=[m.clientId].filter(Boolean).map(String);return [id,{...m,registered:keys.some(k=>playerIds.has(k))}]}));res.json({ok:true,configured,url:cfg.url,tvBridgeEnabled:cfg.tvBridgeEnabled,sendspinBaseUrl:`http://${cfg.sendspinHost}:${cfg.sendspinPort}`,sendspinWebSocket:`ws://${cfg.sendspinHost}:${cfg.sendspinPort}/sendspin`,sdkIdentity:"music-assistant-stable-2.9-compatible-sendspin-js-3.2.0",transport:"authenticated-ma-sendspin-proxy",apiTransport:maApiAuthenticated?"persistent-websocket":"http-fallback",apiServerInfo:maApiServerInfo,apiLastConnectedAt:maApiLastConnectedAt,apiLastError:maApiLastError,attachedTargets:dbStore.getPreference("musicassistant.tvBridgeTargets",[])||[],tvDefaultVolume:MUSIC_ASSISTANT_TV_DEFAULT_VOLUME,tvAudioState:dbStore.getPreference("musicassistant.tvAudioState",{})||{},bridgeStatus,online:configured,players})}catch(e){res.json({ok:true,configured,url:cfg.url,tvBridgeEnabled:cfg.tvBridgeEnabled,online:false,error:e.message,players:[]})}});
-app.put("/api/v1/music-assistant/config",requireAdmin,(req,res)=>{try{const current=musicAssistantConfig(),url=String(req.body?.url||current.url).trim().replace(/\/$/,"");if(!/^https?:\/\//i.test(url))return res.status(400).json({ok:false,error:"Music Assistant URL must begin with http:// or https://"});const prior=musicAssistantConfig();dbStore.setPreference("musicassistant.config",{url,tvBridgeEnabled:req.body?.tvBridgeEnabled!==false,sendspinHost:String(req.body?.sendspinHost||prior.sendspinHost),sendspinPort:Number(req.body?.sendspinPort||prior.sendspinPort||8927)});if(req.body?.token)dbStore.putSecret("musicassistant.token",String(req.body.token),{integration:"Music Assistant",type:"long-lived-access-token"});musicAssistantApiClose("configuration-changed");audit({kind:"musicassistant.config.update",url});res.json({ok:true,url,tokenStored:!!musicAssistantToken()})}catch(e){res.status(400).json({ok:false,error:e.message})}});
+// Appliance-wide budgets keep polling separate from configuration/attachment writes.
+// Fixed keys prevent forwarding headers or rotating addresses from multiplying quotas.
+const musicAssistantStatusLimit=rateLimit({
+  windowMs:60_000,limit:120,keyGenerator:()=>"music-assistant-status",
+  standardHeaders:"draft-8",legacyHeaders:false,
+  message:{ok:false,error:"Music Assistant status polling limit reached; retry later"}
+});
+const musicAssistantMutationLimit=rateLimit({
+  windowMs:60_000,limit:30,keyGenerator:()=>"music-assistant-mutations",
+  standardHeaders:"draft-8",legacyHeaders:false,
+  message:{ok:false,error:"Music Assistant configuration/attachment limit reached; retry later"}
+});
+app.get("/api/v1/music-assistant/status",musicAssistantStatusLimit,requireControl,async(_req,res)=>{const cfg=musicAssistantConfig(),configured=!!musicAssistantToken();try{let players=[];if(configured){try{players=await musicAssistantCommand("players/all",{return_protocol_players:true})}catch{players=await musicAssistantCommand("players/all",{})}}players=Array.isArray(players)?players:[];const playerIds=new Set(players.flatMap(p=>[p?.player_id,p?.id,p?.provider_id].filter(Boolean).map(String)));const bridgeStatus=Object.fromEntries(Object.entries(runtime.displays||{}).map(([id,v])=>{const m=v?.musicAssistant||null;if(!m)return [id,null];const keys=[m.clientId].filter(Boolean).map(String);return [id,{...m,registered:keys.some(k=>playerIds.has(k))}]}));res.json({ok:true,configured,url:cfg.url,tvBridgeEnabled:cfg.tvBridgeEnabled,sendspinBaseUrl:sendspinEndpoint(cfg).replace(/^ws:/,"http:").replace(/\/sendspin$/,""),sendspinWebSocket:sendspinEndpoint(cfg),upstreamTransport:"dedicated-sendspin",sdkIdentity:"music-assistant-stable-2.9-compatible-sendspin-js-3.2.0",transport:"authenticated-ma-sendspin-proxy",apiTransport:maApiAuthenticated?"persistent-websocket":"http-fallback",apiServerInfo:maApiServerInfo,apiLastConnectedAt:maApiLastConnectedAt,apiLastError:maApiLastError,attachedTargets:dbStore.getPreference("musicassistant.tvBridgeTargets",[])||[],tvDefaultVolume:MUSIC_ASSISTANT_TV_DEFAULT_VOLUME,tvAudioState:dbStore.getPreference("musicassistant.tvAudioState",{})||{},bridgeStatus,online:configured,players})}catch(e){res.json({ok:true,configured,url:cfg.url,tvBridgeEnabled:cfg.tvBridgeEnabled,online:false,error:e.message,players:[]})}});
+app.put("/api/v1/music-assistant/config",musicAssistantMutationLimit,requireAdmin,(req,res)=>{try{const current=musicAssistantConfig(),url=String(req.body?.url||current.url).trim().replace(/\/$/,"");if(!/^https?:\/\//i.test(url))return res.status(400).json({ok:false,error:"Music Assistant URL must begin with http:// or https://"});const prior=musicAssistantConfig(),next={url,tvBridgeEnabled:req.body?.tvBridgeEnabled!==false,sendspinHost:String(req.body?.sendspinHost??prior.sendspinHost),sendspinPort:req.body?.sendspinPort??prior.sendspinPort??8927};sendspinEndpoint(next);dbStore.setPreference("musicassistant.config",next);if(req.body?.token)dbStore.putSecret("musicassistant.token",String(req.body.token),{integration:"Music Assistant",type:"long-lived-access-token"});musicAssistantApiClose("configuration-changed");audit({kind:"musicassistant.config.update",url});res.json({ok:true,url,tokenStored:!!musicAssistantToken()})}catch(e){res.status(400).json({ok:false,error:e.message})}});
 app.post("/api/v1/music-assistant/command",requireControl,async(req,res)=>{try{const command=String(req.body?.command||""),args=req.body?.args||{};const allowed=new Set(["players/all","players/cmd/play_pause","players/cmd/play","players/cmd/pause","players/cmd/stop","players/cmd/volume_set","players/cmd/volume_mute","player_queues/all","player_queues/items","player_queues/play_media","music/search","music/recently_played_items"]);if(!allowed.has(command))return res.status(400).json({ok:false,error:"Music Assistant command is not approved by Classroom Control Hub"});const result=await musicAssistantCommand(command,args);const tvId=musicAssistantTvDeviceIdFromPlayerId(args.player_id);if(tvId&&command==="players/cmd/volume_set")setMusicAssistantTvAudioState(tvId,{volume:args.volume_level});if(tvId&&command==="players/cmd/volume_mute")setMusicAssistantTvAudioState(tvId,{muted:args.muted});audit({kind:"musicassistant.command",command});res.json({ok:true,result})}catch(e){res.status(502).json({ok:false,error:e.message})}});
 const musicAssistantProxyTickets=new Map();
 function issueMusicAssistantProxyTicket(deviceId){const ticket=crypto.randomBytes(24).toString("base64url"),playerId=`classroom-hub-${cleanId(deviceId)}`;musicAssistantProxyTickets.set(ticket,{deviceId:cleanId(deviceId),playerId,expiresAt:Date.now()+60000});return {ticket,playerId}}
 function consumeMusicAssistantProxyTicket(ticket){const item=musicAssistantProxyTickets.get(String(ticket||""));musicAssistantProxyTickets.delete(String(ticket||""));if(!item||item.expiresAt<Date.now())return null;return item}
 function musicAssistantProxyPath(ticket){return `/music-assistant/sendspin-proxy?ticket=${encodeURIComponent(ticket)}`}
-app.post("/api/v1/music-assistant/tv-bridge",requireControl,async(req,res)=>{try{const cfg=musicAssistantConfig(),token=musicAssistantToken();if(!token)return res.status(409).json({ok:false,error:"Configure the Music Assistant token first"});const targets=resolveDisplayTargets(req.body?.targets||req.body?.target||[]);const action=String(req.body?.action||"attach");let attached=dbStore.getPreference("musicassistant.tvBridgeTargets",[])||[];attached=Array.isArray(attached)?attached:[];if(action==="detach")attached=attached.filter(x=>!targets.includes(x));else attached=[...new Set([...attached,...targets])];dbStore.setPreference("musicassistant.tvBridgeTargets",attached);const deliveries=[];if(action==="detach"){const result=await executeCommand({type:"music.assistant.detach",target:targets,payload:{}},"music-assistant-bridge");deliveries.push(...(result.deliveries?.websocket||[]))}else{for(const target of targets){const issued=issueMusicAssistantProxyTicket(target);const result=await executeCommand({type:"music.assistant.attach",target,payload:musicAssistantTvAttachPayload(target,issued)},"music-assistant-bridge");deliveries.push(...(result.deliveries?.websocket||[]))}}res.json({ok:true,action,attachedTargets:attached,deliveries,musicAssistantUrl:cfg.url,note:"Stable Music Assistant 2.9 bridge: Classroom Control Hub authenticates the MA /sendspin proxy server-side. The long-lived token is never sent to TV browsers."})}catch(e){res.status(400).json({ok:false,error:e.message})}});
+app.post("/api/v1/music-assistant/tv-bridge",musicAssistantMutationLimit,requireControl,async(req,res)=>{try{const cfg=musicAssistantConfig(),token=musicAssistantToken();if(!token)return res.status(409).json({ok:false,error:"Configure the Music Assistant token first"});const targets=resolveDisplayTargets(req.body?.targets||req.body?.target||[]);const action=String(req.body?.action||"attach");let attached=dbStore.getPreference("musicassistant.tvBridgeTargets",[])||[];attached=Array.isArray(attached)?attached:[];if(action==="detach")attached=attached.filter(x=>!targets.includes(x));else attached=[...new Set([...attached,...targets])];dbStore.setPreference("musicassistant.tvBridgeTargets",attached);const deliveries=[];if(action==="detach"){const result=await executeCommand({type:"music.assistant.detach",target:targets,payload:{}},"music-assistant-bridge");deliveries.push(...(result.deliveries?.websocket||[]))}else{for(const target of targets){const issued=issueMusicAssistantProxyTicket(target);const result=await executeCommand({type:"music.assistant.attach",target,payload:musicAssistantTvAttachPayload(target,issued)},"music-assistant-bridge");deliveries.push(...(result.deliveries?.websocket||[]))}}res.json({ok:true,action,attachedTargets:attached,deliveries,musicAssistantUrl:cfg.url,note:"Ticketed Hub bridge: the backend relays raw Sendspin to the dedicated configured endpoint (normally port 8927). The long-lived token is used only by the separate Music Assistant control API."})}catch(e){res.status(400).json({ok:false,error:e.message})}});
 app.get("/api/v1/database/status",requireAdmin,(_req,res)=>{res.json({ok:true,database:dbStore.databaseInfo(),secrets:dbStore.listSecrets(),certificates:dbStore.listCertificates()})});
 app.get("/api/v1/database/schema",requireAdmin,(_req,res)=>{const info=dbStore.databaseInfo();res.json({ok:true,schemaVersion:info.schemaVersion,normalized:info.normalized,migrations:dbStore.db.prepare("SELECT version,name,applied_at appliedAt FROM schema_migrations ORDER BY version").all()})});
 app.get("/api/v1/database/telemetry",requireAdmin,(req,res)=>{const limit=Math.max(1,Math.min(5000,Number(req.query.limit||500)));res.json({ok:true,count:dbStore.databaseInfo().telemetry||0,telemetry:dbStore.telemetryState(limit)})});
@@ -6410,11 +6424,10 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD_BYT
 const WS_MAX_CONNECTIONS=Math.max(25,Math.min(5000,Number(process.env.WS_MAX_CONNECTIONS||500)));
 const WS_MAX_CONNECTIONS_PER_IP=Math.max(5,Math.min(250,Number(process.env.WS_MAX_CONNECTIONS_PER_IP||40)));
 
-// Stable Music Assistant 2.9.x Sendspin proxy. TVs connect only to Classroom Control Hub.
-// Classroom Control Hub opens MA's authenticated /sendspin socket, sends the encrypted-at-rest
-// long-lived token server-side, consumes the auth acknowledgement, then transparently
-// relays Sendspin 3.x frames. One-time tickets prevent arbitrary use of this bridge.
-const maSendspinProxyWss = new WebSocketServer({ noServer: true });
+// TVs connect only to the ticketed Hub proxy. The backend relays raw Sendspin
+// to the configured dedicated endpoint (normally :8927/sendspin), not the MA
+// web-player route on :8095. The long-lived token belongs to API control only.
+const maSendspinProxyWss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD_BYTES });
 function boundedWsObject(value,label,maxBytes=64*1024){
   if(!value||typeof value!=="object"||Array.isArray(value))return {};
   const encoded=JSON.stringify(value);
@@ -6436,37 +6449,22 @@ server.on("upgrade",(req,socket,head)=>{
   target.handleUpgrade(req,socket,head,ws=>target.emit("connection",ws,req));
 });
 maSendspinProxyWss.on("connection",(client,req)=>{
-  let upstream=null,authenticated=false,closed=false;const pending=[];
-  const finish=(code=1011,reason="Music Assistant proxy closed")=>{if(closed)return;closed=true;try{if(client.readyState===WebSocket.OPEN)client.close(code,String(reason).slice(0,120))}catch{};try{if(upstream&&upstream.readyState===WebSocket.OPEN)upstream.close()}catch{}};
+  client.remoteAddress=clientAddress(req);
+  client.on("error",()=>{}); // Also cover rejected tickets during the close handshake.
+  const reject=(code,reason)=>{if(client.readyState===WebSocket.OPEN)client.close(code,reason)};
   try{
     const u=new URL(req.url||"/","http://classroom-hub.local"),ticket=consumeMusicAssistantProxyTicket(u.searchParams.get("ticket"));
-    if(!ticket)return finish(1008,"Invalid or expired Music Assistant bridge ticket");
+    if(!ticket)return reject(1008,"Invalid or expired Music Assistant bridge ticket");
     const attached=dbStore.getPreference("musicassistant.tvBridgeTargets",[])||[];
-    if(!Array.isArray(attached)||!attached.includes(ticket.deviceId))return finish(1008,"Display is not attached to Music Assistant bridge");
-    const cfg=musicAssistantConfig(),token=musicAssistantToken();if(!token)return finish(1011,"Music Assistant token is not configured");
-    const maUrl=new URL(cfg.url),scheme=maUrl.protocol==="https:"?"wss:":"ws:";maUrl.protocol=scheme;maUrl.pathname=(maUrl.pathname.replace(/\/$/,"")+"/sendspin").replace(/\/\//g,"/");maUrl.search="";maUrl.hash="";
-    upstream=new WebSocket(maUrl.toString());upstream.binaryType="arraybuffer";
-    const authTimer=setTimeout(()=>finish(1011,"Music Assistant proxy authentication timed out"),10000);
-    upstream.on("open",()=>{try{upstream.send(JSON.stringify({type:"auth",token,client_id:ticket.playerId}))}catch(e){finish(1011,e.message)}});
-    upstream.on("message",(data,isBinary)=>{
-      if(!authenticated){
-        clearTimeout(authTimer);
-        if(isBinary)return finish(1011,"Unexpected binary Music Assistant authentication response");
-        let ack={};try{ack=JSON.parse(Buffer.isBuffer(data)?data.toString("utf8"):String(data))}catch{}
-        if(ack&&((ack.error)||(String(ack.type||"").toLowerCase().includes("invalid"))))return finish(1008,ack.error?.message||ack.error||"Music Assistant authentication rejected");
-        authenticated=true;
-        for(const frame of pending.splice(0)){if(upstream.readyState===WebSocket.OPEN)upstream.send(frame.data,{binary:frame.isBinary})}
-        audit({kind:"musicassistant.sendspin.proxy.authenticated",deviceId:ticket.deviceId,playerId:ticket.playerId});
-        return;
-      }
-      if(client.readyState===WebSocket.OPEN)client.send(data,{binary:isBinary});
+    if(!Array.isArray(attached)||!attached.includes(ticket.deviceId))return reject(1008,"Display is not attached to Music Assistant bridge");
+    const cfg=musicAssistantConfig();
+    if(!cfg.tvBridgeEnabled)return reject(1008,"Music Assistant TV bridge is disabled");
+    relaySendspin(client,{
+      WebSocket,config:cfg,maxPayload:WS_MAX_PAYLOAD_BYTES,
+      onConnected:upstreamUrl=>audit({kind:"musicassistant.sendspin.proxy.connected",deviceId:ticket.deviceId,playerId:ticket.playerId,upstreamUrl}),
+      onError:e=>diagnosticError(e,{component:"music-assistant",operation:"sendspin-proxy",deviceId:ticket.deviceId})
     });
-    upstream.on("error",e=>{diagnosticError(e,{component:"music-assistant",operation:"sendspin-proxy",deviceId:ticket.deviceId});finish(1011,"Music Assistant Sendspin proxy upstream error")});
-    upstream.on("close",(code,reason)=>finish(code>=1000&&code<=4999?code:1011,reason?.toString()||"Music Assistant Sendspin proxy upstream closed"));
-    client.on("message",(data,isBinary)=>{if(authenticated&&upstream.readyState===WebSocket.OPEN)upstream.send(data,{binary:isBinary});else if(pending.length<100)pending.push({data,isBinary})});
-    client.on("close",()=>{closed=true;clearTimeout(authTimer);try{if(upstream&&upstream.readyState===WebSocket.OPEN)upstream.close()}catch{}});
-    client.on("error",()=>{try{if(upstream&&upstream.readyState===WebSocket.OPEN)upstream.close()}catch{}});
-  }catch(e){diagnosticError(e,{component:"music-assistant",operation:"sendspin-proxy-setup"});finish(1011,e.message)}
+  }catch(e){diagnosticError(e,{component:"music-assistant",operation:"sendspin-proxy-setup"});reject(1011,"Music Assistant Sendspin proxy setup failed")}
 });
 
 wss.on("connection", (ws, req) => {

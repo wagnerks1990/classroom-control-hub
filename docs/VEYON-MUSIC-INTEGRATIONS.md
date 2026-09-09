@@ -155,3 +155,9 @@ In the UI verify:
 - Music Assistant shows setup-required until a valid token is saved;
 - **Open Music Assistant** opens the appliance Music Assistant UI;
 - invalid/missing Music Assistant tokens fail Save & Verify instead of silently succeeding.
+
+## Dedicated Sendspin transport (selective PR #22 migration)
+
+TVs retain PR #27's ticketed, same-Hub socket validation. The backend alone connects to the configured `sendspinHost:sendspinPort` (normally `:8927/sendspin`) using `src/music-assistant-sendspin.js`. Music Assistant control remains on the authenticated API; never send its token/auth preamble to the raw Sendspin port or consume the first audio/protocol frame as an auth reply. Preserve PR #28's exact host-alias mapping and saved remote/IPv6 settings. The relay bounds buffers and cancels connection timers on all close/error paths.
+
+Do not restore the stashed legacy `server.js`, run PR #22 patch scripts, merge its old font-sizing code, or switch receivers to direct MA sockets. No renderer, SDK, autoplay, database, enrollment or Compose changes are part of this migration. See [Music Assistant Sendspin](MUSIC-ASSISTANT-SENDSPIN.md) for the file-by-file review, tests and upgrade acceptance procedure.
