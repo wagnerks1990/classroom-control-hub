@@ -15,3 +15,5 @@ __pycache__/
 .idea/
 config/devices.local.json
 config/hardware.local.json
+public/display/fonts/
+test-results/

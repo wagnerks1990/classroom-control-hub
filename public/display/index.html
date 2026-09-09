@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Classroom Display</title>
 <link rel="stylesheet" href="/shared/attribution.css">
-<script src="/shared/branding.js" defer></script>
+<script src="/shared/branding.js?v=single-fit-20260909-2" defer></script>
 <script src="/shared/attribution.js" defer></script>
 <style>
 :root{--logical-width:1920px;--logical-height:1080px}
@@ -29,25 +29,28 @@ body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#000;dis
 #identify{display:none;position:absolute;inset:0;z-index:50;background:#1769e0;color:#fff;align-items:center;justify-content:center;font-size:270px;font-weight:900;overflow:hidden}
 #badge{position:fixed;right:8px;bottom:8px;background:#0009;color:#fff;font-size:11px;padding:5px 7px;border-radius:6px;opacity:.35;z-index:60}
 </style>
+<link rel="stylesheet" href="/display/layout.css?v=single-fit-20260909-2">
 </head>
 <body>
 <div id="stage"><div id="media"></div>
 <div id="titleRegion"><div id="title"></div></div>
 <div id="subtitleRegion"><div id="subtitle"></div></div>
 <div id="textLayer"><div id="text"></div></div>
-<div id="timerOverlay" class="timer-bottom"><span id="timerLabel"></span><span id="timerValue">00:00</span></div>
+<div id="timerRegion" hidden><div id="timerOverlay" class="timer-bottom"><span id="timerLabel"></span><span id="timerValue">00:00</span></div></div>
 <div id="presentationBlack"></div>
 <div id="identify"></div>
 <div id="badge">Starting…</div></div>
 <script type="module">
+import {createDisplayLayout,fitElement,bounded} from '/display/layout.mjs?v=single-fit-20260909-2';
+import {authorizeMediaUrl,musicAssistantProxyUrl,identifyDuration} from '/display/security.mjs?v=single-fit-20260909-2';
 import {wsUrl,getDisplayId} from '/shared/common.js';
 import {SendspinPlayer} from '/display/sendspin.bundle.js';
-const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,MIN_FONT=12,DISPLAY_BUILD='1.0.0-alpha.70';
+const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,DISPLAY_BUILD='1.0.0-alpha.70';
 const id=getDisplayId(),preview=new URLSearchParams(location.search).get('preview')==='1';
 const displayAuth=(()=>{try{const p=new URLSearchParams(location.hash.slice(1)),legacy=p.get('displayToken'),enrollmentToken=p.get('enrollmentToken')||'';if(legacy)localStorage.setItem('classroom-hub-display-token',legacy);if(legacy||enrollmentToken)history.replaceState(null,'',location.pathname+location.search);return {legacyToken:localStorage.getItem('classroom-hub-display-token')||'',credential:localStorage.getItem(`classroom-hub-display-credential:${id}`)||'',enrollmentToken,assetAccessToken:''}}catch{return {legacyToken:'',credential:'',enrollmentToken:'',assetAccessToken:''}}})();
-function authorizeAssetUrl(value){try{const u=new URL(String(value||''),location.href);if(u.origin!==location.origin)return u.toString();if(u.pathname==='/document-viewer/'){const file=u.searchParams.get('file');if(file)u.searchParams.set('file',authorizeAssetUrl(file))}if(u.pathname.startsWith('/media/')||u.pathname.startsWith('/presentations/'))u.searchParams.set('access_token',displayAuth.assetAccessToken);return u.toString()}catch{return value}}
+function authorizeAssetUrl(value){return authorizeMediaUrl(value,location.origin,displayAuth.assetAccessToken)}
 const stage=document.getElementById('stage'),media=document.getElementById('media'),titleRegion=document.getElementById('titleRegion'),subtitleRegion=document.getElementById('subtitleRegion'),textLayer=document.getElementById('textLayer'),text=document.getElementById('text'),title=document.getElementById('title'),subtitle=document.getElementById('subtitle'),presentationBlack=document.getElementById('presentationBlack'),identify=document.getElementById('identify'),badge=document.getElementById('badge'),timerOverlay=document.getElementById('timerOverlay'),timerLabel=document.getElementById('timerLabel'),timerValue=document.getElementById('timerValue');
-let ws,timerState={visible:false,running:false,mode:'countdown',durationSeconds:300,remainingSeconds:300},timerTick=null,lastViewportSignature='',layoutFrame=null;
+let ws,timerState={visible:false,running:false,mode:'countdown',durationSeconds:300,remainingSeconds:300},timerTick=null,lastViewportSignature='';
 let textOptions={size:64,autoFit:true},titleOptions={size:92,autoFit:true},subtitleOptions={size:44,autoFit:true};
 
 function displayMetrics(){
@@ -65,10 +68,11 @@ function displayMetrics(){
     build:DISPLAY_BUILD
   };
 }
-function requestDisplayLayout(){
-  if(layoutFrame!==null)return;
-  layoutFrame=requestAnimationFrame(()=>{layoutFrame=null;fitAllContent()});
-}
+const displayLayout=createDisplayLayout({stage,title,titleRegion,subtitle,subtitleRegion,text,textLayer,
+  timerRegion:document.getElementById('timerRegion'),timerOverlay,timerLabel,timerValue},
+  ()=>({titleOptions,subtitleOptions,textOptions,timerState}));
+window.ClassroomDisplayDiagnostics=()=>({...displayMetrics(),logicalScale:Number(stage.dataset.scale||1),...displayLayout.snapshot()});
+function requestDisplayLayout(){displayLayout.request()}
 function scaleStage(){
   const m=displayMetrics();
   // Every endpoint renders the exact same 1920x1080 logical canvas. Physical
@@ -86,89 +90,44 @@ function scaleStage(){
 }
 function sendDisplayMetrics(){
   if(preview||!ws||ws.readyState!==1)return;
-  try{ws.send(JSON.stringify({type:'heartbeat',meta:{url:location.href,...displayMetrics(),logicalResolution:`${LOGICAL_WIDTH}x${LOGICAL_HEIGHT}`,logicalScale:Number(stage.dataset.scale||1)}}))}catch{}
+  try{ws.send(JSON.stringify({type:'heartbeat',meta:{url:location.href,...displayMetrics(),logicalResolution:`${LOGICAL_WIDTH}x${LOGICAL_HEIGHT}`,logicalScale:Number(stage.dataset.scale||1),layout:displayLayout.snapshot()}}))}catch{}
 }
 
-function elementFits(el,box){
-  const cs=getComputedStyle(el),padX=parseFloat(cs.paddingLeft||0)+parseFloat(cs.paddingRight||0),padY=parseFloat(cs.paddingTop||0)+parseFloat(cs.paddingBottom||0);
-  return el.scrollWidth<=Math.max(1,box.clientWidth-padX+1)&&el.scrollHeight<=Math.max(1,box.clientHeight-padY+1);
-}
-function fitText(el,box,maxSize,minSize=MIN_FONT){
-  if(!el||!box)return minSize;
-  maxSize=Math.max(minSize,Math.min(2000,Number(maxSize)||minSize));
-  if(!el.textContent){el.style.fontSize=`${maxSize}px`;return maxSize}
-  let low=minSize,high=maxSize,best=minSize;
-  el.style.fontSize=`${maxSize}px`;
-  if(elementFits(el,box))return maxSize;
-  while(low<=high){
-    const mid=Math.floor((low+high)/2);
-    el.style.fontSize=`${mid}px`;
-    if(elementFits(el,box)){best=mid;low=mid+1}else high=mid-1;
-  }
-  el.style.fontSize=`${best}px`;
-  return best;
-}
-function timerFits(){
-  const cs=getComputedStyle(timerOverlay),padX=parseFloat(cs.paddingLeft||0)+parseFloat(cs.paddingRight||0)+parseFloat(cs.borderLeftWidth||0)+parseFloat(cs.borderRightWidth||0),padY=parseFloat(cs.paddingTop||0)+parseFloat(cs.paddingBottom||0)+parseFloat(cs.borderTopWidth||0)+parseFloat(cs.borderBottomWidth||0);
-  return timerOverlay.scrollWidth<=Math.max(1,1760-padX+1)&&timerOverlay.scrollHeight<=Math.max(1,300-padY+1);
-}
-function fitTimer(){
-  if(!timerState.visible||timerOverlay.style.display==='none')return;
-  const max=Math.max(20,Math.min(400,Number(timerState.fontSize??64)||64)),min=20;
-  timerValue.style.fontSize='1em';
-  let low=min,high=max,best=min;
-  timerOverlay.style.fontSize=`${max}px`;
-  if(timerFits())return;
-  while(low<=high){
-    const mid=Math.floor((low+high)/2);
-    timerOverlay.style.fontSize=`${mid}px`;
-    if(timerFits()){best=mid;low=mid+1}else high=mid-1;
-  }
-  timerOverlay.style.fontSize=`${best}px`;
-}
-function reserveTextForTimer(){
-  let bottom=105;
-  if(timerState.visible&&timerState.position!=='top'&&timerState.position!=='center'&&timerOverlay.style.display!=='none'){
-    bottom=Math.max(bottom,35+timerOverlay.offsetHeight+35);
-  }
-  textLayer.style.bottom=`${Math.min(430,bottom)}px`;
-}
-function fitAllContent(){
-  // The four logical components are resolved in a deterministic dependency
-  // order. Timer geometry is finalized before body space is measured. Title,
-  // subtitle and body are then fitted inside fixed 1920x1080 logical regions.
-  // The browser's physical resolution cannot alter these calculations.
-  fitTimer();
-  reserveTextForTimer();
-  if(titleOptions.autoFit!==false)fitText(title,titleRegion,titleOptions.size||92);else title.style.fontSize=`${Math.max(MIN_FONT,Number(titleOptions.size||92))}px`;
-  if(subtitleOptions.autoFit!==false)fitText(subtitle,subtitleRegion,subtitleOptions.size||44);else subtitle.style.fontSize=`${Math.max(MIN_FONT,Number(subtitleOptions.size||44))}px`;
-  if(textOptions.autoFit!==false)fitText(text,textLayer,textOptions.size||64);else text.style.fontSize=`${Math.max(MIN_FONT,Number(textOptions.size||64))}px`;
-  stage.dataset.layout=`title:${title.style.fontSize||''};subtitle:${subtitle.style.fontSize||''};body:${text.style.fontSize||''};timer:${timerOverlay.style.fontSize||''}`;
-}
 function applyTextOptions(p={}){
-  textOptions={...textOptions,...p,size:Number(p.size??textOptions.size??64),autoFit:p.autoFit!==false};
-  text.style.color=p.color||text.style.color||'#fff';
-  if(p.background!==undefined)text.style.background=p.background||'transparent';
-  if(p.position)textLayer.style.alignItems=p.position==='top'?'flex-start':p.position==='bottom'?'flex-end':'center';
+  textOptions={...p,size:bounded(p.size,64,1,2000),autoFit:p.autoFit!==false};
+  text.style.color=p.color||'#fff';
+  text.style.background=p.background||'transparent';
+  textLayer.style.alignItems=p.position==='top'?'flex-start':p.position==='bottom'?'flex-end':'center';
   requestDisplayLayout();
 }
 function applyTitle(p={}){
-  titleOptions={...titleOptions,...p,size:Number(p.size??titleOptions.size??92),autoFit:p.autoFit!==false};
-  title.textContent=p.text??title.textContent??'';title.style.color=p.color||'#fff';requestDisplayLayout();
+  titleOptions={...p,size:bounded(p.size,92,1,2000),autoFit:p.autoFit!==false};
+  title.textContent=p.text??'';title.style.color=p.color||'#fff';requestDisplayLayout();
 }
 function applySubtitle(p={}){
-  subtitleOptions={...subtitleOptions,...p,size:Number(p.size??subtitleOptions.size??44),autoFit:p.autoFit!==false};
-  subtitle.textContent=p.text??subtitle.textContent??'';subtitle.style.color=p.color||'#fff';requestDisplayLayout();
+  subtitleOptions={...p,size:bounded(p.size,44,1,2000),autoFit:p.autoFit!==false};
+  subtitle.textContent=p.text??'';subtitle.style.color=p.color||'#fff';requestDisplayLayout();
 }
-function formatTimerSeconds(total){total=Math.max(0,Math.floor(Number(total)||0));const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),sec=total%60;return h>0?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`}
+function formatTimerSeconds(total){total=Math.floor(bounded(total,0,0,Number.MAX_SAFE_INTEGER));const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),sec=total%60;return h>0?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`}
 function timerSecondsNow(){const now=Date.now();if(timerState.mode==='countup'){if(timerState.running&&timerState.startedAt)return Number(timerState.elapsedSeconds||0)+Math.max(0,(now-Number(timerState.startedAt))/1000);return Number(timerState.elapsedSeconds||0)}if(timerState.running&&timerState.endAt)return Math.max(0,(Number(timerState.endAt)-now)/1000);return Math.max(0,Number(timerState.remainingSeconds??timerState.durationSeconds??0))}
 function paintTimer({refit=false}={}){
-  if(!timerState.visible){timerOverlay.style.display='none';if(refit)requestDisplayLayout();return}
-  timerOverlay.style.display='block';timerLabel.textContent=timerState.label||'';timerLabel.style.display=timerState.label?'block':'none';timerValue.textContent=formatTimerSeconds(timerSecondsNow());
-  timerOverlay.style.color=timerState.textColor||'#fff';timerOverlay.style.borderColor=timerState.borderColor||'#fff';timerOverlay.style.borderWidth=`${Math.max(0,Number(timerState.borderWidth??4))}px`;timerOverlay.style.borderRadius=`${Math.max(0,Number(timerState.borderRadius??18))}px`;timerOverlay.style.fontSize=`${Math.max(20,Number(timerState.fontSize??64))}px`;timerOverlay.style.background=timerState.background||'rgba(0,0,0,.35)';
-  timerOverlay.classList.remove('timer-top','timer-center','timer-bottom');timerOverlay.classList.add(`timer-${['top','center','bottom'].includes(timerState.position)?timerState.position:'bottom'}`);
-  if(timerState.mode==='countdown'&&timerState.running&&timerSecondsNow()<=0){timerState.running=false;timerState.remainingSeconds=0;timerState.endAt=null;timerValue.textContent=formatTimerSeconds(0);if(timerTick){clearInterval(timerTick);timerTick=null}}
-  if(refit)requestDisplayLayout();
+  if(refit){
+    timerOverlay.style.display=timerState.visible?'block':'none';
+    timerLabel.textContent=timerState.label||'';
+    timerLabel.style.display=timerState.label?'block':'none';
+    timerOverlay.style.color=timerState.textColor||'#fff';
+    timerOverlay.style.borderColor=timerState.borderColor||'#fff';
+    timerOverlay.style.borderRadius=`${bounded(timerState.borderRadius,18,0,100)}px`;
+    timerOverlay.style.background=timerState.background||'rgba(0,0,0,.35)';
+    requestDisplayLayout();
+  }
+  if(!timerState.visible)return;
+  const seconds=timerSecondsNow(),formatted=formatTimerSeconds(seconds);
+  if(timerValue.textContent!==formatted)timerValue.textContent=formatted;
+  if(timerState.mode==='countdown'&&timerState.running&&seconds<=0){
+    timerState.running=false;timerState.remainingSeconds=0;timerState.endAt=null;
+    if(timerTick){clearInterval(timerTick);timerTick=null}
+  }
 }
 function applyTimer(p={}){
   const incomingInstance=p.timerInstanceId||null;
@@ -186,26 +145,23 @@ function applyTimer(p={}){
 }
 function applyState(s){
   if(!s)return;
-  if(s.background?.color)stage.style.background=s.background.color;
-  // State replay applies the complete logical content first, then requests one
-  // coalesced layout. This prevents reconnect/reload ordering from producing a
-  // different fitted size on one TV than another.
-  if(s.text!==undefined)text.textContent=s.text;
-  if(s.textOptions)applyTextOptions(s.textOptions);
-  if(s.title!==undefined){title.textContent=s.title;if(s.titleOptions)titleOptions={...titleOptions,...s.titleOptions,size:Number(s.titleOptions.size??titleOptions.size??92),autoFit:s.titleOptions.autoFit!==false}}
-  if(s.subtitle!==undefined){subtitle.textContent=s.subtitle;if(s.subtitleOptions)subtitleOptions={...subtitleOptions,...s.subtitleOptions,size:Number(s.subtitleOptions.size??subtitleOptions.size??44),autoFit:s.subtitleOptions.autoFit!==false}}
-  if(s.media)renderMedia(s.media);
-  if(s.timer)applyTimer(s.timer);
+  // Reconnect uses exactly the same content/style functions as live commands.
+  stage.style.background=s.background?.color||'#000';
+  text.textContent=s.text??'';applyTextOptions(s.textOptions||{});
+  applyTitle({...s.titleOptions,text:s.title??''});
+  applySubtitle({...s.subtitleOptions,text:s.subtitle??''});
+  renderMedia(s.media||null);
+  applyTimer(s.timer||{visible:false,running:false});
   presentationBlack.style.display=s.presentationBlack?'block':'none';
   requestDisplayLayout();
 }
 let activeWebFrame=null,activeWebSpec=null,webAudioTimers=[];
 function clearWebAudioTimers(){for(const t of webAudioTimers)clearTimeout(t);webAudioTimers=[]}
 function isAntMediaPlayerUrl(value){
-  try{const u=new URL(String(value||''),location.href);return u.pathname.endsWith('/play.html')}catch{return false}
+  try{const u=new URL(authorizeAssetUrl(value));return u.pathname.endsWith('/play.html')}catch{return false}
 }
 function normalizeAntMediaUrl(value,{cacheBust=false}={}){
-  const u=new URL(String(value||''),location.href);
+  const u=new URL(authorizeAssetUrl(value));
   u.searchParams.set('autoplay','true');
   u.searchParams.set('mute','false');
   if(!u.searchParams.get('playOrder'))u.searchParams.set('playOrder','webrtc,hls');
@@ -214,7 +170,7 @@ function normalizeAntMediaUrl(value,{cacheBust=false}={}){
 }
 function integratedAntMediaUrl(value,volume=1,{cacheBust=false}={}){
   const u=new URL('/antmedia-player/',location.origin);
-  u.searchParams.set('source',String(value||''));
+  u.searchParams.set('source',authorizeAssetUrl(value));
   u.searchParams.set('volume',String(Math.max(0,Math.min(1,Number(volume??1)))));
   u.searchParams.set('autoplay','true');
   if(cacheBust)u.searchParams.set('_chAudioRetry',String(Date.now()));
@@ -265,7 +221,9 @@ function scheduleWebAudioRecovery(){
   for(const delay of [0,300,1000,2500,6000,12000])webAudioTimers.push(setTimeout(()=>enforceWebAudio({reload:false}),delay));
 }
 function renderMedia(m){
-  clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;media.innerHTML='';if(!m||!m.url)return;let n;const authorizedUrl=authorizeAssetUrl(m.url);
+  let authorizedUrl='';
+  if(m?.url){try{authorizedUrl=authorizeAssetUrl(m.url)}catch{badge.textContent=`${id} rejected invalid media URL`;return}}
+  clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;media.replaceChildren();if(!authorizedUrl)return;let n;
   if(m.type==='image'){
     n=document.createElement('img');n.decoding='async';n.src=authorizedUrl;let retries=0;n.onerror=()=>{if(retries>=3)return;retries++;const join=authorizedUrl.includes('?')?'&':'?';setTimeout(()=>{n.src=authorizedUrl+join+'retry='+Date.now()},500*retries)}
   }else if(m.type==='video'){
@@ -273,9 +231,13 @@ function renderMedia(m){
   }else if(m.type==='web'||m.type==='pdf'){
     n=document.createElement('iframe');
     const isWeb=m.type==='web';
-    const integratedAntMedia=!!(isWeb&&m.forceAudio&&isAntMediaPlayerUrl(m.url));
+    const integratedAntMedia=!!(isWeb&&m.forceAudio&&isAntMediaPlayerUrl(authorizedUrl));
     const spec={...m,url:authorizedUrl,integratedAntMedia};
-    n.src=integratedAntMedia?integratedAntMediaUrl(m.url,m.volume??1):authorizedUrl;
+    const frameUrl=integratedAntMedia?integratedAntMediaUrl(authorizedUrl,m.volume??1):authorizedUrl;
+    // External signage may run its own scripts, but cannot navigate the receiver,
+    // open popups, or access the Hub origin. Local built-in viewers stay compatible.
+    if(new URL(frameUrl).origin!==location.origin)n.setAttribute('sandbox','allow-scripts allow-forms allow-presentation');
+    n.src=frameUrl;
     if(isWeb){
       n.allow='autoplay; fullscreen; picture-in-picture';n.setAttribute('allowfullscreen','');n.setAttribute('webkitallowfullscreen','');
       if(m.localDirect!==false){n.dataset.loadPath='tv-local';n.referrerPolicy='no-referrer-when-downgrade'}
@@ -289,7 +251,7 @@ function renderMedia(m){
 let maSendspinPlayer=null,maSendspinState={state:'detached'},maAttachGeneration=0,maProxySocket=null;
 function maFriendlyName(){return id==='tv5'?'Classroom Control Hub - Hallway Display':`Classroom Control Hub - ${id.toUpperCase()}`}
 function reportMusicAssistantStatus(extra={}){maSendspinState={...maSendspinState,...extra,updatedAt:new Date().toISOString()};if(!preview&&ws&&ws.readyState===1){try{ws.send(JSON.stringify({type:'music.assistant.status',status:maSendspinState}))}catch{}}}
-function maAbsoluteProxyUrl(proxyUrl){const proto=location.protocol==='https:'?'wss:':'ws:';return proxyUrl.startsWith('ws:')||proxyUrl.startsWith('wss:')?proxyUrl:`${proto}//${location.host}${proxyUrl.startsWith('/')?'':'/'}${proxyUrl}`}
+function maAbsoluteProxyUrl(proxyUrl){return musicAssistantProxyUrl(proxyUrl,location.origin)}
 function attachMusicAssistant(p){
   if(preview)return;
   const generation=++maAttachGeneration;
@@ -318,23 +280,34 @@ function attachMusicAssistant(p){
 }
 function detachMusicAssistant(){maAttachGeneration++;if(maSendspinPlayer){try{maSendspinPlayer.disconnect('user_request')}catch{};maSendspinPlayer=null}if(maProxySocket){try{maProxySocket.close()}catch{};maProxySocket=null}reportMusicAssistantStatus({state:'detached',isPlaying:false,protocolActive:false,audioLocked:false,error:null,proxyState:'closed'})}
 
+let identifyTimeout=null,identifyFrame=null;
+function hideIdentify(){
+  if(identifyTimeout!==null)clearTimeout(identifyTimeout);
+  if(identifyFrame!==null)cancelAnimationFrame(identifyFrame);
+  identifyTimeout=null;identifyFrame=null;identify.style.display='none';
+}
+function showIdentify(durationMs){
+  hideIdentify();identify.textContent=id.toUpperCase();identify.style.display='flex';
+  identifyFrame=requestAnimationFrame(()=>{identifyFrame=null;fitElement(identify,stage,270)});
+  identifyTimeout=setTimeout(hideIdentify,Math.min(30000,identifyDuration(durationMs)));
+}
 function handle(c){const p=c.payload||{};switch(c.type){
   case'display.text':text.textContent=p.text||'';applyTextOptions(p);break;
   case'display.title':applyTitle({text:p.text||'',...p,size:Number(p.size||92)});break;
   case'display.subtitle':applySubtitle({text:p.text||'',...p,size:Number(p.size||44)});break;
-  case'display.identify':identify.textContent=id.toUpperCase();identify.style.display='flex';requestAnimationFrame(()=>fitText(identify,stage,270,40));setTimeout(()=>identify.style.display='none',Number(p.durationMs||8000));break;
+  case'display.identify':showIdentify(p.durationMs);break;
   case'display.background':stage.style.background=p.color||'#101318';break;
   case'display.image':renderMedia({type:'image',...p});break;case'display.video':renderMedia({type:'video',...p});break;case'display.web':renderMedia({type:'web',...p});break;case'display.web.audio':enforceWebAudio({reload:!!p.reload,volume:p.volume,unmute:p.unmute!==false});break;case'display.pdf':case'display.document':renderMedia({type:'pdf',...p});break;case'display.presentation':renderMedia({type:'image',...p});presentationBlack.style.display='none';break;case'display.presentation.black':presentationBlack.style.display=p.black?'block':'none';break;
   case'display.timer':applyTimer(p);break;case'display.timer.hide':applyTimer({...timerState,visible:false,running:false});break;
-  case'display.clear':clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;text.textContent='';title.textContent='';subtitle.textContent='';media.innerHTML='';stage.style.background='#000';text.style.background='transparent';presentationBlack.style.display='none';identify.style.display='none';applyTimer({visible:false,running:false});requestDisplayLayout();break;
+  case'display.clear':clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;text.textContent='';title.textContent='';subtitle.textContent='';media.innerHTML='';stage.style.background='#000';text.style.background='transparent';presentationBlack.style.display='none';hideIdentify();applyTextOptions({});applyTitle({});applySubtitle({});applyTimer({visible:false,running:false});requestDisplayLayout();break;
   case'music.assistant.attach':attachMusicAssistant(p);break;case'music.assistant.detach':detachMusicAssistant();break;
   case'display.reload':location.reload();break;
 }}
-function connect(){ws=new WebSocket(wsUrl());ws.onopen=()=>{badge.textContent=`${id} ${preview?'preview':'connecting'}`;ws.send(JSON.stringify({type:'hello',role:preview?'preview':'display',deviceId:id,token:preview?'':displayAuth.legacyToken,credential:preview?'':displayAuth.credential,enrollmentToken:preview?'':displayAuth.enrollmentToken,clientVersion:DISPLAY_BUILD,meta:{url:location.href,...displayMetrics(),logicalResolution:`${LOGICAL_WIDTH}x${LOGICAL_HEIGHT}`,logicalScale:Number(stage.dataset.scale||1)}}))};ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.assetAccessToken)displayAuth.assetAccessToken=m.assetAccessToken;if(m.type==='hello.ack'){if(!preview&&m.credential){localStorage.setItem(`classroom-hub-display-credential:${id}`,m.credential);displayAuth.credential=m.credential;displayAuth.enrollmentToken=''}badge.textContent=`${id} connected`;if(!preview&&m.version&&m.version!==DISPLAY_BUILD){badge.textContent=`${id} updating`;setTimeout(()=>location.reload(),250);return}applyState(m.state)}if(m.type==='error')badge.textContent=`${id} ${m.error||'error'}`;if(m.type==='command')handle(m.command);if(m.type==='heartbeat.ack'&&!preview)badge.textContent=`${id} connected`};ws.onclose=()=>{badge.textContent=`${id} disconnected`;setTimeout(connect,1500)}}
+function connect(){ws=new WebSocket(wsUrl());ws.onopen=()=>{badge.textContent=`${id} ${preview?'preview':'connecting'}`;ws.send(JSON.stringify({type:'hello',role:preview?'preview':'display',deviceId:id,token:preview?'':displayAuth.legacyToken,credential:preview?'':displayAuth.credential,enrollmentToken:preview?'':displayAuth.enrollmentToken,clientVersion:DISPLAY_BUILD,meta:{url:location.href,...displayMetrics(),logicalResolution:`${LOGICAL_WIDTH}x${LOGICAL_HEIGHT}`,logicalScale:Number(stage.dataset.scale||1),layout:displayLayout.snapshot()}}))};ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.assetAccessToken)displayAuth.assetAccessToken=m.assetAccessToken;if(m.type==='hello.ack'){if(!preview&&m.credential){localStorage.setItem(`classroom-hub-display-credential:${id}`,m.credential);displayAuth.credential=m.credential;displayAuth.enrollmentToken=''}badge.textContent=`${id} connected`;if(!preview&&m.version&&m.version!==DISPLAY_BUILD){badge.textContent=`${id} updating`;setTimeout(()=>location.reload(),250);return}applyState(m.state)}if(m.type==='error')badge.textContent=`${id} ${m.error||'error'}`;if(m.type==='command')handle(m.command);if(m.type==='heartbeat.ack'&&!preview)badge.textContent=`${id} connected`};ws.onclose=()=>{badge.textContent=`${id} disconnected`;setTimeout(connect,1500)}}
 window.addEventListener('resize',scaleStage);
 window.visualViewport?.addEventListener('resize',scaleStage);
 document.addEventListener('fullscreenchange',scaleStage);
-if(window.ResizeObserver)new ResizeObserver(requestDisplayLayout).observe(stage);
+// Viewport changes only rescale the fixed stage; content fitting is owned by displayLayout.
 scaleStage();
 if(!preview)setInterval(sendDisplayMetrics,15000);
 connect();

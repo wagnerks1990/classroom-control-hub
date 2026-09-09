@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — PR #27 display correction
+
+- Replace competing inline/observer fitters with one resolution-independent layout engine for title, subtitle, body and timer; grow short content, contain long content and preserve layout across timer ticks/reloads.
+- Package same-origin fonts and add Chromium/Firefox geometry, reload, overflow and timer tests.
+- Validate receiver media schemes/credentials and nested viewers; isolate external signage frames; restrict Music Assistant sockets to the ticketed same-Hub proxy.
+- Bound and replace identification timers, including cancellation on display clear. Add unit and browser security/lifecycle coverage.
+- Update display documentation, AI guardrails and the wiki mirror. Renderer revision `single-fit-20260909-2`; application version remains alpha.71 pending a separately tagged release.
+
 ## 1.0.0-alpha.71 - 2026-09-08
 
 ### Added

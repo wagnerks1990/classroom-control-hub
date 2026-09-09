@@ -1,37 +1,38 @@
 # AI Display Runtime Guardrails
 
-This file is intended for AI-assisted maintenance, review, and future code generation around Classroom Control Hub display rendering and automation overlays.
+Read `docs/DISPLAY-LAYOUT-CONTRACT.md` before editing display or automation rendering. This supersedes the earlier shrink-only and observer-helper descriptions.
 
-## Core invariant
+## Authority
 
-A high-frequency or periodic state update must not trigger a global display layout recalculation unless the update changes geometry or content that affects geometry.
+- `public/display/layout.mjs` exclusively owns fitted font sizes and the four component regions.
+- `public/display/index.html` owns state, media, timer digits, and viewport scaling. It must not add a second fitter.
+- Branding must not inject display layout code. `public/shared/display-autofit.js` is a deliberately inert compatibility URL.
+- Do not observe style/class mutations, timer text, status badges, or media descendants to trigger global layout.
 
-For `public/display/index.html`:
+## Geometry and state
 
-- `fitAllContent()` is a global layout operation.
-- `fitText()` temporarily applies a requested maximum font size while measuring content and may then shrink the element.
-- Repeatedly invoking global auto-fit during timer ticks causes visible large/small font flashing.
-- Countdown digit repaint is not a layout event.
-- Timer creation, replacement, visibility changes, style/position changes, viewport changes, fullscreen changes, and new display content are layout events.
+Keep a fixed 1920x1080 logical canvas and one uniform viewport scale. Never multiply fitting dimensions by DPR or use physical screen resolution to choose fonts. Use Hub-served fonts and finish font loading before fitting; report fallback explicitly.
 
-## Timer behavior
+Measure natural-height, non-shrinking children. Child scroll dimensions already include child padding. Check actual browser text bounds as well as boxes: a line-height that is too tight can clip glyphs even when the element box fits.
 
-`paintTimer({refit:false})` is the normal timer-tick path. It updates timer text and presentation only.
+Automatic fitting grows and shrinks up to component caps, not legacy preferred sizes. Manual sizes still yield to containment. Do not hide an overflow error at a minimum font floor; report content that is too dense to be readable.
 
-`paintTimer({refit:true})` is reserved for a timer state transition that can alter the space available to other display regions.
+Timer geometry is an independently bounded band. Routine ticks may change digits/expiration state only, never font size, label markup, borders, or layout. Keep MM:SS/HH:MM:SS transitions stable. A different layout-relevant state may request one coalesced pass; identical replay and viewport-only scaling must not create repeated passes.
 
-A running timer uses a 1000 ms interval because the displayed countdown has one-second precision. Do not lower the interval merely for visual smoothness unless sub-second output is intentionally introduced.
+Replay must apply colors, alignment, backgrounds, and option defaults exactly as live commands do. Preserve scheduler eligibility, timer-instance freshness, authentication, media authorization, and Morning Announcements priority independently of this renderer.
 
-## Review rules for AI agents
+## Verification gate
 
-When modifying display, scheduler, or automation code:
+`npm test` includes architectural source guards and unit policy tests; it does not prove visual correctness. The required browser workflow is `.github/workflows/display-browser.yml` with Chromium and Firefox. Run the receiver page through P6/P7 fixtures at 1080p, 4K, HiDPI, 720p, and the narrow captured viewport. Check bounding boxes, glyph ranges, non-overlap, timer stability, replay/reload, long text/labels, and manual/automatic sizing.
 
-1. Trace whether a periodic callback can reach `fitAllContent()`, `fitText()`, `scaleStage()`, DOM reconstruction, or another geometry-changing operation.
-2. Treat repeated full-layout work as a defect unless the underlying geometry is actually changing.
-3. Keep timer/clock/status digit updates isolated from title, subtitle, body, media, and viewport layout.
-4. Preserve linked-class automation behavior independently from display rendering behavior; scheduler retries/reapplication may resend state but should not create a visual resize loop.
-5. Add or update regression coverage when changing any periodic display path.
+Retain screenshots and measurement JSON. Do not weaken a failing visual assertion merely to make CI green. Do not describe source-text regex checks as cross-resolution browser tests. Distinguish local in-memory tests, CI URL-based tests, and actual physical-TV testing in release reports.
 
-## Regression coverage
+Update this file, the layout contract, and the wiki mirror when rendering behavior changes. Never label a deployment permanently fixed based only on a merge or a successful container health endpoint.
 
-`test/display-timer-autofit.test.js` enforces the timer rendering contract. Any change that makes routine timer ticks call global auto-fit should be treated as a regression and reviewed before merging.
+## Receiver input safety (PR #27 merge review)
+
+The receiver validates media URLs in `public/display/security.mjs` before touching the DOM. Only HTTP(S) URLs without embedded credentials are allowed; malformed URLs, executable schemes, control characters and excessive nested document viewers are rejected without replacing the current media. Protected same-origin media/presentation paths receive the asset token; external hosts never receive it. External signage frames are sandboxed without same-origin access, top navigation or popup permissions. Sites requiring cookies/storage or popup login may not work in this isolated frame; use a purpose-built embeddable signage URL. Local built-in document/Ant Media viewers retain their existing behavior.
+
+Music Assistant browser connections may use only this Hub's `/music-assistant/sendspin-proxy` WebSocket endpoint, matching its host, port and HTTP/TLS-derived socket scheme, with one 32-character base64url ticket. Reject arbitrary socket hosts, paths, credentials and extra parameters. The final destination is rebuilt from the trusted Hub origin and fixed path.
+
+Identify overlays last 1–30 seconds (8 seconds by default). Repeated identification replaces the previous timeout/frame; clearing the display cancels both. These changes must not trigger another title/subtitle/body/timer layout engine. Unit policy tests and real-browser rejection/lifecycle tests accompany the rendering tests.
