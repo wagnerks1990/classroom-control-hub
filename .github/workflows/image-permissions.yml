@@ -1,0 +1,44 @@
+name: Restrictive image permissions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  private-context:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+      - name: Test permission contracts
+        run: node --test test/image-permissions.test.js
+      - name: Build from a private local source context
+        shell: bash
+        run: |
+          set -euo pipefail
+          context="$(mktemp -d "$RUNNER_TEMP/hub-private-context-XXXXXX")"
+          trap 'rm -rf "$context"' EXIT
+          git archive HEAD | tar -x -C "$context"
+          find "$context/src" "$context/public" "$context/config" "$context/tools" -type d -exec chmod 0700 {} +
+          find "$context/src" "$context/public" "$context/config" "$context/tools" -type f -exec chmod 0600 {} +
+          chmod 0600 "$context/VERSION" "$context/package.json" "$context/package-lock.json"
+          test "$(stat -c %a "$context/src/server.js")" = 600
+          test "$(stat -c %a "$context/src")" = 700
+          docker build --network host -t classroom-control-hub:test "$context"
+      - name: Verify packaged access without root or runtime mounts
+        run: |
+          test "$(docker image inspect -f '{{.Config.User}}' classroom-control-hub:test)" = 10001:10001
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --entrypoint node classroom-control-hub:test tools/verify-image-permissions.js
+      - name: Build maintenance test companion
+        run: docker build --network host -t classroom-control-hub-maintenance:test maintenance-agent
+      - name: Start the restrictive-context image with normal security boundaries
+        run: bash tools/smoke-host-network.sh
