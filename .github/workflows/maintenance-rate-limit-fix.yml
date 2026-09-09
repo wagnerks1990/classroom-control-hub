@@ -1,0 +1,83 @@
+name: Apply maintenance mutation rate limit
+on:
+  push:
+    branches: [fix/host-networking]
+    paths: [.github/workflows/maintenance-rate-limit-fix.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/fix/host-networking'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/host-networking
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Apply reviewed code, smoke coverage and documentation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path.cwd()
+          p=root/'maintenance-agent/server.js'
+          s=p.read_text()
+          assert 'require("express-rate-limit")' not in s
+          s=s.replace('const express=require("express");', 'const express=require("express");\nconst {rateLimit}=require("express-rate-limit");', 1)
+          old='app.use(auth);\n'
+          new='''app.use(auth);
+          // One appliance-wide budget prevents spoofed forwarding headers or local source
+          // addresses from multiplying privileged writes. Authentication runs first; read
+          // polling and startup health never consume the mutation budget.
+          app.use(rateLimit({
+            windowMs:60_000,limit:30,standardHeaders:"draft-8",legacyHeaders:false,
+            keyGenerator:()=>"maintenance-mutations",
+            skip:req=>["GET","HEAD","OPTIONS"].includes(req.method),
+            message:{ok:false,error:"Too many maintenance changes. Retry after the indicated delay."}
+          }));
+          '''
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new,1))
+          p=root/'tools/smoke-host-network.sh'
+          s=p.read_text()
+          anchor='for name in "$main" "$maint"; do\n'
+          block='''# Authentication must run before rate accounting. Use an unknown integration
+          # to exercise the real middleware without starting or stopping any add-on.
+          [[ "$(curl -sS -X POST -o /dev/null -w '%{http_code}' "http://127.0.0.1:$maint_port/modules/ci-unknown/deploy")" == 401 ]]
+          for _ in $(seq 1 30); do
+            [[ "$(curl -sS -X POST -H 'x-maintenance-token: ci-network-maintenance' -o /dev/null -w '%{http_code}' "http://127.0.0.1:$maint_port/modules/ci-unknown/deploy")" == 404 ]]
+          done
+          # Both the legacy route and extension-wrapped route must be blocked, regardless
+          # of a forged forwarding header. Neither request is allowed to reach deployment.
+          for integration in ci-unknown govee2mqtt; do
+            [[ "$(curl -sS -X POST -H 'x-maintenance-token: ci-network-maintenance' -H 'X-Forwarded-For: 198.51.100.99' -D "$work/limit-headers" -o /dev/null -w '%{http_code}' "http://127.0.0.1:$maint_port/modules/$integration/deploy")" == 429 ]]
+            grep -Eiq '^Retry-After: [0-9]+' "$work/limit-headers"
+          done
+          [[ ! -e "$work/services/govee2mqtt" ]]
+          curl -fsS -H 'x-maintenance-token: ci-network-maintenance' "http://127.0.0.1:$maint_port/health" >/dev/null
+          '''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,block+anchor).replace('token auth and loopback-only maintenance.', 'token auth, mutation rate limits and loopback-only maintenance.')
+          p.write_text(s)
+          paragraph='Authenticated maintenance mutations share an appliance-wide limit of 30 requests per 60 seconds, enforced after token authentication and before both legacy and extension-wrapped routes. Excess writes return HTTP 429 with a Retry-After header; GET/HEAD/OPTIONS polling and health checks do not consume this budget. Forwarding headers cannot create new budgets. The counter is in memory and resets on a maintenance process restart.\n'
+          p=root/'docs/HOST-NETWORKING.md'
+          s=p.read_text();anchor='## Listeners and addresses\n';assert s.count(anchor)==1;p.write_text(s.replace(anchor,paragraph+'\n'+anchor))
+          (root/'wiki/Host-Networking.md').write_text(p.read_text())
+          for name in ['SECURITY.md','docs/AI-CONTEXT.md','AGENTS.md']:
+              p=root/name;p.write_text(p.read_text()+'\n### Maintenance mutation boundary\n\n'+paragraph)
+          p=root/'CHANGELOG.md';s=p.read_text();anchor='## Unreleased - Host-network migration\n';assert s.count(anchor)==1;p.write_text(s.replace(anchor,anchor+'\n- Rate-limit authenticated maintenance mutations across legacy and wrapped add-on routes, preserving health polling and returning HTTP 429 with Retry-After under write floods.\n',1))
+          PY
+      - name: Lock the verified current rate-limiter release
+        working-directory: maintenance-agent
+        run: npm install --package-lock-only --ignore-scripts --save-exact --no-fund express-rate-limit@8.7.0
+      - name: Verify source and commit the scoped changes
+        run: |
+          git diff --check
+          node --check maintenance-agent/server.js
+          bash -n tools/smoke-host-network.sh
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add maintenance-agent/server.js maintenance-agent/package.json maintenance-agent/package-lock.json tools/smoke-host-network.sh docs/HOST-NETWORKING.md wiki/Host-Networking.md SECURITY.md docs/AI-CONTEXT.md AGENTS.md CHANGELOG.md
+          git commit -m 'fix: rate-limit privileged maintenance mutations before legacy and wrapped handlers'
+          git push origin HEAD:refs/heads/fix/host-networking
