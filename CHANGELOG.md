@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Host installer group resolution
+
+- Resolve or create the fixed host GID 10001 before data/key installation and pass its group name to `install`; preserve existing numeric ownership and fail on name conflicts or lookup errors. Add isolated regression tests and operational/wiki/AI recovery guidance.
+
 ## Unreleased - Host-network migration
 
 - Rate-limit authenticated maintenance mutations across legacy and wrapped add-on routes, preserving health polling and returning HTTP 429 with Retry-After under write floods.
