@@ -1,7 +1,12 @@
 package org.classroomhub.display;
 
 import android.app.Activity;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebChromeClient;
@@ -10,7 +15,16 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
+    private static final String TAG="ClassroomHubDisplay";
+    private static final long POLICY_INTERVAL_MS=30000L;
     private WebView webView;
+    private final Handler policyHandler=new Handler(Looper.getMainLooper());
+    private final Runnable policyWatchdog=new Runnable(){
+        @Override public void run(){
+            enforceManagementPolicy("watchdog");
+            policyHandler.postDelayed(this,POLICY_INTERVAL_MS);
+        }
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -26,6 +40,7 @@ public class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient());
         setContentView(webView);
         loadConfiguredUrl();
+        startPolicyWatchdog();
     }
 
     private void enterImmersive(){
@@ -40,6 +55,43 @@ public class MainActivity extends Activity {
         else webView.loadUrl(url);
     }
 
-    @Override protected void onResume(){super.onResume();enterImmersive();if(webView!=null)loadConfiguredUrl();}
+    private void startPolicyWatchdog(){
+        policyHandler.removeCallbacks(policyWatchdog);
+        enforceManagementPolicy("activity-start");
+        policyHandler.postDelayed(policyWatchdog,POLICY_INTERVAL_MS);
+    }
+
+    private void enforceManagementPolicy(String source){
+        SharedPreferences prefs=HubStorage.prefs(this);
+        if(!prefs.getBoolean("persistent_adb",false))return;
+        try{
+            int developer=Settings.Global.getInt(getContentResolver(),"development_settings_enabled",0);
+            int wireless=Settings.Global.getInt(getContentResolver(),"adb_wifi_enabled",0);
+            boolean repaired=false;
+            if(developer!=1){Settings.Global.putInt(getContentResolver(),"development_settings_enabled",1);repaired=true;}
+            if(wireless!=1){Settings.Global.putInt(getContentResolver(),"adb_wifi_enabled",1);repaired=true;}
+            int currentWireless=Settings.Global.getInt(getContentResolver(),"adb_wifi_enabled",0);
+            if(repaired)Log.w(TAG,"Management watchdog repaired wireless debugging from "+source+"; adb_wifi_enabled="+currentWireless);
+            else Log.d(TAG,"Management watchdog verified wireless debugging from "+source+"; adb_wifi_enabled="+currentWireless);
+        }catch(SecurityException denied){
+            Log.w(TAG,"Management watchdog lacks WRITE_SECURE_SETTINGS; run Persistent ADB bootstrap once",denied);
+        }catch(Exception error){
+            Log.e(TAG,"Management watchdog failed to verify wireless debugging",error);
+        }
+    }
+
+    @Override protected void onResume(){
+        super.onResume();
+        enterImmersive();
+        enforceManagementPolicy("resume");
+        if(webView!=null)loadConfiguredUrl();
+    }
+
+    @Override protected void onDestroy(){
+        policyHandler.removeCallbacks(policyWatchdog);
+        if(webView!=null){webView.destroy();webView=null;}
+        super.onDestroy();
+    }
+
     @Override public void onBackPressed(){/* Kiosk mode: suppress accidental exit. */}
 }
