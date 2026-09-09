@@ -66,3 +66,7 @@ The earlier TV1/Windows kiosk playback success is historical evidence recorded i
 4. Attach one TV, verify its `classroom-hub-tvN` player is enabled/registered, start Background Music, and check for stable audible playback. Then check announcements pause/resume and remaining targets. Preserve automation settings and confirm the four-component display layout remains unchanged.
 
 The diagnostic event `musicassistant.sendspin.proxy.connected` indicates an upstream socket opened; it does not by itself prove decoded or audible playback. Missing/disabled players, browser autoplay restrictions, network listener bindings, and API-token failures remain separate diagnostic causes. Application VERSION stays alpha.71 until a separately reviewed release is tagged.
+
+## Music Assistant route budgets
+
+The touched status endpoint allows 120 requests per 60 seconds appliance-wide. Configuration saves and TV bridge attach/detach share a separate 30-request/60-second budget. The limiters run before the existing authorization handlers, return HTTP 429 with Retry-After, use fixed keys unaffected by forwarding headers, and reset on process restart. Status polling cannot consume the mutation budget. These limits do not throttle raw audio frames or internal scheduled music operations. The locked express-rate-limit version matches the already reviewed maintenance dependency. Actual HTTP regression tests exercise both limits and their independence.

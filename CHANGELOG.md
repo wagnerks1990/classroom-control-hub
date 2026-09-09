@@ -2,6 +2,8 @@
 
 ## Unreleased — selective PR #22 Sendspin migration
 
+- Rate-limit the touched Music Assistant status/configuration/attachment routes with independent polling and mutation budgets and HTTP regressions.
+
 - Connect the existing ticketed Hub audio proxy to the configured dedicated Sendspin endpoint (default 8927), leaving token-authenticated Music Assistant API control separate.
 - Preserve initial text/binary protocol frames, existing attachment checks and host-network compatibility; validate endpoint settings before saving/opening.
 - Fix timeout, early-close and failed-send cleanup; bound pending/output buffers and include audio connections in per-IP accounting.
