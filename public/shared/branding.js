@@ -27,6 +27,14 @@
   }
 
   function escapeHtml(value){return String(value??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;")}
+  function managedDisplaysOverviewLink(){
+    if(!location.pathname.startsWith("/controller"))return;
+    const overview=document.getElementById("overview"),toolbar=overview?.querySelector(":scope > .top .toolbar");
+    if(!toolbar||toolbar.querySelector('[data-managed-displays-link]'))return;
+    const link=document.createElement("a");link.className="buttonLink";link.href="/managed-displays/";link.textContent="Managed Displays";link.dataset.managedDisplaysLink="1";
+    const refresh=[...toolbar.querySelectorAll("button")].find(button=>String(button.getAttribute("onclick")||"").includes("refreshOverview"));
+    if(refresh)refresh.after(link);else toolbar.prepend(link);
+  }
   function directDisplayPanel(){
     if(!location.pathname.startsWith("/controller"))return;
     const heading=[...document.querySelectorAll("h2.sectionTitle")].find(x=>x.textContent.trim()==="Classroom Display Enrollment");
@@ -69,6 +77,7 @@
   // and remains credentialed.
   if(!renderer&&location.pathname.startsWith("/controller")){
     window.loadDisplayCredentialSecurity=loadDirectDisplayUrls;
+    managedDisplaysOverviewLink();
     directDisplayPanel();
   }
 

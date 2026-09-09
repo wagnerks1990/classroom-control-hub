@@ -1,0 +1,13 @@
+# Runtime-only writable storage layered onto the hardened base Compose file.
+# The maintenance container keeps all Linux capabilities dropped and the root
+# filesystem read-only. Android platform-tools still require a writable .android
+# directory for persistent ADB private/public keys. A dedicated named volume
+# provides only that narrow writable path without broadening /managed mounts.
+services:
+  maintenance-agent:
+    volumes:
+      - classroom-hub-android-adb:/managed/classroom-hub/data/android-tv/.android
+
+volumes:
+  classroom-hub-android-adb:
+    name: classroom-control-hub-android-adb

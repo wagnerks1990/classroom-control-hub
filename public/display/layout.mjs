@@ -1,10 +1,18 @@
 // One owner for title, subtitle, body, timer geometry and fitted font sizes.
 // All measurements are untransformed CSS layout pixels on the 1920x1080 stage.
-export const LAYOUT_REVISION = 'single-fit-20260909-2';
+export const LAYOUT_REVISION = 'single-fit-20260909-3';
 export const FONT_CAPS = Object.freeze({title:118, subtitle:82, body:120, timer:132});
+// Auto-fit may improve readability slightly, but configured scene sizes remain the
+// visual baseline. The prior renderer jumped straight to the global caps and made
+// ordinary classroom scenes enormous. Keep growth modest and always shrink to fit.
+export const AUTO_GROW_FACTOR = 1.10;
 const READABLE_MIN = 12;
 const finite = (value, fallback) => value == null || value === '' || !Number.isFinite(Number(value)) ? fallback : Number(value);
 export const bounded = (value, fallback, min, max) => Math.max(min, Math.min(max, finite(value, fallback)));
+function autoCap(value, fallback, globalCap) {
+  const configured = bounded(value, fallback, 1, 2000);
+  return Math.min(globalCap, configured * AUTO_GROW_FACTOR);
+}
 
 // Probe the real, unconstrained child. Padding is already included in scroll
 // dimensions; the parent's padding (not the child's) reduces the available area.
@@ -71,16 +79,18 @@ export function createDisplayLayout(nodes, getState) {
   function fitTimer(state) {
     timerRegion.hidden = !state.visible;
     if (!state.visible) return {fontSize:0, scale:1, status:'hidden'};
-    // Reserve a constant timer band and an envelope up to MAX_SAFE_INTEGER
-    // seconds (13 hour digits), so count-up width growth is also contained. Countdown
-    // 01:00:00 -> 59:59 -> 00:00 never changes the body's rectangle or timer size.
+    // Measure against a stable timer envelope so countdown/count-up digit changes
+    // never alter body geometry. The overlay itself stays content-sized so the
+    // classic white border wraps the timer instead of spanning the full display.
     const actual = timerValue.textContent;
     timerValue.textContent = '8888888888888:88:88';
-    timerOverlay.style.width = '100%';
+    timerOverlay.style.width = 'max-content';
+    timerOverlay.style.maxWidth = '100%';
     timerOverlay.style.borderWidth = `${bounded(state.borderWidth, 4, 0, 24)}px`;
-    const cap = state.autoFit === false ? bounded(state.fontSize, 64, 1, 400) : FONT_CAPS.timer;
+    const cap = state.autoFit === false
+      ? bounded(state.fontSize, 64, 1, 400)
+      : autoCap(state.fontSize, 64, FONT_CAPS.timer);
     const result = fitElement(timerOverlay, timerRegion, cap);
-    // Fix the value width to its full region, including when only MM:SS is shown.
     timerValue.textContent = actual;
     return result;
   }
@@ -119,7 +129,9 @@ export function createDisplayLayout(nodes, getState) {
     [[title,titleRegion,'title',92],[subtitle,subtitleRegion,'subtitle',44],[text,textLayer,'body',64]]
       .forEach(([el, box, name, fallback], i) => {
         const o = options[i];
-        const cap = o.autoFit === false ? bounded(o.size, fallback, 1, 2000) : FONT_CAPS[name];
+        const cap = o.autoFit === false
+          ? bounded(o.size, fallback, 1, 2000)
+          : autoCap(o.size, fallback, FONT_CAPS[name]);
         components[name] = fitElement(el, box, cap);
       });
     previousKey = key;
