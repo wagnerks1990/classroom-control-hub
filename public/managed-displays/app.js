@@ -18,7 +18,28 @@ async function runShell(id,script,timeoutMs=12000){return api(`/android/devices/
 async function probeAgent(id,rerender=true){const d=deviceById(id);if(!d)return null;if(d.lastStatus?.online!==true||d.uiRecovering){d.agentStatus={error:d.uiRecovering?'device recovering':'device offline'};if(rerender)render();return d.agentStatus}try{const pkg=d.agentPackage||'org.classroomhub.display';const script=`pm path ${pkg} >/dev/null 2>&1; rc=$?; if [ $rc -eq 0 ]; then echo INSTALLED=1; dumpsys package ${pkg} | grep versionName | head -n 1 | sed 's/.*versionName=/VERSION=/'; pidof ${pkg} >/dev/null 2>&1; prc=$?; if [ $prc -eq 0 ]; then echo RUNNING=1; else echo RUNNING=0; fi; else echo INSTALLED=0; fi`;const j=await runShell(id,script);d.agentStatus=parseAgentProbe(j.stdout||'');}catch(e){d.agentStatus={error:e.message}}if(rerender)render();return d.agentStatus}
 async function probeAllAgents(){for(const d of state.devices)await probeAgent(d.id,false);render()}
 function scheduleRefresh(delay=5000){if(refreshTimer)clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>liveRefresh().catch(()=>{}),document.hidden?15000:delay)}
-async function liveRefresh(){if(refreshBusy){scheduleRefresh();return}refreshBusy=true;try{for(const d of state.devices){if(d.uiRecovering)continue;if(d.lastStatus?.online===true){try{const j=await api(`/android/devices/${encodeURIComponent(d.id)}/status`);Object.assign(d,j.device||{});await probeAgent(d.id,false)}catch{d.lastStatus={...(d.lastStatus||{}),online:false,checkedAt:new Date().toISOString()}}}render()}finally{refreshBusy=false;scheduleRefresh()}}
+async function liveRefresh(){
+  if(refreshBusy){scheduleRefresh();return}
+  refreshBusy=true;
+  try{
+    for(const d of state.devices){
+      if(d.uiRecovering)continue;
+      if(d.lastStatus?.online===true){
+        try{
+          const j=await api(`/android/devices/${encodeURIComponent(d.id)}/status`);
+          Object.assign(d,j.device||{});
+          await probeAgent(d.id,false);
+        }catch{
+          d.lastStatus={...(d.lastStatus||{}),online:false,checkedAt:new Date().toISOString()};
+        }
+      }
+    }
+    render();
+  }finally{
+    refreshBusy=false;
+    scheduleRefresh();
+  }
+}
 async function load({probeAgents=true}={}){try{const previous=new Map(state.devices.map(d=>[d.id,{agentStatus:d.agentStatus,uiRecovering:d.uiRecovering}]));const j=await api('/android/status');state.devices=(j.devices||[]).map(d=>({...d,agentStatus:previous.get(d.id)?.agentStatus,uiRecovering:previous.get(d.id)?.uiRecovering===true}));state.profiles=j.profiles||[];$("bridge").className='pill ok';$("bridge").textContent=`ADB bridge ready · policy ${Math.round((j.policyIntervalMs||60000)/1000)}s`;render();if(probeAgents)probeAllAgents().catch(()=>{});scheduleRefresh()}catch(e){$("bridge").className='pill bad';$("bridge").textContent=`ADB unavailable: ${e.message}`;scheduleRefresh()}}
 async function accelerateAgentStart(id){const d=deviceById(id);if(!d||d.lastStatus?.online!==true||!d.displayUrl)return false;const profile=profileFor(d);if(profile&&profile.launchOnBoot===false)return false;let status=await probeAgent(id,false);if(!status?.installed||status.running)return !!status?.running;d.agentStatus={...status,starting:true};render();try{await api(`/android/devices/${encodeURIComponent(id)}/action`,{method:'POST',body:JSON.stringify({action:'launch'})})}catch{}for(let i=0;i<12;i++){await sleep(750);status=await probeAgent(id,false);if(status?.running){render();return true}}render();return false}
 async function recoverStatus(id,{timeoutMs=90000,intervalMs=1500}={}){const d=deviceById(id);if(!d)throw Error('Managed display no longer exists');d.uiRecovering=true;d.agentStatus={error:'device recovering'};render();const deadline=Date.now()+timeoutMs;let lastError=null;while(Date.now()<deadline){try{const j=await api(`/android/devices/${encodeURIComponent(id)}/status`);Object.assign(d,j.device||{});d.uiRecovering=false;render();await accelerateAgentStart(id);await load({probeAgents:true});return true}catch(error){lastError=error;await sleep(intervalMs)}}d.uiRecovering=false;render();throw Error(`Device did not recover within ${Math.round(timeoutMs/1000)} seconds${lastError?.message?`: ${lastError.message}`:''}`)}
