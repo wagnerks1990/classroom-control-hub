@@ -25,7 +25,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#000;dis
 #timerOverlay.timer-center{top:50%;bottom:auto;transform:translate(-50%,-50%)}
 #timerOverlay.timer-bottom{bottom:35px;top:auto}
 #timerLabel{display:block;font-size:.28em;line-height:1.1;margin-bottom:.25em;font-weight:650;white-space:normal;overflow-wrap:anywhere}
-#timerValue{display:block;letter-spacing:.03em;white-space:nowrap}
+#timerValue{display:block;letter-spacing:.03em;white-space:nowrap;font-size:1em}
 #identify{display:none;position:absolute;inset:0;z-index:50;background:#1769e0;color:#fff;align-items:center;justify-content:center;font-size:270px;font-weight:900;overflow:hidden}
 #badge{position:fixed;right:8px;bottom:8px;background:#0009;color:#fff;font-size:11px;padding:5px 7px;border-radius:6px;opacity:.35;z-index:60}
 </style>
@@ -47,7 +47,7 @@ const id=getDisplayId(),preview=new URLSearchParams(location.search).get('previe
 const displayAuth=(()=>{try{const p=new URLSearchParams(location.hash.slice(1)),legacy=p.get('displayToken'),enrollmentToken=p.get('enrollmentToken')||'';if(legacy)localStorage.setItem('classroom-hub-display-token',legacy);if(legacy||enrollmentToken)history.replaceState(null,'',location.pathname+location.search);return {legacyToken:localStorage.getItem('classroom-hub-display-token')||'',credential:localStorage.getItem(`classroom-hub-display-credential:${id}`)||'',enrollmentToken,assetAccessToken:''}}catch{return {legacyToken:'',credential:'',enrollmentToken:'',assetAccessToken:''}}})();
 function authorizeAssetUrl(value){try{const u=new URL(String(value||''),location.href);if(u.origin!==location.origin)return u.toString();if(u.pathname==='/document-viewer/'){const file=u.searchParams.get('file');if(file)u.searchParams.set('file',authorizeAssetUrl(file))}if(u.pathname.startsWith('/media/')||u.pathname.startsWith('/presentations/'))u.searchParams.set('access_token',displayAuth.assetAccessToken);return u.toString()}catch{return value}}
 const stage=document.getElementById('stage'),media=document.getElementById('media'),titleRegion=document.getElementById('titleRegion'),subtitleRegion=document.getElementById('subtitleRegion'),textLayer=document.getElementById('textLayer'),text=document.getElementById('text'),title=document.getElementById('title'),subtitle=document.getElementById('subtitle'),presentationBlack=document.getElementById('presentationBlack'),identify=document.getElementById('identify'),badge=document.getElementById('badge'),timerOverlay=document.getElementById('timerOverlay'),timerLabel=document.getElementById('timerLabel'),timerValue=document.getElementById('timerValue');
-let ws,timerState={visible:false,running:false,mode:'countdown',durationSeconds:300,remainingSeconds:300},timerTick=null,lastViewportSignature='';
+let ws,timerState={visible:false,running:false,mode:'countdown',durationSeconds:300,remainingSeconds:300},timerTick=null,lastViewportSignature='',layoutFrame=null;
 let textOptions={size:64,autoFit:true},titleOptions={size:92,autoFit:true},subtitleOptions={size:44,autoFit:true};
 
 function displayMetrics(){
@@ -65,17 +65,22 @@ function displayMetrics(){
     build:DISPLAY_BUILD
   };
 }
+function requestDisplayLayout(){
+  if(layoutFrame!==null)return;
+  layoutFrame=requestAnimationFrame(()=>{layoutFrame=null;fitAllContent()});
+}
 function scaleStage(){
   const m=displayMetrics();
-  // CSS viewport dimensions are the authoritative rendering space. DPR and
-  // physical screen resolution are diagnostics only; multiplying by DPR here
-  // would double-scale operating-system/browser HiDPI configurations.
+  // Every endpoint renders the exact same 1920x1080 logical canvas. Physical
+  // resolution and DPR never participate in text fitting; only the finished
+  // logical stage is scaled to the CSS viewport. This keeps 1080p and 4K TVs
+  // visually identical while still using all available pixels.
   const scale=Math.min(m.viewportWidth/LOGICAL_WIDTH,m.viewportHeight/LOGICAL_HEIGHT);
   stage.style.transform=`translate(-50%,-50%) scale(${scale})`;
   stage.dataset.scale=String(scale);
   stage.dataset.viewport=m.viewport;
   stage.dataset.dpr=String(m.dpr);
-  requestAnimationFrame(fitAllContent);
+  requestDisplayLayout();
   const sig=`${m.viewport}|${m.dpr}|${m.fullscreen}`;
   if(sig!==lastViewportSignature){lastViewportSignature=sig;sendDisplayMetrics();}
 }
@@ -89,17 +94,37 @@ function elementFits(el,box){
   return el.scrollWidth<=Math.max(1,box.clientWidth-padX+1)&&el.scrollHeight<=Math.max(1,box.clientHeight-padY+1);
 }
 function fitText(el,box,maxSize,minSize=MIN_FONT){
-  if(!el||!box||!el.textContent){return}
+  if(!el||!box)return minSize;
   maxSize=Math.max(minSize,Math.min(2000,Number(maxSize)||minSize));
+  if(!el.textContent){el.style.fontSize=`${maxSize}px`;return maxSize}
   let low=minSize,high=maxSize,best=minSize;
   el.style.fontSize=`${maxSize}px`;
-  if(elementFits(el,box)){return}
+  if(elementFits(el,box))return maxSize;
   while(low<=high){
     const mid=Math.floor((low+high)/2);
     el.style.fontSize=`${mid}px`;
     if(elementFits(el,box)){best=mid;low=mid+1}else high=mid-1;
   }
   el.style.fontSize=`${best}px`;
+  return best;
+}
+function timerFits(){
+  const cs=getComputedStyle(timerOverlay),padX=parseFloat(cs.paddingLeft||0)+parseFloat(cs.paddingRight||0)+parseFloat(cs.borderLeftWidth||0)+parseFloat(cs.borderRightWidth||0),padY=parseFloat(cs.paddingTop||0)+parseFloat(cs.paddingBottom||0)+parseFloat(cs.borderTopWidth||0)+parseFloat(cs.borderBottomWidth||0);
+  return timerOverlay.scrollWidth<=Math.max(1,1760-padX+1)&&timerOverlay.scrollHeight<=Math.max(1,300-padY+1);
+}
+function fitTimer(){
+  if(!timerState.visible||timerOverlay.style.display==='none')return;
+  const max=Math.max(20,Math.min(400,Number(timerState.fontSize??64)||64)),min=20;
+  timerValue.style.fontSize='1em';
+  let low=min,high=max,best=min;
+  timerOverlay.style.fontSize=`${max}px`;
+  if(timerFits())return;
+  while(low<=high){
+    const mid=Math.floor((low+high)/2);
+    timerOverlay.style.fontSize=`${mid}px`;
+    if(timerFits()){best=mid;low=mid+1}else high=mid-1;
+  }
+  timerOverlay.style.fontSize=`${best}px`;
 }
 function reserveTextForTimer(){
   let bottom=105;
@@ -109,39 +134,41 @@ function reserveTextForTimer(){
   textLayer.style.bottom=`${Math.min(430,bottom)}px`;
 }
 function fitAllContent(){
+  // The four logical components are resolved in a deterministic dependency
+  // order. Timer geometry is finalized before body space is measured. Title,
+  // subtitle and body are then fitted inside fixed 1920x1080 logical regions.
+  // The browser's physical resolution cannot alter these calculations.
+  fitTimer();
   reserveTextForTimer();
   if(titleOptions.autoFit!==false)fitText(title,titleRegion,titleOptions.size||92);else title.style.fontSize=`${Math.max(MIN_FONT,Number(titleOptions.size||92))}px`;
   if(subtitleOptions.autoFit!==false)fitText(subtitle,subtitleRegion,subtitleOptions.size||44);else subtitle.style.fontSize=`${Math.max(MIN_FONT,Number(subtitleOptions.size||44))}px`;
   if(textOptions.autoFit!==false)fitText(text,textLayer,textOptions.size||64);else text.style.fontSize=`${Math.max(MIN_FONT,Number(textOptions.size||64))}px`;
-  if(timerState.visible){
-    const max=timerState.fontSize??64;
-    fitText(timerValue,timerOverlay,max,20);
-  }
+  stage.dataset.layout=`title:${title.style.fontSize||''};subtitle:${subtitle.style.fontSize||''};body:${text.style.fontSize||''};timer:${timerOverlay.style.fontSize||''}`;
 }
 function applyTextOptions(p={}){
   textOptions={...textOptions,...p,size:Number(p.size??textOptions.size??64),autoFit:p.autoFit!==false};
   text.style.color=p.color||text.style.color||'#fff';
   if(p.background!==undefined)text.style.background=p.background||'transparent';
   if(p.position)textLayer.style.alignItems=p.position==='top'?'flex-start':p.position==='bottom'?'flex-end':'center';
-  requestAnimationFrame(fitAllContent);
+  requestDisplayLayout();
 }
 function applyTitle(p={}){
   titleOptions={...titleOptions,...p,size:Number(p.size??titleOptions.size??92),autoFit:p.autoFit!==false};
-  title.textContent=p.text??title.textContent??'';title.style.color=p.color||'#fff';requestAnimationFrame(fitAllContent);
+  title.textContent=p.text??title.textContent??'';title.style.color=p.color||'#fff';requestDisplayLayout();
 }
 function applySubtitle(p={}){
   subtitleOptions={...subtitleOptions,...p,size:Number(p.size??subtitleOptions.size??44),autoFit:p.autoFit!==false};
-  subtitle.textContent=p.text??subtitle.textContent??'';subtitle.style.color=p.color||'#fff';requestAnimationFrame(fitAllContent);
+  subtitle.textContent=p.text??subtitle.textContent??'';subtitle.style.color=p.color||'#fff';requestDisplayLayout();
 }
 function formatTimerSeconds(total){total=Math.max(0,Math.floor(Number(total)||0));const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),sec=total%60;return h>0?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`}
 function timerSecondsNow(){const now=Date.now();if(timerState.mode==='countup'){if(timerState.running&&timerState.startedAt)return Number(timerState.elapsedSeconds||0)+Math.max(0,(now-Number(timerState.startedAt))/1000);return Number(timerState.elapsedSeconds||0)}if(timerState.running&&timerState.endAt)return Math.max(0,(Number(timerState.endAt)-now)/1000);return Math.max(0,Number(timerState.remainingSeconds??timerState.durationSeconds??0))}
 function paintTimer({refit=false}={}){
-  if(!timerState.visible){timerOverlay.style.display='none';if(refit)requestAnimationFrame(fitAllContent);return}
+  if(!timerState.visible){timerOverlay.style.display='none';if(refit)requestDisplayLayout();return}
   timerOverlay.style.display='block';timerLabel.textContent=timerState.label||'';timerLabel.style.display=timerState.label?'block':'none';timerValue.textContent=formatTimerSeconds(timerSecondsNow());
   timerOverlay.style.color=timerState.textColor||'#fff';timerOverlay.style.borderColor=timerState.borderColor||'#fff';timerOverlay.style.borderWidth=`${Math.max(0,Number(timerState.borderWidth??4))}px`;timerOverlay.style.borderRadius=`${Math.max(0,Number(timerState.borderRadius??18))}px`;timerOverlay.style.fontSize=`${Math.max(20,Number(timerState.fontSize??64))}px`;timerOverlay.style.background=timerState.background||'rgba(0,0,0,.35)';
   timerOverlay.classList.remove('timer-top','timer-center','timer-bottom');timerOverlay.classList.add(`timer-${['top','center','bottom'].includes(timerState.position)?timerState.position:'bottom'}`);
   if(timerState.mode==='countdown'&&timerState.running&&timerSecondsNow()<=0){timerState.running=false;timerState.remainingSeconds=0;timerState.endAt=null;timerValue.textContent=formatTimerSeconds(0);if(timerTick){clearInterval(timerTick);timerTick=null}}
-  if(refit)requestAnimationFrame(fitAllContent);
+  if(refit)requestDisplayLayout();
 }
 function applyTimer(p={}){
   const incomingInstance=p.timerInstanceId||null;
@@ -149,26 +176,28 @@ function applyTimer(p={}){
   const freshInstance=!!incomingInstance&&incomingInstance!==currentInstance;
   if(timerTick){clearInterval(timerTick);timerTick=null}
   if(freshInstance){
-    // A Run Now/Test Now/scheduled execution is a new countdown even when the
-    // class end timestamp and all styling are identical to the previous timer.
     timerState={visible:false,running:false,mode:'countdown',durationSeconds:0,remainingSeconds:0,startedAt:null,endAt:null,...p};
   }else{
     timerState={...timerState,...p};
   }
   if(timerState.mode==='countdown'&&timerState.endAt&&Number(timerState.endAt)<=Date.now()){timerState.running=false;timerState.remainingSeconds=0;timerState.endAt=null}
   paintTimer({refit:true});
-  // Countdown digits update once per second. Routine timer ticks must not
-  // trigger global title/subtitle/body auto-fit because doing so briefly resets
-  // each element to its maximum size before shrinking it again, which causes
-  // visible font-size flashing on active classroom displays.
   if(timerState.visible&&timerState.running)timerTick=setInterval(()=>paintTimer({refit:false}),1000);
 }
 function applyState(s){
-  if(!s)return;if(s.background?.color)stage.style.background=s.background.color;
-  if(s.text!==undefined)text.textContent=s.text;if(s.textOptions)applyTextOptions(s.textOptions);
-  if(s.title!==undefined)applyTitle({text:s.title,...(s.titleOptions||{})});
-  if(s.subtitle!==undefined)applySubtitle({text:s.subtitle,...(s.subtitleOptions||{})});
-  if(s.media)renderMedia(s.media);if(s.timer)applyTimer(s.timer);presentationBlack.style.display=s.presentationBlack?'block':'none';requestAnimationFrame(fitAllContent);
+  if(!s)return;
+  if(s.background?.color)stage.style.background=s.background.color;
+  // State replay applies the complete logical content first, then requests one
+  // coalesced layout. This prevents reconnect/reload ordering from producing a
+  // different fitted size on one TV than another.
+  if(s.text!==undefined)text.textContent=s.text;
+  if(s.textOptions)applyTextOptions(s.textOptions);
+  if(s.title!==undefined){title.textContent=s.title;if(s.titleOptions)titleOptions={...titleOptions,...s.titleOptions,size:Number(s.titleOptions.size??titleOptions.size??92),autoFit:s.titleOptions.autoFit!==false}}
+  if(s.subtitle!==undefined){subtitle.textContent=s.subtitle;if(s.subtitleOptions)subtitleOptions={...subtitleOptions,...s.subtitleOptions,size:Number(s.subtitleOptions.size??subtitleOptions.size??44),autoFit:s.subtitleOptions.autoFit!==false}}
+  if(s.media)renderMedia(s.media);
+  if(s.timer)applyTimer(s.timer);
+  presentationBlack.style.display=s.presentationBlack?'block':'none';
+  requestDisplayLayout();
 }
 let activeWebFrame=null,activeWebSpec=null,webAudioTimers=[];
 function clearWebAudioTimers(){for(const t of webAudioTimers)clearTimeout(t);webAudioTimers=[]}
@@ -297,7 +326,7 @@ function handle(c){const p=c.payload||{};switch(c.type){
   case'display.background':stage.style.background=p.color||'#101318';break;
   case'display.image':renderMedia({type:'image',...p});break;case'display.video':renderMedia({type:'video',...p});break;case'display.web':renderMedia({type:'web',...p});break;case'display.web.audio':enforceWebAudio({reload:!!p.reload,volume:p.volume,unmute:p.unmute!==false});break;case'display.pdf':case'display.document':renderMedia({type:'pdf',...p});break;case'display.presentation':renderMedia({type:'image',...p});presentationBlack.style.display='none';break;case'display.presentation.black':presentationBlack.style.display=p.black?'block':'none';break;
   case'display.timer':applyTimer(p);break;case'display.timer.hide':applyTimer({...timerState,visible:false,running:false});break;
-  case'display.clear':clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;text.textContent='';title.textContent='';subtitle.textContent='';media.innerHTML='';stage.style.background='#000';text.style.background='transparent';presentationBlack.style.display='none';identify.style.display='none';applyTimer({visible:false,running:false});requestAnimationFrame(fitAllContent);break;
+  case'display.clear':clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;text.textContent='';title.textContent='';subtitle.textContent='';media.innerHTML='';stage.style.background='#000';text.style.background='transparent';presentationBlack.style.display='none';identify.style.display='none';applyTimer({visible:false,running:false});requestDisplayLayout();break;
   case'music.assistant.attach':attachMusicAssistant(p);break;case'music.assistant.detach':detachMusicAssistant();break;
   case'display.reload':location.reload();break;
 }}
@@ -305,7 +334,7 @@ function connect(){ws=new WebSocket(wsUrl());ws.onopen=()=>{badge.textContent=`$
 window.addEventListener('resize',scaleStage);
 window.visualViewport?.addEventListener('resize',scaleStage);
 document.addEventListener('fullscreenchange',scaleStage);
-if(window.ResizeObserver)new ResizeObserver(()=>requestAnimationFrame(fitAllContent)).observe(stage);
+if(window.ResizeObserver)new ResizeObserver(requestDisplayLayout).observe(stage);
 scaleStage();
 if(!preview)setInterval(sendDisplayMetrics,15000);
 connect();

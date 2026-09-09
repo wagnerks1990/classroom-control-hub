@@ -22,6 +22,6 @@ test('timer repaint only requests global autofit when explicitly requested', () 
   const end = displayHtml.indexOf('function applyTimer', start);
   assert.ok(start >= 0 && end > start, 'paintTimer implementation must be present');
   const implementation = displayHtml.slice(start, end);
-  assert.match(implementation, /if\(refit\)requestAnimationFrame\(fitAllContent\)/);
-  assert.doesNotMatch(implementation, /\n  requestAnimationFrame\(fitAllContent\);\n/);
+  assert.match(implementation, /if\(refit\)requestDisplayLayout\(\)/);
+  assert.doesNotMatch(implementation, /\n  requestDisplayLayout\(\);\n/);
 });
