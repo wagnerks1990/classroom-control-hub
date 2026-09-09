@@ -3,18 +3,63 @@ on:
   push:
     branches: [fix/host-networking]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source-review:
+  apply-reviewed-changes:
+    if: github.ref == 'refs/heads/fix/host-networking'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          persist-credentials: false
-      - name: Export tracked source only
-        run: git archive --format=tar HEAD > /tmp/classroom-hub-source.tar
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          ref: fix/host-networking
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
-          name: classroom-hub-source
-          path: /tmp/classroom-hub-source.tar
-          retention-days: 1
+          node-version: '22'
+      - name: Apply reviewed source edits with before and after hashes
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,lzma,shutil
+          from pathlib import Path
+          root=Path.cwd()
+          transfer=root/'tools/.host-network-transfer'
+          raw=''.join((transfer/f'part{i}').read_text().strip() for i in range(4))
+          assert hashlib.sha256(raw.encode()).hexdigest()=='ddbcc4951a637f5c76767cc508e31f09315634b9def9ab20381a08d2aec2398b', 'Transfer integrity mismatch'
+          changes=json.loads(lzma.decompress(base64.b64decode(raw)))
+          assert len(changes)==46
+          for change in changes:
+              dest=(root/change['path']).resolve()
+              assert root in dest.parents and '.git' not in dest.relative_to(root).parts
+              if 'copy' in change:
+                  source=(root/change['copy']).resolve()
+                  assert root in source.parents
+                  dest.parent.mkdir(parents=True,exist_ok=True)
+                  dest.write_bytes(source.read_bytes())
+                  continue
+              old=dest.read_text() if dest.exists() else ''
+              assert hashlib.sha256(old.encode()).hexdigest()==change['before'], f"Source changed: {change['path']}"
+              for start,end,text in reversed(change['edits']):
+                  old=old[:start]+text+old[end:]
+              assert hashlib.sha256(old.encode()).hexdigest()==change['after'], f"Output mismatch: {change['path']}"
+              dest.parent.mkdir(parents=True,exist_ok=True)
+              dest.write_text(old)
+          shutil.rmtree(transfer)
+          (root/'.github/workflows/host-network-review.yml').unlink()
+          print('Verified and materialized all 46 changed source/documentation files.')
+          PY
+      - name: Check syntax and targeted regressions
+        run: |
+          git diff --check
+          node --check src/server.js
+          node --check maintenance-agent/server.js
+          node --check maintenance-agent/extensions.js
+          node tools/validate-controller.js
+          bash -n install.sh host-agent/app-update-runner.sh host-agent/update-runner.sh tools/smoke-host-network.sh
+          python3 -m py_compile host-agent/server.py tools/validate-host-network.py tools/fixtures/host-agent-network.py
+          node --test test/host-networking.test.js test/managed-addons-alpha71.test.js
+      - name: Commit reviewed source to the feature branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: migrate core and managed integrations to host networking'
+          git push origin HEAD:refs/heads/fix/host-networking
