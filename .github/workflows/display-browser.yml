@@ -1,0 +1,36 @@
+name: Display browser regression
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  display-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Prepare browser tests and same-origin fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-liberation
+          bash tools/prepare-display-fonts.sh
+          python3 -m venv /tmp/display-tests
+          /tmp/display-tests/bin/pip install -r test/browser/requirements.txt
+          /tmp/display-tests/bin/python -m playwright install --with-deps ${{ matrix.browser }}
+      - name: Test real receiver page geometry, replay and timers
+        env:
+          DISPLAY_TEST_BROWSER: ${{ matrix.browser }}
+        run: /tmp/display-tests/bin/python -m unittest discover -s test/browser -v
+      - name: Retain rendered evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: display-browser-${{ matrix.browser }}
+          path: test-results/display/
+          retention-days: 14

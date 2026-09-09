@@ -20,6 +20,8 @@ COPY VERSION ./VERSION
 COPY src ./src
 COPY config ./config
 COPY public ./public
+COPY tools/prepare-display-fonts.sh ./tools/prepare-display-fonts.sh
+RUN bash tools/prepare-display-fonts.sh
 
 # Stamp independently loaded client/runtime surfaces from the single release
 # VERSION file. This prevents backend/display/controller/agent drift when a new
