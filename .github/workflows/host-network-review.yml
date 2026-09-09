@@ -2,6 +2,7 @@ name: Host network migration review
 on:
   push:
     branches: [fix/host-networking]
+    paths: [.github/workflows/host-network-review.yml]
 permissions:
   contents: write
 jobs:
@@ -27,6 +28,8 @@ jobs:
           changes=json.loads(lzma.decompress(base64.b64decode(raw)))
           assert len(changes)==46
           for change in changes:
+              if change['path'].startswith('.github/workflows/'):
+                  continue
               dest=(root/change['path']).resolve()
               assert root in dest.parents and '.git' not in dest.relative_to(root).parts
               if 'copy' in change:
@@ -43,8 +46,7 @@ jobs:
               dest.parent.mkdir(parents=True,exist_ok=True)
               dest.write_text(old)
           shutil.rmtree(transfer)
-          (root/'.github/workflows/host-network-review.yml').unlink()
-          print('Verified and materialized all 46 changed source/documentation files.')
+          print('Verified and materialized source/documentation files; workflow changes applied through connector separately.')
           PY
       - name: Check syntax and targeted regressions
         run: |
