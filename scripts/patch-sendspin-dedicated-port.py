@@ -1,6 +1,6 @@
 from pathlib import Path
 
-p = Path('src/server.js')
+p = Path("src/server.js")
 s = p.read_text()
 
 old = '''    const cfg=musicAssistantConfig(),token=musicAssistantToken();if(!token)return finish(1011,"Music Assistant token is not configured");
@@ -10,6 +10,7 @@ old = '''    const cfg=musicAssistantConfig(),token=musicAssistantToken();if(!to
     upstream.on("open",()=>{try{upstream.send(JSON.stringify({type:"auth",token,client_id:ticket.playerId}))}catch(e){finish(1011,e.message)}});
     upstream.on("message",(data,isBinary)=>{
       if(!authenticated){
+        clearTimeout(authTimer);
         if(isBinary)return finish(1011,"Unexpected binary Music Assistant authentication response");
         let ack={};try{ack=JSON.parse(Buffer.isBuffer(data)?data.toString("utf8"):String(data))}catch{}
         if(ack&&((ack.error)||(String(ack.type||"").toLowerCase().includes("invalid"))))return finish(1008,ack.error?.message||ack.error||"Music Assistant authentication rejected");
@@ -28,9 +29,9 @@ new = '''    const cfg=musicAssistantConfig();
     const hostForUrl=sendspinHost.includes(":")&&!sendspinHost.startsWith("[")?`[${sendspinHost}]`:sendspinHost;
     const upstreamUrl=`ws://${hostForUrl}:${sendspinPort}/sendspin`;
     upstream=new WebSocket(upstreamUrl);upstream.binaryType="arraybuffer";
-    const authTimer=setTimeout(()=>finish(1011,"Music Assistant Sendspin upstream connection timed out"),10000);
+    const connectTimer=setTimeout(()=>finish(1011,"Music Assistant Sendspin upstream connection timed out"),10000);
     upstream.on("open",()=>{
-      authenticated=true;clearTimeout(authTimer);
+      authenticated=true;clearTimeout(connectTimer);
       for(const frame of pending.splice(0)){if(upstream.readyState===WebSocket.OPEN)upstream.send(frame.data,{binary:frame.isBinary})}
       audit({kind:"musicassistant.sendspin.proxy.connected",deviceId:ticket.deviceId,playerId:ticket.playerId,upstreamUrl});
     });
@@ -39,14 +40,30 @@ new = '''    const cfg=musicAssistantConfig();
     });
 '''
 
-if old not in s:
-    raise SystemExit('Expected legacy Sendspin upstream block not found; refusing partial patch')
+already = "const upstreamUrl=`ws://${hostForUrl}:${sendspinPort}/sendspin`;"
+if already in s:
+    print("Music Assistant Sendspin proxy already uses the dedicated 8927 endpoint")
+    raise SystemExit(0)
 
-s = s.replace(old, new)
-s = s.replace('// Classroom Control Hub opens MA\'s authenticated /sendspin socket, sends the encrypted-at-rest\n// long-lived token server-side, consumes the auth acknowledgement, then transparently\n// relays Sendspin 3.x frames. One-time tickets prevent arbitrary use of this bridge.',
-'''// Classroom Control Hub opens Music Assistant's dedicated local Sendspin server on
-// port 8927 and transparently relays Sendspin frames. The Hub's one-time display
-// ticket gates access to this bridge; the Music Assistant API token is used only
-// for the separate authenticated control API, not inside the Sendspin protocol.''')
+count = s.count(old)
+if count != 1:
+    raise SystemExit(
+        f"Expected exactly one current Sendspin proxy block, found {count}; refusing partial patch"
+    )
+
+s = s.replace(old, new, 1)
+
+old_comment = '''// Stable Music Assistant 2.9.x Sendspin proxy. TVs connect only to Classroom Control Hub.
+// Classroom Control Hub opens MA's authenticated /sendspin socket, sends the encrypted-at-rest
+// long-lived token server-side, consumes the auth acknowledgement, then transparently
+// relays Sendspin 3.x frames. One-time tickets prevent arbitrary use of this bridge.'''
+new_comment = '''// Music Assistant Sendspin proxy. TVs connect only to Classroom Control Hub.
+// Classroom Control Hub opens Music Assistant's dedicated local Sendspin endpoint
+// (normally ws://MA-HOST:8927/sendspin) and transparently relays protocol frames.
+// The Hub's one-time display ticket gates access to this bridge. The long-lived
+// Music Assistant API token remains server-side for the separate control API.'''
+if old_comment in s:
+    s = s.replace(old_comment, new_comment, 1)
+
 p.write_text(s)
-print('Patched Music Assistant Sendspin proxy to dedicated port 8927 transport')
+print("Patched Music Assistant Sendspin proxy to dedicated port 8927 transport")
