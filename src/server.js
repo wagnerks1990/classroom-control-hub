@@ -1,6 +1,7 @@
 "use strict";
 
 const express = require("express");
+const {serviceUrl, serviceHost, validPort, localHttpUrl} = require("./network");
 const http = require("http");
 const fs = require("fs");
 const os = require("os");
@@ -25,14 +26,16 @@ const {defaultSchoolScheduleProfile,legacySchoolScheduleProfile,normalizeSchoolS
 // Configuration
 // -----------------------------------------------------------------------------
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = validPort(process.env.PORT, 3000);
+const BIND_ADDRESS = String(process.env.BIND_ADDRESS || "0.0.0.0").replace(/^\[|\]$/g, "");
+localHttpUrl(PORT, BIND_ADDRESS); // Validate before opening listeners.
 let SCHEDULER_TIMEZONE = String(process.env.SCHEDULER_TIMEZONE || process.env.TZ || "America/New_York").trim() || "America/New_York";
 const SCHEDULER_CATCHUP_MINUTES = Math.max(0, Math.min(60, Number(process.env.SCHEDULER_CATCHUP_MINUTES || 5)));
 process.env.TZ = SCHEDULER_TIMEZONE;
 const ROOM_NAME = String(process.env.ROOM_NAME || "Classroom");
 const APPLICATION_VERSION = applicationVersion();
 
-let MQTT_URL = String(process.env.MQTT_URL || "").trim();
+let MQTT_URL = serviceUrl(process.env.MQTT_URL || "", ["mosquitto"]).trim();
 let MQTT_USERNAME = String(process.env.MQTT_USERNAME || "");
 let MQTT_PASSWORD = String(process.env.MQTT_PASSWORD || "");
 let MQTT_LEGACY_BRIDGE =
@@ -51,7 +54,7 @@ const SETUP_TOKEN = String(process.env.SETUP_TOKEN || "");
 const MAINTENANCE_PROXY_ENABLED = String(process.env.MAINTENANCE_PROXY_ENABLED || "false").toLowerCase() === "true";
 const CORS_ALLOWED_ORIGINS = new Set(String(process.env.CORS_ALLOWED_ORIGINS || "").split(",").map(x=>x.trim()).filter(Boolean));
 const WS_MAX_PAYLOAD_BYTES = Math.max(1024*1024,Math.min(16*1024*1024,Number(process.env.WS_MAX_PAYLOAD_MB||12)*1024*1024));
-const MAINTENANCE_URL = String(process.env.MAINTENANCE_URL || "http://maintenance-agent:3010").replace(/\/$/,"");
+const MAINTENANCE_URL = serviceUrl(process.env.MAINTENANCE_URL || "http://127.0.0.1:3010", ["maintenance-agent", "classroom-control-hub-maintenance"]).replace(/\/$/,"");
 const MAINTENANCE_TOKEN = String(process.env.MAINTENANCE_TOKEN || "");
 const TRUST_PROXY_HOPS = Math.max(0, Math.min(5, Number(process.env.TRUST_PROXY_HOPS || 1)));
 const LOGIN_MAX_ATTEMPTS = Math.max(3, Math.min(20, Number(process.env.LOGIN_MAX_ATTEMPTS || 5)));
@@ -59,7 +62,7 @@ const LOGIN_WINDOW_MS = Math.max(60000, Number(process.env.LOGIN_WINDOW_MS || 15
 const LOGIN_LOCK_MS = Math.max(60000, Number(process.env.LOGIN_LOCK_MS || 15 * 60 * 1000));
 
 // Veyon becomes the lab-computer control plane in v0.20.0.
-let VEYON_WEBAPI_URL = String(process.env.VEYON_WEBAPI_URL || "http://host.docker.internal:11080").replace(/\/$/,"");
+let VEYON_WEBAPI_URL = serviceUrl(process.env.VEYON_WEBAPI_URL || "http://127.0.0.1:11080", ["veyon-webapi"]).replace(/\/$/,"");
 let VEYON_KEY_NAME = String(process.env.VEYON_KEY_NAME || "ClassroomControlHub");
 const VEYON_PRIVATE_KEY_FILE = String(process.env.VEYON_PRIVATE_KEY_FILE || "/run/secrets/veyon-private-key");
 let VEYON_SCAN_SUBNET = String(process.env.VEYON_SCAN_SUBNET || "").replace(/\.$/,"");
@@ -201,9 +204,9 @@ function normalizedIntegrationConnections(value={},fallback={}){
   if(scanSubnet&&(subnetParts.length!==3||subnetParts.some(x=>!/^\d{1,3}$/.test(x)||Number(x)>255)))throw Error("Veyon scan subnet must contain the first three IPv4 octets, for example 192.168.40");
   const scanStart=boundedNumber(veyonValue.scanStart,Number(veyonFallback.scanStart)||1,1,254);
   return {
-    mqtt:{url:validMqttEndpoint(mqttValue.url??mqttFallback.url??""),username:String(mqttValue.username??mqttFallback.username??"").trim(),jsonBridge:mqttValue.jsonBridge??mqttFallback.jsonBridge??true,legacyBridge:mqttValue.legacyBridge??mqttFallback.legacyBridge??true},
+    mqtt:{url:validMqttEndpoint(serviceUrl(mqttValue.url??mqttFallback.url??"", ["mosquitto"])),username:String(mqttValue.username??mqttFallback.username??"").trim(),jsonBridge:mqttValue.jsonBridge??mqttFallback.jsonBridge??true,legacyBridge:mqttValue.legacyBridge??mqttFallback.legacyBridge??true},
     pluto:{url:validHttpEndpoint(plutoValue.url??plutoFallback.url??"","Pluto endpoint"),timeoutMs:boundedNumber(plutoValue.timeoutMs,Number(plutoFallback.timeoutMs)||4000,500,30000),readRetries:boundedNumber(plutoValue.readRetries,Number(plutoFallback.readRetries)||4,0,10)},
-    veyon:{url:validHttpEndpoint(veyonValue.url??veyonFallback.url??"http://host.docker.internal:11080","Veyon WebAPI endpoint",{allowBlank:false}),keyName:String(veyonValue.keyName??veyonFallback.keyName??"ClassroomControlHub").trim()||"ClassroomControlHub",scanSubnet,scanStart,scanEnd:boundedNumber(veyonValue.scanEnd,Number(veyonFallback.scanEnd)||254,scanStart,254),poolMax:boundedNumber(veyonValue.poolMax,Number(veyonFallback.poolMax)||24,4,128),authRetries:boundedNumber(veyonValue.authRetries,Number(veyonFallback.authRetries)||2,0,5),thumbnailConcurrency:boundedNumber(veyonValue.thumbnailConcurrency,Number(veyonFallback.thumbnailConcurrency)||8,2,24)}
+    veyon:{url:validHttpEndpoint(serviceUrl(veyonValue.url??veyonFallback.url??"http://127.0.0.1:11080", ["veyon-webapi"]),"Veyon WebAPI endpoint",{allowBlank:false}),keyName:String(veyonValue.keyName??veyonFallback.keyName??"ClassroomControlHub").trim()||"ClassroomControlHub",scanSubnet,scanStart,scanEnd:boundedNumber(veyonValue.scanEnd,Number(veyonFallback.scanEnd)||254,scanStart,254),poolMax:boundedNumber(veyonValue.poolMax,Number(veyonFallback.poolMax)||24,4,128),authRetries:boundedNumber(veyonValue.authRetries,Number(veyonFallback.authRetries)||2,0,5),thumbnailConcurrency:boundedNumber(veyonValue.thumbnailConcurrency,Number(veyonFallback.thumbnailConcurrency)||8,2,24)}
   };
 }
 function currentIntegrationConnections(){return {mqtt:{url:MQTT_URL,username:MQTT_USERNAME,jsonBridge:MQTT_JSON_BRIDGE,legacyBridge:MQTT_LEGACY_BRIDGE},pluto:{url:PLUTO_URL,timeoutMs:PLUTO_TIMEOUT_MS,readRetries:PLUTO_READ_RETRIES},veyon:{url:VEYON_WEBAPI_URL,keyName:VEYON_KEY_NAME,scanSubnet:VEYON_SCAN_SUBNET,scanStart:VEYON_SCAN_START,scanEnd:VEYON_SCAN_END,poolMax:VEYON_POOL_MAX,authRetries:VEYON_AUTH_RETRIES,thumbnailConcurrency:VEYON_THUMBNAIL_CONCURRENCY}}}
@@ -5105,7 +5108,7 @@ app.delete("/api/v1/admin/access-profiles/:id",requireAdmin,(req,res)=>{try{dbSt
 
 // Music Assistant integration - server-side token proxy. The long-lived MA token is
 // encrypted in Classroom Control Hub and is never returned to controller browsers.
-function musicAssistantConfig(){const p=dbStore.getPreference("musicassistant.config",{})||{};const url=String(p.url||process.env.MUSIC_ASSISTANT_URL||"http://host.docker.internal:8095").replace(/\/$/,"");let host="host.docker.internal";try{host=new URL(url).hostname||host}catch{};return {url,tvBridgeEnabled:p.tvBridgeEnabled!==false,sendspinHost:String(p.sendspinHost||host),sendspinPort:Number(p.sendspinPort||8927)}}
+function musicAssistantConfig(){const p=dbStore.getPreference("musicassistant.config",{})||{};const url=serviceUrl(p.url||process.env.MUSIC_ASSISTANT_URL||"http://127.0.0.1:8095", ["music-assistant", "music-assistant-server"]).replace(/\/$/,"");let host="127.0.0.1";try{host=new URL(url).hostname||host}catch{};return {url,tvBridgeEnabled:p.tvBridgeEnabled!==false,sendspinHost:serviceHost(p.sendspinHost||host,["music-assistant","music-assistant-server"]),sendspinPort:Number(p.sendspinPort||8927)}}
 function musicAssistantToken(){try{return String(dbStore.getSecret("musicassistant.token")||"")}catch{return ""}}
 
 const MUSIC_ASSISTANT_TV_DEFAULT_VOLUME=20;
@@ -6963,8 +6966,8 @@ try{
   if(result.imported)console.log(`Imported ${result.imported} legacy audit events into SQLite`);
 }catch(err){console.warn(`Legacy audit migration skipped: ${err.message}`)}
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Classroom Control Hub Backend v${APPLICATION_VERSION} listening on http://0.0.0.0:${PORT}`);
+server.listen(PORT, BIND_ADDRESS, () => {
+  console.log(`Classroom Control Hub Backend v${APPLICATION_VERSION} listening on ${BIND_ADDRESS}:${PORT}`);
   console.log(`Scheduler timezone: ${SCHEDULER_TIMEZONE}; local time: ${schedulerLocalTimestamp()}; catch-up: ${SCHEDULER_CATCHUP_MINUTES} minute(s)`);
   console.log(`Room: ${deviceConfig.room || ROOM_NAME}`);
   console.log(`MQTT: ${MQTT_URL || "disabled"}`);

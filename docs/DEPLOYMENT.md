@@ -1,5 +1,9 @@
 # Deployment
 
+## Host-network deployment contract
+
+The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
+
 ## Current deployment model
 
 Classroom Control Hub currently runs as a direct HTTP appliance. HTTPS/TLS and the previous Caddy gateway are intentionally deferred while the deployment/update path is stabilized.
@@ -14,7 +18,7 @@ Ubuntu host
     └── classroom-control-hub-maintenance
 ```
 
-The main application publishes TCP port `3000` directly. The default is:
+The main application binds host TCP port `3000` directly (no Docker port publishing). The default is:
 
 ```text
 HUB_BIND_ADDRESS=0.0.0.0

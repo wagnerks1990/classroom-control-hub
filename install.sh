@@ -120,7 +120,7 @@ set_env_path HOST_SERVICES_DIR "$SERVICES"
 set_env_path HOST_BACKUP_DIR "$BACKUP_ROOT"
 sed -i '/^HUB_TLS_HOST=/d;/^HUB_HTTPS_PORT=/d;/^HUB_HTTP_PORT=/d' "$TARGET/.env"
 CURRENT_BIND="$(sed -n 's/^HUB_BIND_ADDRESS=//p' "$TARGET/.env" | tail -n 1)"
-if [[ -z "$CURRENT_BIND" || "$CURRENT_BIND" == "127.0.0.1" ]]; then set_env_path HUB_BIND_ADDRESS "0.0.0.0"; fi
+if [[ -z "$CURRENT_BIND" ]]; then set_env_path HUB_BIND_ADDRESS "0.0.0.0"; fi
 set_env_path TRUST_PROXY_HOPS "0"
 
 # Alpha.70 could leave two SQLite database names on disk. Preserve the explicitly
@@ -239,38 +239,40 @@ MIN_FREE_GB="${CLASSROOM_HUB_MIN_FREE_GB:-4}"
 AVAILABLE_KB="$(df -Pk "$TARGET" | awk 'NR==2 {print $4}')"
 (( AVAILABLE_KB >= MIN_FREE_GB * 1024 * 1024 )) || fail "at least ${MIN_FREE_GB} GiB free is required beneath $TARGET"
 echo "Validating source for $EXPECTED_VERSION ..."
-docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/server.js
-docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/storage.js
-docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/startup-recovery.js
-docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check maintenance-agent/server.js
-docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check maintenance-agent/extensions.js
-docker run --rm -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node tools/validate-controller.js public/controller/index.html
+docker run --rm --network host -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/server.js
+docker run --rm --network host -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/storage.js
+docker run --rm --network host -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check src/startup-recovery.js
+docker run --rm --network host -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check maintenance-agent/server.js
+docker run --rm --network host -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node --check maintenance-agent/extensions.js
+docker run --rm --network host -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node tools/validate-controller.js public/controller/index.html
 python3 -m py_compile host-agent/server.py host-agent/start.py
 
-echo "Building Classroom Control Hub appliance components ..."
+echo "Validating host-network listeners and building appliance components ..."
+docker compose config --format json | python3 tools/validate-host-network.py
 docker compose build classroom-hub maintenance-agent
 
 echo "Starting maintenance layer ..."
 docker compose up -d --force-recreate maintenance-agent
 for _ in $(seq 1 30); do
-  if docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(j=>{if(!j.ok)process.exit(2)})" >/dev/null 2>&1; then break; fi
+  if docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(j=>{if(!j.ok)process.exit(2)})" >/dev/null 2>&1; then break; fi
   sleep 1
 done
-docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok){console.error(JSON.stringify(j));process.exit(1)}})" || { echo "Maintenance-to-Host-Agent verification failed." >&2; exit 1; }
+docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok){console.error(JSON.stringify(j));process.exit(1)}})" || { echo "Maintenance-to-Host-Agent verification failed." >&2; exit 1; }
 
 echo "Starting Classroom Control Hub backend (HTTP) ..."
 docker compose up -d --force-recreate --remove-orphans classroom-hub
 docker rm -f classroom-control-hub-tls >/dev/null 2>&1 || true
 
+HUB_HEALTH_URL="$(docker compose exec -T classroom-hub node -p "require('./src/network').localHttpUrl(process.env.PORT,process.env.BIND_ADDRESS)+'/health'")"
 echo "Waiting for Classroom Control Hub health ..."
 for _ in $(seq 1 90); do
-  if curl -fsS "http://127.0.0.1:${HUB_PORT_VALUE}/health" >/dev/null 2>&1; then break; fi
+  if curl -fsS "$HUB_HEALTH_URL" >/dev/null 2>&1; then break; fi
   sleep 2
 done
 
-MAIN_VERSION="$(curl -fsS "http://127.0.0.1:${HUB_PORT_VALUE}/health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))')" || { echo "Health check failed. Previous files are retained at $BACKUP" >&2; exit 1; }
-MAINT_VERSION="$(docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>console.log(j.version||''))")"
-HOST_VERSION="$(docker compose exec -T maintenance-agent node -e "fetch('http://localhost:3010/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>console.log(j.version||''))")"
+MAIN_VERSION="$(curl -fsS "$HUB_HEALTH_URL" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))')" || { echo "Health check failed. Previous files are retained at $BACKUP" >&2; exit 1; }
+MAINT_VERSION="$(docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>console.log(j.version||''))")"
+HOST_VERSION="$(docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>console.log(j.version||''))")"
 if [[ "$MAIN_VERSION" != "$EXPECTED_VERSION" || "$MAINT_VERSION" != "$EXPECTED_VERSION" || "$HOST_VERSION" != "$EXPECTED_VERSION" ]]; then
   echo "Version convergence failed: expected=$EXPECTED_VERSION backend=$MAIN_VERSION maintenance=$MAINT_VERSION host-agent=$HOST_VERSION" >&2
   exit 1

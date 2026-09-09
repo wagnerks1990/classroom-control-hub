@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Host-network migration
+
+- Use host networking for both core containers and all reviewed managed add-on deployment templates; remove bridge DNS, host-gateway and port-publishing dependencies.
+- Keep maintenance bound to loopback with a configurable port; preserve Hub bind/port settings and verify effective listeners during installation and updates.
+- Resolve exact legacy local integration aliases without rewriting remote endpoints or secrets; fix browser links and display network modes/migration warnings in the controller.
+- Map custom Mosquitto/Node-RED ports to actual service listeners. Require host mode in Host Agent container creation policy and preserve non-destructive adoption.
+- Add regression tests, host-network preflight, real-container networking smoke tests with a fake native-agent fixture, and synchronized operational/wiki/AI documentation.
+
 ## 1.0.0-alpha.71 - 2026-09-08
 
 ### Added

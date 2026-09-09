@@ -3,6 +3,7 @@
 // Alpha.71+ extension layer. It wraps the established maintenance module routes
 // without replacing backup/restore/update code in server.js.
 const express=require("express");
+const {mainAppUrl, serviceHost, validPort} = require("./network");
 const http=require("http");
 const fs=require("fs");
 const path=require("path");
@@ -10,10 +11,10 @@ const crypto=require("crypto");
 
 const TOKEN=String(process.env.MAINTENANCE_TOKEN||"");
 const HOST_AGENT_SOCKET=String(process.env.HOST_AGENT_SOCKET||"/run/classroom-control-hub/host-agent.sock");
-const MAIN_APP_URL=String(process.env.MAIN_APP_URL||"http://classroom-hub:3000").replace(/\/$/,"");
+const MAIN_APP_URL=mainAppUrl();
 const SERVICES_ROOT=path.resolve(process.env.MANAGED_SERVICES_ROOT||"/managed/services");
-const NATIVE_VEYON_URL="http://host.docker.internal:11080";
-const MUSIC_ASSISTANT_URL="http://host.docker.internal:8095";
+const NATIVE_VEYON_URL="http://127.0.0.1:11080";
+const MUSIC_ASSISTANT_URL="http://127.0.0.1:8095";
 
 const ADDONS={
   mosquitto:{id:"mosquitto",name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:latest",dataRoot:"mosquitto",description:"MQTT broker used by Classroom Control Hub integrations."},
@@ -76,24 +77,25 @@ async function deployAddon(id,settings={},recreate=false){
   let resolved=settings||{};
   if(id!=="musicassistant"){const saved=await mainAppPut(id,settings);resolved=saved.resolved||resolved}
   if(exists&&!recreate)return {ok:true,id,adopted:true,managed:true,container:addon.container,image:addon.image,message:"Existing container adopted by Classroom Control Hub without recreation."};
-  if(exists)await hostAgentRequest(["rm","-f",addon.container],30000);
-  let args=["run","-d","--name",addon.container,"--restart","unless-stopped"];
+  let args=["run","-d","--network","host","--name",addon.container,"--restart","unless-stopped"];
   if(id==="mosquitto"){
     const username=String(resolved.username||settings.username||"classroom-hub").replace(/[^A-Za-z0-9._-]/g,"");
     const password=String(resolved.password||settings.password||"");
     if(!username||password.length<16)throw Error("Mosquitto deployment requires a username and password of at least 16 characters.");
+    const port=validPort(resolved.port??settings.port,1883);
     const base=managedPath("mosquitto"),config=path.join(base,"config"),data=path.join(base,"data"),log=path.join(base,"log");for(const dir of [config,data,log])fs.mkdirSync(dir,{recursive:true,mode:0o750});
     const salt=crypto.randomBytes(12),hash=crypto.pbkdf2Sync(password,salt,101,64,"sha512");
     fs.writeFileSync(path.join(config,"passwords"),`${username}:$7$101$${salt.toString("base64").replace(/=+$/g,"")}$${hash.toString("base64").replace(/=+$/g,"")}\n`,{mode:0o600});
-    fs.writeFileSync(path.join(config,"mosquitto.conf"),"persistence true\npersistence_location /mosquitto/data/\nlog_dest stdout\nlistener 1883\nallow_anonymous false\npassword_file /mosquitto/config/passwords\n",{mode:0o600});
-    args.push("-p",`${cleanPort(resolved.port||settings.port,1883)}:1883`,`-v`,`${config}:/mosquitto/config`,`-v`,`${data}:/mosquitto/data`,`-v`,`${log}:/mosquitto/log`);
+    fs.writeFileSync(path.join(config,"mosquitto.conf"),`persistence true\npersistence_location /mosquitto/data/\nlog_dest stdout\nlistener ${port}\nallow_anonymous false\npassword_file /mosquitto/config/passwords\n`,{mode:0o600});
+    args.push(`-v`,`${config}:/mosquitto/config`,`-v`,`${data}:/mosquitto/data`,`-v`,`${log}:/mosquitto/log`);
   }else if(id==="govee2mqtt"){
-    args.push("--network","host","-e",`GOVEE_MQTT_HOST=${resolved.mqttHost||settings.mqttHost||"127.0.0.1"}`,"-e",`GOVEE_MQTT_PORT=${cleanPort(resolved.mqttPort||settings.mqttPort,1883)}`,"-e",`TZ=${resolved.timezone||settings.timezone||process.env.TZ||"UTC"}`);
+    args.push("-e",`GOVEE_MQTT_HOST=${serviceHost(resolved.mqttHost||settings.mqttHost||"127.0.0.1",["mosquitto"],"host")}`,"-e",`GOVEE_MQTT_PORT=${cleanPort(resolved.mqttPort||settings.mqttPort,1883)}`,"-e",`TZ=${resolved.timezone||settings.timezone||process.env.TZ||"UTC"}`);
     for(const [env,key] of [["GOVEE_MQTT_USER","mqttUsername"],["GOVEE_MQTT_PASSWORD","mqttPassword"],["GOVEE_API_KEY","apiKey"],["GOVEE_EMAIL","email"],["GOVEE_PASSWORD","password"]]){const value=resolved[key]||settings[key];if(value)args.push("-e",`${env}=${value}`)}
   }else if(id==="musicassistant"){
-    const base=managedPath("music-assistant");args.push("--network","host","-v",`${base}:/data`,`-e`,`LOG_LEVEL=${String(settings.logLevel||"info")}`);
+    const base=managedPath("music-assistant");args.push("-v",`${base}:/data`,`-e`,`LOG_LEVEL=${String(settings.logLevel||"info")}`);
   }
   args.push(addon.image);
+  if(exists)await hostAgentRequest(["rm","-f",addon.container],30000);
   const result=await hostAgentRequest(args,180000);
   if(id==="musicassistant"){
     await mainAppPut("musicassistant",{url:cleanUrl(settings.url,MUSIC_ASSISTANT_URL),logLevel:String(settings.logLevel||"info")});
@@ -124,7 +126,7 @@ async function augmentModules(body){
   if(maCurrent&&maCurrent.state!=="not-installed")Object.assign(maCurrent,{configured:ma.configured===true&&ma.online===true,setupRequired:ma.configured!==true||ma.online!==true,health:ma.online?"authenticated":"authentication-required",uiUrl:ma.url||MUSIC_ASSISTANT_URL,configurationMessage:ma.online?`Music Assistant authenticated; ${ma.players?.length||0} player(s) discovered.`:(ma.configured?`Authentication failed: ${ma.error||"token rejected"}`:"Long-lived access token required before this integration is usable.")});
   if(native.installed){
     const current=byId.get("veyonwebapi"),stored=managed.integrations?.modules?.veyonwebapi||{},probe=await veyonComputers(),summary=probe.summary||{};
-    Object.assign(current,{state:native.webapi?.active==="active"?"running":"installed",health:probe.ok?(summary.authenticated>0?"ready":"reachable-needs-authentication"):(native.webapi?.active||"installed"),configured:true,management:"host-managed",hostManaged:true,nativeService:"veyon-webapi.service",companionService:native.service?.name||null,endpoint:stored.url||NATIVE_VEYON_URL,externalOnly:false,canDeploy:true,canRemove:false,image:null,veyonSummary:summary,description:"Native Veyon WebAPI service discovered on the appliance host. Configure Veyon authentication, computer discovery and optional endpoint deployment credentials here; the host service itself is not recreated or removed."});
+    Object.assign(current,{state:native.webapi?.active==="active"?"running":"installed",health:probe.ok?(summary.authenticated>0?"ready":"reachable-needs-authentication"):(native.webapi?.active||"installed"),configured:true,management:"host-managed",hostManaged:true,nativeService:"veyon-webapi.service",companionService:native.service?.name||null,networkMode:"native-host",networkMigrationRequired:false,endpoint:stored.url||NATIVE_VEYON_URL,externalOnly:false,canDeploy:true,canRemove:false,image:null,veyonSummary:summary,description:"Native Veyon WebAPI service discovered on the appliance host. Configure Veyon authentication, computer discovery and optional endpoint deployment credentials here; the host service itself is not recreated or removed."});
   }
   return body;
 }

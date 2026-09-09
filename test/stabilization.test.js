@@ -438,7 +438,7 @@ test("verified application updater has a durable host job and GUI rollback contr
   assert.match(runner,/git fetch --force --prune --tags origin/);
   assert.match(runner,/Only semantic-version release tags are accepted/);
   assert.match(runner,/merge-base --is-ancestor/);
-  assert.match(runner,/docker compose port classroom-hub 3000/);
+  assert.match(runner,/docker compose exec -T classroom-hub node -e/);
   assert.match(runner,/restore_safety_backup/);
   assert.match(controller,/Revert Last Upgrade/);
   assert.match(controller,/Automatically install approved releases/);

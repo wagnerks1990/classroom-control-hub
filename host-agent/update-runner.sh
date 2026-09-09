@@ -33,9 +33,6 @@ write_state verifying "Verifying package database and Classroom Control Hub heal
 dpkg --audit
 apt-get check
 cd "$HUB_ROOT"
-published_port="$(docker compose port classroom-hub 3000 2>/dev/null | tail -n 1 | sed 's/.*://' || true)"
-if [[ ! "$published_port" =~ ^[0-9]+$ ]] && [[ -f .env ]]; then published_port="$(sed -n 's/^[[:space:]]*HUB_PORT[[:space:]]*=[[:space:]]*//p' .env | tail -n 1 | tr -d '\r' | tr -d "\"'")"; fi
-[[ "$published_port" =~ ^[0-9]+$ ]] || published_port=3000
-curl -fsS --max-time 15 "http://127.0.0.1:${published_port}/health" >/dev/null
+docker compose exec -T classroom-hub node -e "const port=Number(process.env.PORT||3000);let host=process.env.BIND_ADDRESS||'127.0.0.1';if(host==='0.0.0.0')host='127.0.0.1';if(host==='::'||host==='[::]')host='[::1]';if(host.includes(':')&&!host.startsWith('['))host='['+host+']';fetch('http://'+host+':'+port+'/health',{signal:AbortSignal.timeout(10000)}).then(async r=>{const j=await r.json();if(!r.ok||!j.ok||(process.argv[1]&&j.version!==process.argv[1]))process.exit(1)}).catch(()=>process.exit(1))" >/dev/null
 write_state completed "Host update completed successfully." true
 trap - EXIT

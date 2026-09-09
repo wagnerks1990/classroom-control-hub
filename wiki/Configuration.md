@@ -1,5 +1,7 @@
 # Configuration
 
+See [Host Networking](Host-Networking) for the current Linux container topology, loopback-only maintenance API, explicit add-on migration, listener ports and recovery rules.
+
 Classroom Control Hub keeps public source generic while each installation supplies school-specific settings at runtime.
 
 ## Configuration layers
@@ -77,7 +79,7 @@ Managed Mosquitto stores configuration, persistence data, and logs beneath the s
 Bootstrap/migration fallbacks:
 
 ```env
-MQTT_URL=mqtt://host.docker.internal:1883
+MQTT_URL=mqtt://127.0.0.1:1883
 MQTT_USERNAME=
 MQTT_PASSWORD=
 ```
@@ -93,7 +95,7 @@ Existing Music Assistant containers can be adopted without recreation. A Hub-man
 Application fallback:
 
 ```env
-MUSIC_ASSISTANT_URL=http://host.docker.internal:8095
+MUSIC_ASSISTANT_URL=http://127.0.0.1:8095
 ```
 
 ### Veyon WebAPI
@@ -101,7 +103,7 @@ MUSIC_ASSISTANT_URL=http://host.docker.internal:8095
 Veyon can use an already-running WebAPI service/container or the supported proxy add-on. Configure the application endpoint, key name, scan subnet/range, pool limits, and encrypted private key under **Settings → Integrations & Hardware**.
 
 ```env
-VEYON_WEBAPI_URL=http://host.docker.internal:11080
+VEYON_WEBAPI_URL=http://127.0.0.1:11080
 VEYON_KEY_NAME=ClassroomControlHub
 VEYON_SCAN_SUBNET=
 ```

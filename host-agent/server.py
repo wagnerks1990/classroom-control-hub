@@ -142,6 +142,10 @@ def allowed_managed_path(value):
     return resolved==SERVICES_ROOT or SERVICES_ROOT in resolved.parents or resolved==HUB_ROOT or HUB_ROOT in resolved.parents
 
 def validate_docker_run(args):
+    if args.count('--network') != 1 or args[args.index('--network')+1:args.index('--network')+2] != ['host']:
+        raise RuntimeError('Managed integrations require exactly one --network host option')
+    if any(x in ('-p', '--publish', '-P', '--publish-all') for x in args):
+        raise RuntimeError('Published ports are not supported with host networking; configure the application listener')
     if args[-1] not in MANAGED_IMAGES: raise RuntimeError('Integration image is not pinned or allowlisted')
     i=1
     while i < len(args)-1:
