@@ -61,7 +61,7 @@ A Git update must preserve them.
 
 The shared `data/` root is intentionally root-owned with group `10001` access so both the non-root application and hardened maintenance container can traverse it. Application-owned files remain UID/GID `10001:10001`; `data/backups` is maintained by the maintenance layer. Do not reintroduce code that chmods the entire shared data root to `0700`.
 
-The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades from older installations must preserve `/etc/classroom-hub/master.key` by migrating it rather than silently generating a replacement.
+The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades from older installations must preserve `/etc/classroom-control-hub/master.key` by migrating it rather than silently generating a replacement.
 
 ## Current known-good baseline
 
@@ -143,6 +143,12 @@ Major integrations include MQTT/Govee, Pluto Mark I, Music Assistant / Sendspin,
 Integration health must be independent. A Pluto failure must not make MQTT/Govee appear offline. Optional/slow hardware probes should run asynchronously and must not block the Overview screen.
 
 Music Assistant managed Docker deployment uses host networking so local multicast discovery works and keeps its persistent `/data` outside the container. Veyon WebAPI may be adopted as an existing container/service or deployed using the supported proxy template where appropriate.
+
+### Music Assistant / Sendspin validated transport
+
+Treat Music Assistant control and Sendspin audio as separate transports. The Music Assistant API/web service remains on port 8095. Classroom Hub display audio is bridged by the Hub backend to Music Assistant's dedicated external Sendspin endpoint, normally `ws://<music-assistant-host>:8927/sendspin`. Do not append `/sendspin` to the port-8095 API URL for Classroom Hub players and do not send the 8095 web-player authentication preamble to port 8927.
+
+The accepted live-test topology was validated on 2026-09-09 with Music Assistant 2.9.13 and a Windows 11 kiosk: `classroom-hub-tv1` registered and Background Music played continuously without the prior replacement/disconnect loop. If `PlayerUnavailableError` occurs, first verify that the intended TV is attached/enabled before changing transport code. HTTP/insecure-context Opus fallback to FLAC/PCM and browser AudioContext/autoplay behavior are separate from Sendspin connection health. See `docs/MUSIC-ASSISTANT-SENDSPIN.md`.
 
 ## Production configuration
 
