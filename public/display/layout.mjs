@@ -1,10 +1,10 @@
 // One owner for title, subtitle, body, timer geometry and fitted font sizes.
 // All measurements are untransformed CSS layout pixels on the 1920x1080 stage.
-export const LAYOUT_REVISION = 'single-fit-20260909-3';
+export const LAYOUT_REVISION = 'single-fit-20260909-4';
 export const FONT_CAPS = Object.freeze({title:118, subtitle:82, body:120, timer:132});
 // Auto-fit may improve readability slightly, but configured scene sizes remain the
-// visual baseline. The prior renderer jumped straight to the global caps and made
-// ordinary classroom scenes enormous. Keep growth modest and always shrink to fit.
+// visual baseline. The renderer may always shrink below that preference to keep
+// every rendered glyph inside its assigned region.
 export const AUTO_GROW_FACTOR = 1.10;
 const READABLE_MIN = 12;
 const finite = (value, fallback) => value == null || value === '' || !Number.isFinite(Number(value)) ? fallback : Number(value);
@@ -14,8 +14,6 @@ function autoCap(value, fallback, globalCap) {
   return Math.min(globalCap, configured * AUTO_GROW_FACTOR);
 }
 
-// Probe the real, unconstrained child. Padding is already included in scroll
-// dimensions; the parent's padding (not the child's) reduces the available area.
 function available(box) {
   const s = getComputedStyle(box);
   return {
@@ -23,16 +21,33 @@ function available(box) {
     height: box.clientHeight - parseFloat(s.paddingTop || 0) - parseFloat(s.paddingBottom || 0)
   };
 }
+function renderedContained(el, box) {
+  const br = box.getBoundingClientRect();
+  const tolerance = 0.75;
+  const inside = r => r.left >= br.left - tolerance && r.top >= br.top - tolerance &&
+    r.right <= br.right + tolerance && r.bottom <= br.bottom + tolerance;
+  const er = el.getBoundingClientRect();
+  if (!inside(er)) return false;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    if (!walker.currentNode.textContent || !walker.currentNode.textContent.trim()) continue;
+    const range = document.createRange();
+    range.selectNodeContents(walker.currentNode);
+    for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0 && !inside(r)) return false;
+  }
+  return true;
+}
 export function fits(el, box) {
   const a = available(box);
   return a.width > 0 && a.height > 0 &&
     Math.max(el.scrollWidth, el.offsetWidth) <= a.width + 0.5 &&
-    Math.max(el.scrollHeight, el.offsetHeight) <= a.height + 0.5;
+    Math.max(el.scrollHeight, el.offsetHeight) <= a.height + 0.5 &&
+    renderedContained(el, box);
 }
 
-// No await, animation, or observer runs inside this search: the browser paints
-// only the final result. Natural-height, non-shrinking children avoid false
-// positives caused by max-height/overflow clipping and flex compression.
+// Binary-search the largest usable size, then validate the actual painted text.
+// Scroll dimensions alone are insufficient on some Chromium/TV WebView builds:
+// glyph ascent/descent and preserved whitespace can paint beyond the measured box.
 export function fitElement(el, box, cap) {
   cap = bounded(cap, 64, 1, 2000);
   el.style.transform = '';
@@ -47,18 +62,31 @@ export function fitElement(el, box, cap) {
     el.style.fontSize = `${mid / 4}px`;
     if (fits(el, box)) { best = mid; low = mid + 1; } else { high = mid - 1; }
   }
-  const fontSize = best / 4;
+  let fontSize = best / 4;
   el.style.fontSize = `${fontSize}px`;
+
+  // Hard containment fallback. Quarter-pixel search can still land on a browser
+  // rounding boundary; walk downward until the painted text is unquestionably
+  // contained. A configured font size never overrides this invariant.
+  let guard = 0;
+  while (!fits(el, box) && fontSize > 1 && guard++ < 256) {
+    fontSize = Math.max(1, fontSize - 0.25);
+    el.style.fontSize = `${fontSize}px`;
+  }
+
   let scale = 1;
   if (!fits(el, box)) {
-    // Pathological content must not silently disappear at a minimum font floor.
-    // Contain the whole block and report the readability warning in diagnostics.
     const a = available(box);
     scale = Math.min(1, a.width / Math.max(1, el.scrollWidth, el.offsetWidth),
-      a.height / Math.max(1, el.scrollHeight, el.offsetHeight)) * 0.995;
+      a.height / Math.max(1, el.scrollHeight, el.offsetHeight)) * 0.99;
     const align = getComputedStyle(box).alignItems;
     el.style.transformOrigin = `center ${align === 'flex-start' ? 'top' : align === 'flex-end' ? 'bottom' : 'center'}`;
     el.style.transform = `scale(${scale})`;
+    // Reduce one final time if transformed paint still touches the region edge.
+    while (!renderedContained(el, box) && scale > 0.05 && guard++ < 512) {
+      scale *= 0.99;
+      el.style.transform = `scale(${scale})`;
+    }
   }
   return {fontSize, scale, status:fontSize * scale < READABLE_MIN ? 'below-readable-minimum' : 'fit'};
 }
@@ -79,9 +107,6 @@ export function createDisplayLayout(nodes, getState) {
   function fitTimer(state) {
     timerRegion.hidden = !state.visible;
     if (!state.visible) return {fontSize:0, scale:1, status:'hidden'};
-    // Measure against a stable timer envelope so countdown/count-up digit changes
-    // never alter body geometry. The overlay itself stays content-sized so the
-    // classic white border wraps the timer instead of spanning the full display.
     const actual = timerValue.textContent;
     timerValue.textContent = '8888888888888:88:88';
     timerOverlay.style.width = 'max-content';
@@ -92,6 +117,8 @@ export function createDisplayLayout(nodes, getState) {
       : autoCap(state.fontSize, 64, FONT_CAPS.timer);
     const result = fitElement(timerOverlay, timerRegion, cap);
     timerValue.textContent = actual;
+    // Revalidate the real timer content after restoring its current digits.
+    if (!fits(timerOverlay, timerRegion)) return fitElement(timerOverlay, timerRegion, result.fontSize);
     return result;
   }
   function geometry(timer) {
@@ -154,7 +181,6 @@ export function createDisplayLayout(nodes, getState) {
     stage.dataset.fontStatus = fontStatus;
     fontsChanged();
   }
-  // Font bytes come from this Hub, not each TV's system-ui font or a CDN.
   const fontTimeout = setTimeout(finishFonts, 3000);
   if (document.fonts) {
     Promise.all([document.fonts.load('16px "Classroom Display"'), document.fonts.load('700 16px "Classroom Display"')])
