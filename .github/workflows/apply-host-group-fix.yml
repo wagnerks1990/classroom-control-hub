@@ -1,0 +1,90 @@
+name: Apply host group installer fix
+on:
+  push:
+    branches: [fix/installer-host-group]
+    paths: [.github/workflows/apply-host-group-fix.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/fix/installer-host-group'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/installer-host-group
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Apply reviewed installer changes and documentation
+        run: |
+          test "$(git hash-object install.sh)" = ed04970e4aefca3732cc62b36ae57e665f15f955
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('install.sh');s=p.read_text()
+          anchor='mkdir -p "$BACKUP_ROOT"\n'
+          assert s.count(anchor)==1
+          insertion='''# Resolve the host-side group before changing data or installing secrets.
+          source "$SOURCE/deploy/host-group.sh"
+          HUB_INSTALL_GROUP="$(ensure_hub_install_group)" || fail "Host group preflight failed"
+          printf 'Using host group: %s (GID 10001)\\n' "$HUB_INSTALL_GROUP"
+
+          '''
+          s=s.replace(anchor,insertion+anchor,1)
+          assert s.count(' -g 10001 ')==3
+          p.write_text(s.replace(' -g 10001 ', ' -g "$HUB_INSTALL_GROUP" '))
+          section='''## Installer stops with invalid group 10001
+
+          The host installer must resolve the application group independently of the Docker image. The reported `install: invalid group: '10001'` occurs at a host-side key/directory installation operation, before the image build and container recreation steps. It is not a Docker-network error. The exact host install implementation must be checked before attributing its numeric-ID behavior to a particular coreutils version.
+
+          `install.sh` now runs `deploy/host-group.sh` before runtime backup/data/secret operations. It queries host GID 10001 through `getent`, reuses its existing group name, or creates the system group `classroom-hub` with exactly GID 10001 when both the ID and name are free. `install` receives the resolved name; numeric file ownership remains unchanged. It does not create a host login account, add members, renumber groups or use `groupadd --force`/`--non-unique`. An occupied name with a different GID, an NSS lookup error, or a failed group creation stops installation. Reusing an existing GID does not validate its membership; administrators must keep host GID 10001 restricted to trusted principals because it can read mounted Hub secrets.
+
+          Recovery: retain the existing source and migration backups, preserve local edits, update the clean main checkout with `git pull --ff-only origin main`, and rerun `sudo bash install.sh`. No source-file workaround or key/database deletion is required for this group-resolution error. Rerunning the installer performs its normal backups and remaining setup; it is not a rollback and it will interrupt the Hub when it reaches container recreation. The earlier partial attempt may already have changed data permissions and canonical database configuration, so do not assume the whole installation was untouched. Never regenerate a populated master key to address this error.
+
+          Inspect `getent group 10001` and `install --version` locally when resolution still fails. On success the installer prints `Using host group: <name> (GID 10001)`. Final acceptance remains the normal version/health checks and `network=host` for both core containers. A successful source pull alone does not establish a successful deployment.
+
+          Regression coverage: `test/installer-host-group.test.js` exercises missing/existing groups, alternate existing names, collisions, lookup/creation failures, idempotence and installer ordering with isolated command mocks. These tests do not mutate the developer machine's account database.
+
+          References: https://manpages.ubuntu.com/manpages/noble/man1/getent.1.html and https://manpages.ubuntu.com/manpages/noble/man8/groupadd.8.html
+
+          '''
+          p=Path('docs/HOST-NETWORKING.md');s=p.read_text();anchor='## Upgrade preflight\n';assert s.count(anchor)==1;p.write_text(s.replace(anchor,section+anchor,1))
+          Path('wiki/Host-Networking.md').write_text(p.read_text())
+          note='''
+          ## Host installer group prerequisite
+
+          Resolve host GID 10001 before backup/data/secret mutation. The group inside the image is not a host group record. Source `deploy/host-group.sh`, reuse an existing GID or create `classroom-hub` only when its name and ID are free, and pass the verified name to `install`. Fail closed on conflicts/lookup errors; never renumber existing groups, add host users to this secret-readable group, or regenerate keys for this error. Keep `test/installer-host-group.test.js` coverage and `docs/HOST-NETWORKING.md` recovery instructions synchronized.
+          '''
+          for name in ['AGENTS.md','docs/AI-CONTEXT.md']:
+              p=Path(name);p.write_text(p.read_text()+note)
+          p=Path('INSTALL.md');p.write_text(p.read_text()+'\n## Host group preflight and partial-install recovery\n\nThe installer now ensures host GID 10001 can be resolved before touching runtime data or secrets. It reuses an existing group or creates `classroom-hub` with the fixed ID, without changing memberships or renumbering groups. See [Host networking and migration](docs/HOST-NETWORKING.md#installer-stops-with-invalid-group-10001) for `install: invalid group` recovery and preserved-key/data requirements.\n')
+          p=Path('CHANGELOG.md');s=p.read_text();anchor='# Changelog\n';assert s.startswith(anchor);p.write_text(s.replace(anchor,anchor+'\n## Unreleased - Host installer group resolution\n\n- Resolve or create the fixed host GID 10001 before data/key installation and pass its group name to `install`; preserve existing numeric ownership and fail on name conflicts or lookup errors. Add isolated regression tests and operational/wiki/AI recovery guidance.\n',1))
+          PY
+      - name: Validate syntax and targeted regressions
+        run: |
+          git diff --check
+          bash -n install.sh
+          bash -n deploy/host-group.sh
+          node --test test/installer-host-group.test.js
+      - name: Verify real host group and restrictive install ownership on the disposable runner
+        run: |
+          sudo bash -Eeuo pipefail <<'BASH'
+          source deploy/host-group.sh
+          first="$(ensure_hub_install_group)"
+          second="$(ensure_hub_install_group)"
+          test "$first" = "$second"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          install -d -m 0750 -o root -g "$first" "$work/veyon"
+          install -m 0640 -o root -g "$first" /dev/null "$work/veyon/private.pem"
+          test "$(stat -c '%u:%g:%a' "$work/veyon")" = 0:10001:750
+          test "$(stat -c '%u:%g:%a' "$work/veyon/private.pem")" = 0:10001:640
+          echo 'Host group resolution, repeated setup and private ownership verified.'
+          BASH
+      - name: Commit scoped changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add install.sh docs/HOST-NETWORKING.md wiki/Host-Networking.md AGENTS.md docs/AI-CONTEXT.md INSTALL.md CHANGELOG.md
+          git commit -m 'fix: preflight host group resolution before installing private keys'
+          git push origin HEAD:refs/heads/fix/installer-host-group
