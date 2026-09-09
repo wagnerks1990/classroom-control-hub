@@ -9,6 +9,7 @@
 // itself remains HMAC-signed, expires normally, and is bound to an enabled
 // configured display ID.
 const { ClassroomHubStorage } = require("./storage");
+const { installDisplayGatewayCompatibility } = require("./display-gateway");
 
 const prototype = ClassroomHubStorage.prototype;
 if (!prototype.__directDisplayPolicyCompatInstalled) {
@@ -49,3 +50,11 @@ if (!prototype.__directDisplayPolicyCompatInstalled) {
     configurable: false
   });
 }
+
+// The preload also installs the Managed Display Gateway before server.js creates
+// its Express application. That keeps the large application server unchanged
+// while giving physical display browsers a same-origin route for approved
+// external sites. DNS overrides are process-local: the Hub itself resolves the
+// configured upstream hostname to the forced address while TLS SNI/Host remain
+// the original hostname.
+installDisplayGatewayCompatibility();
