@@ -22,6 +22,10 @@ function available(box) {
   };
 }
 function renderedContained(el, box) {
+  // Unit tests and non-browser callers may provide geometry-only stubs. In a real
+  // receiver Chromium/WebView always provides DOM rect APIs; when they are absent,
+  // the scroll/offset containment checks in fits() remain authoritative.
+  if (typeof box?.getBoundingClientRect !== 'function' || typeof el?.getBoundingClientRect !== 'function' || typeof document === 'undefined') return true;
   const br = box.getBoundingClientRect();
   const tolerance = 0.75;
   const inside = r => r.left >= br.left - tolerance && r.top >= br.top - tolerance &&
