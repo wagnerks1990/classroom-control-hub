@@ -48,7 +48,7 @@ For dedicated signage devices:
 - **Minimal Mode** reversibly disables third-party packages for user 0 except the Classroom Hub Display Agent;
 - **Restore Apps** re-enables them.
 
-This does not uninstall firmware or remove Android/Google TV core packages. Audit each new hardware family before applying it. See `docs/ANDROID-TV-MINIMAL-MODE.md`.
+This does not uninstall firmware or remove Android/Google TV core packages. Audit each new hardware family before applying it. See `docs/MANAGED-ANDROID-MINIMAL-MODE.md`.
 
 ## Host-network troubleshooting
 
@@ -65,4 +65,4 @@ Both containers use host networking. Classroom Hub's maintenance URL is `http://
 
 Validated on the Onn Android 14 target: pairing, controls, screenshots, shell, APK installation, agent status/configuration, persistent ADB, reboot recovery, automatic reconnect, automatic agent startup and automatic content restoration. HDMI-CEC/panel power and the final audited Minimal Mode package set remain separate validation items.
 
-See `docs/ANDROID-TV-DISPLAYS.md`, `docs/PERSISTENT-ANDROID-ADB.md`, `docs/ANDROID-TV-SUPPORT-MATRIX.md`, and `docs/ANDROID-TV-MINIMAL-MODE.md` for canonical detail.
+See `docs/ANDROID-TV-DISPLAYS.md`, `docs/PERSISTENT-ANDROID-ADB.md`, `docs/ANDROID-TV-SUPPORT-MATRIX.md`, and `docs/MANAGED-ANDROID-MINIMAL-MODE.md` for canonical detail.
