@@ -49,7 +49,7 @@ JSON.stringify(window.ClassroomDisplayDiagnostics(), null, 2)
 
 The report contains renderer revision, CSS viewport, DPR, stage scale, font-load status, layout pass count, fitted logical sizes, region geometry, and containment warnings. It does not expose credentials or the lesson body. Layout telemetry also accompanies receiver heartbeats.
 
-Expected renderer revision: `single-fit-20260909-1`. A source rebuild may still report application alpha.71 because this is not a new tagged release. Use the renderer revision and commit, not just the application version, to distinguish this correction.
+Expected renderer revision: `single-fit-20260909-2`. A source rebuild may still report application alpha.71 because this is not a new tagged release. Use the renderer revision and commit, not just the application version, to distinguish this correction.
 
 Browser regression tests load the real receiver HTML, layout module, CSS, shared scripts, and fonts. Only transport, the branding API, and the unrelated audio SDK are mocked. Chromium and Firefox CI tests cover P6/P7 samples, 1080p/4K, DPR 1/2, 720p, 1082x1226, reload/reconnect, live commands versus replay, colors, timer ticks/expiry/hour changes, timer positions, long labels, style-only changes, clear, manual sizes, long unbroken words, and dense content. They measure element and text-range bounds and check component overlap. Screenshots and measurement JSON are retained as CI artifacts.
 
@@ -68,3 +68,11 @@ For restricted offline development only, `DISPLAY_TEST_INLINE=1` loads identical
 ## Deployment
 
 Take an operational backup, update the source checkout, and rebuild the main `classroom-hub` service so the font assets are packaged. Recreate that service, check health, and reload all receivers. No automation payload edits, database migration, or device re-enrollment is required. Confirm the renderer revision and `fontStatus:ready`, then compare the same state on the actual 1080p and 4K receivers.
+
+## Receiver input safety (PR #27 merge review)
+
+The receiver validates media URLs in `public/display/security.mjs` before touching the DOM. Only HTTP(S) URLs without embedded credentials are allowed; malformed URLs, executable schemes, control characters and excessive nested document viewers are rejected without replacing the current media. Protected same-origin media/presentation paths receive the asset token; external hosts never receive it. External signage frames are sandboxed without same-origin access, top navigation or popup permissions. Sites requiring cookies/storage or popup login may not work in this isolated frame; use a purpose-built embeddable signage URL. Local built-in document/Ant Media viewers retain their existing behavior.
+
+Music Assistant browser connections may use only this Hub's `/music-assistant/sendspin-proxy` WebSocket endpoint, matching its host, port and HTTP/TLS-derived socket scheme, with one 32-character base64url ticket. Reject arbitrary socket hosts, paths, credentials and extra parameters. The final destination is rebuilt from the trusted Hub origin and fixed path.
+
+Identify overlays last 1–30 seconds (8 seconds by default). Repeated identification replaces the previous timeout/frame; clearing the display cancels both. These changes must not trigger another title/subtitle/body/timer layout engine. Unit policy tests and real-browser rejection/lifecycle tests accompany the rendering tests.

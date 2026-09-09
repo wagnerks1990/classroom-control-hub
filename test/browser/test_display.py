@@ -123,7 +123,7 @@ class DisplayBrowserTests(unittest.TestCase):
             css=css.replace('/display/fonts/'+name,'data:font/ttf;base64,'+encoded)
         html=re.sub(r'<link rel="stylesheet" href="/display/layout.css[^"]*">',lambda _: '<style>'+css+'</style>',html)
         html=re.sub(r'<link rel="stylesheet" href="/shared/attribution.css">','',html)
-        loc="{pathname:'/display/tv7',protocol:'http:',host:'127.0.0.1:31337',search:'',hash:'',href:'http://127.0.0.1:31337/display/tv7'}"
+        loc="{pathname:'/display/tv7',protocol:'http:',host:'127.0.0.1:31337',origin:'http://127.0.0.1:31337',search:'',hash:'',href:'http://127.0.0.1:31337/display/tv7'}"
         def shared(match):
             name=match[1]
             source=(ROOT/'public/shared'/name).read_text()
@@ -131,8 +131,9 @@ class DisplayBrowserTests(unittest.TestCase):
         html=re.sub(r'<script src="/shared/(branding.js|attribution.js)[^"]*" defer></script>',shared,html)
         module=(ROOT/'public/display/layout.mjs').read_text().replace('export ','')
         common=(ROOT/'public/shared/common.js').read_text().replace('export ','')
+        security=(ROOT/'public/display/security.mjs').read_text().replace('export ','')
         html=re.sub(r'^import .*?;?$', '', html, flags=re.M)
-        html=html.replace('<script type="module">', '<script type="module">const location='+loc+';'+module+common+';class SendspinPlayer {}')
+        html=html.replace('<script type="module">', '<script type="module">const location='+loc+';'+module+common+security+';class SendspinPlayer {}')
         page.set_content(html,wait_until='load')
 
     def reload_renderer(self, page):
@@ -306,6 +307,62 @@ class DisplayBrowserTests(unittest.TestCase):
         self.assertEqual(data['parts']['timer']['font'],30)
         self.command(page,'display.timer',{'fontSize':75,'autoFit':True})
         self.measure(page,'timer-auto-restored')
+
+    def test_10_media_url_policy_and_external_frame_isolation(self):
+        page=self.page();self.replay(page,P6)
+        before=page.evaluate(MEASURE)
+        for value in ['javascript:window.__xss=1', 'data:text/html,<script>parent.__xss=1</script>',
+                      'file:///etc/passwd', 'https://user:pass@signage.example/page',
+                      '/document-viewer/?file=javascript%3Aalert(1)']:
+            self.command(page,'display.web',{'url':value})
+            self.assertEqual(page.locator('#media iframe').count(),0)
+            self.assertIn('rejected invalid media URL',page.locator('#badge').inner_text())
+        self.assertIsNone(page.evaluate('window.__xss'))
+        page.route('https://signage.example/**',lambda route: route.fulfill(content_type='text/html',body='<h1>External signage fixture</h1>'))
+        self.command(page,'display.web',{'url':'https://signage.example/page'})
+        frame=page.locator('#media iframe')
+        self.assertEqual(frame.get_attribute('src'),'https://signage.example/page')
+        sandbox=frame.get_attribute('sandbox').split()
+        self.assertIn('allow-scripts',sandbox)
+        self.assertNotIn('allow-same-origin',sandbox)
+        self.assertNotIn('allow-top-navigation',sandbox)
+        self.command(page,'display.web',{'url':'javascript:alert(1)'})
+        self.assertEqual(frame.get_attribute('src'),'https://signage.example/page')
+        self.assertEqual(self.signature(page.evaluate(MEASURE)),self.signature(before))
+        self.command(page,'display.clear',{})
+        self.assertEqual(page.locator('#media iframe').count(),0)
+        self.assertFalse(self.errors)
+
+    def test_11_reject_audio_socket_destination_without_opening_socket(self):
+        page=self.page();self.replay(page,P6)
+        page.evaluate('window.__originalReceiver=window.__receiverSocket')
+        for url in ['wss://attacker.example/music-assistant/sendspin-proxy?ticket='+'a'*32,
+                    '/ws?ticket='+'a'*32, '/music-assistant/sendspin-proxy?ticket=invalid']:
+            self.command(page,'music.assistant.attach',{'proxyUrl':url})
+            self.assertTrue(page.evaluate('window.__receiverSocket===window.__originalReceiver'))
+            self.assertEqual(page.evaluate('window.__sent.filter(x=>x.type==="music.assistant.status").at(-1).status.state'),'error')
+        self.assertFalse(self.errors)
+
+    def test_12_identify_timeout_is_bounded_and_replaced(self):
+        page=self.page();self.replay(page,P6)
+        page.evaluate("""() => {
+          window.__delays=[];window.__cancelled=[];
+          const set=window.setTimeout,clear=window.clearTimeout;
+          window.setTimeout=(fn,delay,...args)=>{const id=set(fn,delay,...args);window.__delays.push({id,delay});return id};
+          window.clearTimeout=id=>{window.__cancelled.push(id);return clear(id)};
+        }""")
+        self.command(page,'display.identify',{'durationMs':9007199254740991})
+        first=page.evaluate('window.__delays.find(x=>x.delay===30000)')
+        self.assertIsNotNone(first)
+        self.command(page,'display.identify',{'durationMs':-1})
+        self.assertIn(first['id'],page.evaluate('window.__cancelled'))
+        self.assertEqual(page.locator('#identify').evaluate('el=>el.style.display'),'flex')
+        page.wait_for_timeout(1150)
+        self.assertEqual(page.locator('#identify').evaluate('el=>el.style.display'),'none')
+        self.command(page,'display.identify',{'durationMs':30000})
+        self.command(page,'display.clear',{})
+        self.assertEqual(page.locator('#identify').evaluate('el=>el.style.display'),'none')
+        self.assertFalse(self.errors)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

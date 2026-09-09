@@ -1,6 +1,6 @@
 // One owner for title, subtitle, body, timer geometry and fitted font sizes.
 // All measurements are untransformed CSS layout pixels on the 1920x1080 stage.
-export const LAYOUT_REVISION = 'single-fit-20260909-1';
+export const LAYOUT_REVISION = 'single-fit-20260909-2';
 export const FONT_CAPS = Object.freeze({title:118, subtitle:82, body:120, timer:132});
 const READABLE_MIN = 12;
 const finite = (value, fallback) => value == null || value === '' || !Number.isFinite(Number(value)) ? fallback : Number(value);

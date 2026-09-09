@@ -28,3 +28,11 @@ Replay must apply colors, alignment, backgrounds, and option defaults exactly as
 Retain screenshots and measurement JSON. Do not weaken a failing visual assertion merely to make CI green. Do not describe source-text regex checks as cross-resolution browser tests. Distinguish local in-memory tests, CI URL-based tests, and actual physical-TV testing in release reports.
 
 Update this file, the layout contract, and the wiki mirror when rendering behavior changes. Never label a deployment permanently fixed based only on a merge or a successful container health endpoint.
+
+## Receiver input safety (PR #27 merge review)
+
+The receiver validates media URLs in `public/display/security.mjs` before touching the DOM. Only HTTP(S) URLs without embedded credentials are allowed; malformed URLs, executable schemes, control characters and excessive nested document viewers are rejected without replacing the current media. Protected same-origin media/presentation paths receive the asset token; external hosts never receive it. External signage frames are sandboxed without same-origin access, top navigation or popup permissions. Sites requiring cookies/storage or popup login may not work in this isolated frame; use a purpose-built embeddable signage URL. Local built-in document/Ant Media viewers retain their existing behavior.
+
+Music Assistant browser connections may use only this Hub's `/music-assistant/sendspin-proxy` WebSocket endpoint, matching its host, port and HTTP/TLS-derived socket scheme, with one 32-character base64url ticket. Reject arbitrary socket hosts, paths, credentials and extra parameters. The final destination is rebuilt from the trusted Hub origin and fixed path.
+
+Identify overlays last 1–30 seconds (8 seconds by default). Repeated identification replaces the previous timeout/frame; clearing the display cancels both. These changes must not trigger another title/subtitle/body/timer layout engine. Unit policy tests and real-browser rejection/lifecycle tests accompany the rendering tests.

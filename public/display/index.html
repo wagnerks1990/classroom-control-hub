@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Classroom Display</title>
 <link rel="stylesheet" href="/shared/attribution.css">
-<script src="/shared/branding.js?v=single-fit-20260909-1" defer></script>
+<script src="/shared/branding.js?v=single-fit-20260909-2" defer></script>
 <script src="/shared/attribution.js" defer></script>
 <style>
 :root{--logical-width:1920px;--logical-height:1080px}
@@ -29,7 +29,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#000;dis
 #identify{display:none;position:absolute;inset:0;z-index:50;background:#1769e0;color:#fff;align-items:center;justify-content:center;font-size:270px;font-weight:900;overflow:hidden}
 #badge{position:fixed;right:8px;bottom:8px;background:#0009;color:#fff;font-size:11px;padding:5px 7px;border-radius:6px;opacity:.35;z-index:60}
 </style>
-<link rel="stylesheet" href="/display/layout.css?v=single-fit-20260909-1">
+<link rel="stylesheet" href="/display/layout.css?v=single-fit-20260909-2">
 </head>
 <body>
 <div id="stage"><div id="media"></div>
@@ -41,13 +41,14 @@ body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#000;dis
 <div id="identify"></div>
 <div id="badge">Starting…</div></div>
 <script type="module">
-import {createDisplayLayout,fitElement,bounded} from '/display/layout.mjs?v=single-fit-20260909-1';
+import {createDisplayLayout,fitElement,bounded} from '/display/layout.mjs?v=single-fit-20260909-2';
+import {authorizeMediaUrl,musicAssistantProxyUrl,identifyDuration} from '/display/security.mjs?v=single-fit-20260909-2';
 import {wsUrl,getDisplayId} from '/shared/common.js';
 import {SendspinPlayer} from '/display/sendspin.bundle.js';
 const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,DISPLAY_BUILD='1.0.0-alpha.70';
 const id=getDisplayId(),preview=new URLSearchParams(location.search).get('preview')==='1';
 const displayAuth=(()=>{try{const p=new URLSearchParams(location.hash.slice(1)),legacy=p.get('displayToken'),enrollmentToken=p.get('enrollmentToken')||'';if(legacy)localStorage.setItem('classroom-hub-display-token',legacy);if(legacy||enrollmentToken)history.replaceState(null,'',location.pathname+location.search);return {legacyToken:localStorage.getItem('classroom-hub-display-token')||'',credential:localStorage.getItem(`classroom-hub-display-credential:${id}`)||'',enrollmentToken,assetAccessToken:''}}catch{return {legacyToken:'',credential:'',enrollmentToken:'',assetAccessToken:''}}})();
-function authorizeAssetUrl(value){try{const u=new URL(String(value||''),location.href);if(u.origin!==location.origin)return u.toString();if(u.pathname==='/document-viewer/'){const file=u.searchParams.get('file');if(file)u.searchParams.set('file',authorizeAssetUrl(file))}if(u.pathname.startsWith('/media/')||u.pathname.startsWith('/presentations/'))u.searchParams.set('access_token',displayAuth.assetAccessToken);return u.toString()}catch{return value}}
+function authorizeAssetUrl(value){return authorizeMediaUrl(value,location.origin,displayAuth.assetAccessToken)}
 const stage=document.getElementById('stage'),media=document.getElementById('media'),titleRegion=document.getElementById('titleRegion'),subtitleRegion=document.getElementById('subtitleRegion'),textLayer=document.getElementById('textLayer'),text=document.getElementById('text'),title=document.getElementById('title'),subtitle=document.getElementById('subtitle'),presentationBlack=document.getElementById('presentationBlack'),identify=document.getElementById('identify'),badge=document.getElementById('badge'),timerOverlay=document.getElementById('timerOverlay'),timerLabel=document.getElementById('timerLabel'),timerValue=document.getElementById('timerValue');
 let ws,timerState={visible:false,running:false,mode:'countdown',durationSeconds:300,remainingSeconds:300},timerTick=null,lastViewportSignature='';
 let textOptions={size:64,autoFit:true},titleOptions={size:92,autoFit:true},subtitleOptions={size:44,autoFit:true};
@@ -157,10 +158,10 @@ function applyState(s){
 let activeWebFrame=null,activeWebSpec=null,webAudioTimers=[];
 function clearWebAudioTimers(){for(const t of webAudioTimers)clearTimeout(t);webAudioTimers=[]}
 function isAntMediaPlayerUrl(value){
-  try{const u=new URL(String(value||''),location.href);return u.pathname.endsWith('/play.html')}catch{return false}
+  try{const u=new URL(authorizeAssetUrl(value));return u.pathname.endsWith('/play.html')}catch{return false}
 }
 function normalizeAntMediaUrl(value,{cacheBust=false}={}){
-  const u=new URL(String(value||''),location.href);
+  const u=new URL(authorizeAssetUrl(value));
   u.searchParams.set('autoplay','true');
   u.searchParams.set('mute','false');
   if(!u.searchParams.get('playOrder'))u.searchParams.set('playOrder','webrtc,hls');
@@ -169,7 +170,7 @@ function normalizeAntMediaUrl(value,{cacheBust=false}={}){
 }
 function integratedAntMediaUrl(value,volume=1,{cacheBust=false}={}){
   const u=new URL('/antmedia-player/',location.origin);
-  u.searchParams.set('source',String(value||''));
+  u.searchParams.set('source',authorizeAssetUrl(value));
   u.searchParams.set('volume',String(Math.max(0,Math.min(1,Number(volume??1)))));
   u.searchParams.set('autoplay','true');
   if(cacheBust)u.searchParams.set('_chAudioRetry',String(Date.now()));
@@ -220,7 +221,9 @@ function scheduleWebAudioRecovery(){
   for(const delay of [0,300,1000,2500,6000,12000])webAudioTimers.push(setTimeout(()=>enforceWebAudio({reload:false}),delay));
 }
 function renderMedia(m){
-  clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;media.innerHTML='';if(!m||!m.url)return;let n;const authorizedUrl=authorizeAssetUrl(m.url);
+  let authorizedUrl='';
+  if(m?.url){try{authorizedUrl=authorizeAssetUrl(m.url)}catch{badge.textContent=`${id} rejected invalid media URL`;return}}
+  clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;media.replaceChildren();if(!authorizedUrl)return;let n;
   if(m.type==='image'){
     n=document.createElement('img');n.decoding='async';n.src=authorizedUrl;let retries=0;n.onerror=()=>{if(retries>=3)return;retries++;const join=authorizedUrl.includes('?')?'&':'?';setTimeout(()=>{n.src=authorizedUrl+join+'retry='+Date.now()},500*retries)}
   }else if(m.type==='video'){
@@ -228,9 +231,13 @@ function renderMedia(m){
   }else if(m.type==='web'||m.type==='pdf'){
     n=document.createElement('iframe');
     const isWeb=m.type==='web';
-    const integratedAntMedia=!!(isWeb&&m.forceAudio&&isAntMediaPlayerUrl(m.url));
+    const integratedAntMedia=!!(isWeb&&m.forceAudio&&isAntMediaPlayerUrl(authorizedUrl));
     const spec={...m,url:authorizedUrl,integratedAntMedia};
-    n.src=integratedAntMedia?integratedAntMediaUrl(m.url,m.volume??1):authorizedUrl;
+    const frameUrl=integratedAntMedia?integratedAntMediaUrl(authorizedUrl,m.volume??1):authorizedUrl;
+    // External signage may run its own scripts, but cannot navigate the receiver,
+    // open popups, or access the Hub origin. Local built-in viewers stay compatible.
+    if(new URL(frameUrl).origin!==location.origin)n.setAttribute('sandbox','allow-scripts allow-forms allow-presentation');
+    n.src=frameUrl;
     if(isWeb){
       n.allow='autoplay; fullscreen; picture-in-picture';n.setAttribute('allowfullscreen','');n.setAttribute('webkitallowfullscreen','');
       if(m.localDirect!==false){n.dataset.loadPath='tv-local';n.referrerPolicy='no-referrer-when-downgrade'}
@@ -244,7 +251,7 @@ function renderMedia(m){
 let maSendspinPlayer=null,maSendspinState={state:'detached'},maAttachGeneration=0,maProxySocket=null;
 function maFriendlyName(){return id==='tv5'?'Classroom Control Hub - Hallway Display':`Classroom Control Hub - ${id.toUpperCase()}`}
 function reportMusicAssistantStatus(extra={}){maSendspinState={...maSendspinState,...extra,updatedAt:new Date().toISOString()};if(!preview&&ws&&ws.readyState===1){try{ws.send(JSON.stringify({type:'music.assistant.status',status:maSendspinState}))}catch{}}}
-function maAbsoluteProxyUrl(proxyUrl){const proto=location.protocol==='https:'?'wss:':'ws:';return proxyUrl.startsWith('ws:')||proxyUrl.startsWith('wss:')?proxyUrl:`${proto}//${location.host}${proxyUrl.startsWith('/')?'':'/'}${proxyUrl}`}
+function maAbsoluteProxyUrl(proxyUrl){return musicAssistantProxyUrl(proxyUrl,location.origin)}
 function attachMusicAssistant(p){
   if(preview)return;
   const generation=++maAttachGeneration;
@@ -273,15 +280,26 @@ function attachMusicAssistant(p){
 }
 function detachMusicAssistant(){maAttachGeneration++;if(maSendspinPlayer){try{maSendspinPlayer.disconnect('user_request')}catch{};maSendspinPlayer=null}if(maProxySocket){try{maProxySocket.close()}catch{};maProxySocket=null}reportMusicAssistantStatus({state:'detached',isPlaying:false,protocolActive:false,audioLocked:false,error:null,proxyState:'closed'})}
 
+let identifyTimeout=null,identifyFrame=null;
+function hideIdentify(){
+  if(identifyTimeout!==null)clearTimeout(identifyTimeout);
+  if(identifyFrame!==null)cancelAnimationFrame(identifyFrame);
+  identifyTimeout=null;identifyFrame=null;identify.style.display='none';
+}
+function showIdentify(durationMs){
+  hideIdentify();identify.textContent=id.toUpperCase();identify.style.display='flex';
+  identifyFrame=requestAnimationFrame(()=>{identifyFrame=null;fitElement(identify,stage,270)});
+  identifyTimeout=setTimeout(hideIdentify,Math.min(30000,identifyDuration(durationMs)));
+}
 function handle(c){const p=c.payload||{};switch(c.type){
   case'display.text':text.textContent=p.text||'';applyTextOptions(p);break;
   case'display.title':applyTitle({text:p.text||'',...p,size:Number(p.size||92)});break;
   case'display.subtitle':applySubtitle({text:p.text||'',...p,size:Number(p.size||44)});break;
-  case'display.identify':identify.textContent=id.toUpperCase();identify.style.display='flex';requestAnimationFrame(()=>fitElement(identify,stage,270));setTimeout(()=>identify.style.display='none',Number(p.durationMs||8000));break;
+  case'display.identify':showIdentify(p.durationMs);break;
   case'display.background':stage.style.background=p.color||'#101318';break;
   case'display.image':renderMedia({type:'image',...p});break;case'display.video':renderMedia({type:'video',...p});break;case'display.web':renderMedia({type:'web',...p});break;case'display.web.audio':enforceWebAudio({reload:!!p.reload,volume:p.volume,unmute:p.unmute!==false});break;case'display.pdf':case'display.document':renderMedia({type:'pdf',...p});break;case'display.presentation':renderMedia({type:'image',...p});presentationBlack.style.display='none';break;case'display.presentation.black':presentationBlack.style.display=p.black?'block':'none';break;
   case'display.timer':applyTimer(p);break;case'display.timer.hide':applyTimer({...timerState,visible:false,running:false});break;
-  case'display.clear':clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;text.textContent='';title.textContent='';subtitle.textContent='';media.innerHTML='';stage.style.background='#000';text.style.background='transparent';presentationBlack.style.display='none';identify.style.display='none';applyTextOptions({});applyTitle({});applySubtitle({});applyTimer({visible:false,running:false});requestDisplayLayout();break;
+  case'display.clear':clearWebAudioTimers();activeWebFrame=null;activeWebSpec=null;text.textContent='';title.textContent='';subtitle.textContent='';media.innerHTML='';stage.style.background='#000';text.style.background='transparent';presentationBlack.style.display='none';hideIdentify();applyTextOptions({});applyTitle({});applySubtitle({});applyTimer({visible:false,running:false});requestDisplayLayout();break;
   case'music.assistant.attach':attachMusicAssistant(p);break;case'music.assistant.detach':detachMusicAssistant();break;
   case'display.reload':location.reload();break;
 }}
