@@ -26,7 +26,7 @@
     return profile;
   }
 
-  function escapeHtml(value){return String(value??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")}
+  function escapeHtml(value){return String(value??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;")}
   function directDisplayPanel(){
     if(!location.pathname.startsWith("/controller"))return;
     const heading=[...document.querySelectorAll("h2.sectionTitle")].find(x=>x.textContent.trim()==="Classroom Display Enrollment");
@@ -61,6 +61,14 @@
   window.ControlHubBranding={apply,load:async()=>{try{const response=await fetch("/api/v1/branding",{credentials:"same-origin",cache:"no-store"});if(!response.ok)throw Error(`HTTP ${response.status}`);const value=await response.json();return apply(value.branding||{})}catch{return apply(fallback)}}};
   window.ControlHubBranding.load();
 
+  if(location.pathname.startsWith("/display/")&&!document.querySelector('script[data-controlhub-display-autofit]')){
+    const script=document.createElement("script");
+    script.src="/shared/display-autofit.js";
+    script.defer=true;
+    script.dataset.controlhubDisplayAutofit="1";
+    document.head.append(script);
+  }
+
   // The controller's historical display-enrollment panel is retained in the
   // static HTML for upgrade compatibility, but its behavior is replaced with
   // the direct /display/<id> workflow. Windows lab-agent enrollment is separate
@@ -71,8 +79,6 @@
   }
 
   // Integration setup is shared by the first-run wizard and the controller.
-  // Keep it separate from branding internals while loading it from this common
-  // entry point so both surfaces stay in sync.
   if(!renderer&&!document.querySelector('script[data-controlhub-integration-setup]')){
     const script=document.createElement("script");
     script.src="/shared/integration-setup.js";
@@ -81,9 +87,7 @@
     document.head.append(script);
   }
 
-  // Preserve the class-default-target choice for linked automations. The base
-  // alpha.71 editor incorrectly clears the checkbox when the primary action is
-  // lighting even though later display actions can still use class targets.
+  // Preserve the class-default-target choice for linked automations.
   if(!renderer&&!document.querySelector('script[data-controlhub-automation-fix]')){
     const script=document.createElement("script");
     script.src="/shared/automation-hotfix.js";
