@@ -6,6 +6,12 @@ if(!window.ControlHubBranding&&!document.querySelector('script[src="/shared/bran
   document.head.append(branding);
 }
 
+if(location.pathname==="/controller/display.html"&&!document.querySelector('script[src="/shared/manual-media-volume.js"]')){
+  const mediaVolume=document.createElement("script");
+  mediaVolume.src="/shared/manual-media-volume.js";
+  document.head.append(mediaVolume);
+}
+
 function addKyleAttribution(){
   if(document.querySelector("[data-kyle-attribution]"))return;
   const footer=document.createElement("footer");
