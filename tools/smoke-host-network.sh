@@ -15,15 +15,17 @@ cleanup(){
 }
 trap cleanup EXIT
 chmod 0755 "$work"
-mkdir -p "$work/data/backups" "$work/services"
+mkdir -p "$work/data/backups" "$work/services" "$work/signing"
 cp VERSION "$work/VERSION"
 openssl rand -hex 32 > "$work/master.key"
-# Match install.sh: maintenance is root with all capabilities dropped, while
-# the unprivileged application writes data through its 10001 group. Backups
-# stay root-owned and private rather than relaxing security for the fixture.
+# Match install.sh/Compose: maintenance is root with all capabilities dropped,
+# joins the shared application-data GID, and receives a narrow persistent
+# writable signing mount. Backups and signing material stay root-owned/private
+# rather than relaxing the hardened container or making secrets world-readable.
 sudo chown root:10001 "$work/data" "$work/data/backups" "$work/master.key"
+sudo chown root:root "$work/signing"
 sudo chmod 0770 "$work/data"
-sudo chmod 0700 "$work/data/backups"
+sudo chmod 0700 "$work/data/backups" "$work/signing"
 sudo chmod 0640 "$work/master.key"
 python3 tools/fixtures/host-agent-network.py "$work/agent.sock" "$(cat VERSION)" &
 fixture=$!
@@ -33,12 +35,12 @@ for _ in $(seq 1 30); do [[ ! -S "$work/agent.sock" ]] || break; sleep 1; done
 hub_port=37300
 maint_port=37310
 common=(--network host --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp -e HUB_NETWORK_MODE=host -e MAINTENANCE_TOKEN=ci-network-maintenance)
-docker run -d --name "$maint" "${common[@]}" \
+docker run -d --name "$maint" "${common[@]}" --group-add 10001 \
   -e PORT="$maint_port" -e BIND_ADDRESS=0.0.0.0 \
   -e MAIN_APP_PORT="$hub_port" -e MAIN_APP_BIND_ADDRESS=0.0.0.0 \
   -e HOST_AGENT_SOCKET=/fixture/agent.sock --tmpfs /work/uploads \
   -v "$work:/fixture:ro" -v "$work:/managed/classroom-hub" \
-  -v "$work/services:/managed/services" \
+  -v "$work/services:/managed/services" -v "$work/signing:/signing" \
   classroom-control-hub-maintenance:test >/dev/null
 # Startup health must work before the main application exists.
 for _ in $(seq 1 30); do
@@ -88,4 +90,4 @@ curl --noproxy '*' -fsS --max-time 5 "http://$host_ip:$hub_port/health" >/dev/nu
 if curl --noproxy '*' -sS --max-time 3 "http://$host_ip:$maint_port/health" >/dev/null 2>&1; then
   echo 'Maintenance incorrectly reachable on a non-loopback host interface' >&2; exit 1
 fi
-echo 'Host-network smoke passed: custom listeners, bidirectional proxy, startup order, token auth, mutation rate limits and loopback-only maintenance.'
+echo 'Host-network smoke passed: custom listeners, bidirectional proxy, startup order, token auth, mutation rate limits, persistent Android signing and loopback-only maintenance.'
