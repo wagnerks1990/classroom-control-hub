@@ -23,12 +23,14 @@ test('managed display UI exposes lifecycle controls with destructive confirmatio
   assert.match(source,/will not uninstall the Android app, factory-reset the TV, or delete other Classroom Hub data/);
 });
 
-test('device admin activation uses Android system approval flow',()=>{
-  const source=read('maintenance-agent/android-tv-agent-v2.js');
-  assert.match(source,/android\.app\.action\.ADD_DEVICE_ADMIN/);
-  assert.match(source,/android\.app\.extra\.DEVICE_ADMIN/);
-  assert.match(source,/AgentDeviceAdminReceiver/);
-  assert.match(source,/requiresUserConfirmation:true/);
+test('device admin activation uses first-party activity and Android system approval flow',()=>{
+  const bridge=read('maintenance-agent/android-tv-agent-v2.js');
+  const activity=read('agents/android-tv/app/src/main/java/org/classroomhub/display/DeviceAdminActivationActivity.java');
+  assert.match(bridge,/DeviceAdminActivationActivity/);
+  assert.match(activity,/DevicePolicyManager\.ACTION_ADD_DEVICE_ADMIN/);
+  assert.match(activity,/DevicePolicyManager\.EXTRA_DEVICE_ADMIN/);
+  assert.match(activity,/AgentDeviceAdminReceiver/);
+  assert.match(bridge,/requiresUserConfirmation:true/);
 });
 
 test('v2 configure synchronizes persistent adb policy',()=>{
