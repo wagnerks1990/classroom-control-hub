@@ -30,6 +30,15 @@ test("maintenance compose build sees Android source and keeps persistent signing
   assert.match(compose,/cap_drop:\n\s+- ALL/);
 });
 
+test("hardened host-network smoke mirrors the production Android signing boundary",()=>{
+  const smoke=read("tools/smoke-host-network.sh");
+  assert.match(smoke,/mkdir -p [^\n]*\$work\/signing/);
+  assert.match(smoke,/chmod 0700 [^\n]*\$work\/signing/);
+  assert.match(smoke,/--group-add 10001/);
+  assert.match(smoke,/-v "\$work\/signing:\/signing"/);
+  assert.doesNotMatch(smoke,/chmod (?:0777|777) [^\n]*signing/);
+});
+
 test("maintenance startup signs, verifies and stages the image-matched APK",()=>{
   const extension=read("maintenance-agent/android-tv-agent-artifact.js");
   assert.match(extension,/ensureCurrentArtifact\(\);/);
