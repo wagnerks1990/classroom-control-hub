@@ -8,12 +8,15 @@ const path=require("node:path");
 const root=path.resolve(__dirname,"..");
 const read=file=>fs.readFileSync(path.join(root,file),"utf8");
 
-test("production startup preserves credential-bound display authentication",()=>{
+test("configured displays use optional authentication without startup monkeypatches",()=>{
   const recovery=read("src/startup-recovery.js");
   const compat=read("src/direct-display-compat.js");
   assert.doesNotMatch(recovery,/enableDirectDisplayAccess|authenticateConfiguredDisplay/);
   assert.doesNotMatch(compat,/authenticateDisplay|legacySharedTokenAllowed/);
   assert.match(compat,/installDisplayGatewayCompatibility/);
+  const storage=read("src/storage.js"),server=read("src/server.js");
+  assert.match(storage,/authenticationRequired:p\.authenticationRequired===true/);
+  assert.match(server,/if\(!policy\.authenticationRequired\).*authMode="configured-display"/s);
 });
 
 test("controller retains one-use, revocable display enrollment",()=>{

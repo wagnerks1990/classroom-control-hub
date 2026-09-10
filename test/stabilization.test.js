@@ -201,6 +201,11 @@ test("classroom displays use one-time enrollment and individually revocable cred
   let result=await request("/api/v1/admin/displays",{method:"PUT",authenticated:true,body:{devices:{"secure-tv":{name:"Secure Classroom Display",enabled:true,avOutput:1,tags:[]}},displayGroups:{all:["secure-tv"]}}});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
 
+  const direct=await displayHello({});
+  assert.equal(direct.ack.authMode,"configured-display");
+  assert.equal(direct.ack.credentialId,"direct");
+  direct.ws.close();
+
   result=await request("/api/v1/admin/displays/secure-tv/enrollment",{method:"POST",authenticated:true,body:{ttlMinutes:15}});
   assert.equal(result.response.status,201,JSON.stringify(result.json));
   assert.match(result.json.enrollment.url,/^\/display\/secure-tv#enrollmentToken=/);
@@ -241,8 +246,9 @@ test("classroom displays use one-time enrollment and individually revocable cred
   assert.equal("credential" in reconnected.ack,false);
   reconnected.ws.close();
 
-  result=await request("/api/v1/admin/display-credentials/policy",{method:"PUT",authenticated:true,body:{legacySharedTokenAllowed:false,enrollmentTtlMinutes:20}});
+  result=await request("/api/v1/admin/display-credentials/policy",{method:"PUT",authenticated:true,body:{authenticationRequired:true,legacySharedTokenAllowed:false,enrollmentTtlMinutes:20}});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.policy.authenticationRequired,true);
   assert.equal(result.json.policy.legacySharedTokenAllowed,false);
   await rejectedDisplayHello({token:"test-display-secret"});
   await rejectedDisplayHello({enrollmentToken});

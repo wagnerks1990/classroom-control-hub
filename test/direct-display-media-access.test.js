@@ -6,13 +6,13 @@ const path=require("node:path");
 const root=path.resolve(__dirname,"..");
 const read=file=>fs.readFileSync(path.join(root,file),"utf8");
 
-test("credentialed displays receive signed, credential-bound media access",async()=>{
+test("configured and credentialed displays receive policy-bound signed media access",async()=>{
   const compat=read("src/direct-display-compat.js");
   const server=read("src/server.js");
   const display=read("public/display/index.html");
   assert.doesNotMatch(compat,/authenticateConfiguredDisplay|prototype\.authenticateDisplay/);
   assert.match(server,/issueAssetAccessToken\(deviceId,displayCredential\?\.id\|\|""\)/);
-  assert.match(server,/if\(parts\[2\]==="legacy"\)return dbStore\.displayCredentialPolicy\(\)\.legacySharedTokenAllowed/);
+  assert.match(server,/if\(parts\[2\]==="direct"\)return !policy\.authenticationRequired/);
   assert.match(display,/function authorizeAssetUrl\(value\)/);
   assert.match(display,/authorizeMediaUrl\(value,location\.origin,displayAuth\.assetAccessToken\)/);
   // Exercise the policy module, rather than requiring token injection to remain

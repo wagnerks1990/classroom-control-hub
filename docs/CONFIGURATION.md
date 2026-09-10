@@ -187,10 +187,9 @@ Recommended conceptual record:
 
 Do not use a transient IP address as the only display identity unless the environment guarantees it is stable.
 
-Enroll each receiver under **Settings → Classroom Display Enrollment**. Create
-an expiring, one-use link for its stable display ID and open that link on the
-receiver. The enrollment secret is carried in the URL fragment, so it is not
-sent in the HTTP request or retained in server access logs:
+Enabled receivers use their stable `/display/<id>` URL without credentials by default. This is the supported classroom mode and prevents cleared browser storage or an upgrade from taking every display offline.
+
+Administrators may opt into individual credentials under **Settings → Classroom Display Access**. First create and consume an expiring, one-use link for every enabled receiver, then enable **Require individual display credentials**. The enrollment secret is carried in the URL fragment, so it is not sent in the initial HTTP request or retained in server access logs:
 
 ```text
 http://hub.example/display/?id=tv1#enrollmentToken=<one-time token>
@@ -201,11 +200,7 @@ browser local storage under that display ID, and removes the fragment from the
 visible URL. Only token hashes are stored in SQLite. Administrators can revoke
 one credential, rotate all credentials for a display, or cancel an unused link.
 
-`DISPLAY_TOKEN` is now a migration fallback for existing receivers. Legacy
-shared-token access is enabled by default during migration. Disable it from the
-controller after coverage reports that every enabled display is enrolled; the
-controller blocks an accidental early shutdown. Do not use the shared token for
-new display provisioning.
+`DISPLAY_TOKEN` is only a legacy fallback when individual credential authentication is required. It is unnecessary in the default stable URL mode. Unknown and disabled display IDs are rejected in both modes.
 
 ## Class schedules
 

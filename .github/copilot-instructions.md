@@ -13,10 +13,10 @@ Key rules:
 - Preserve runtime `.env`, `data/`, databases, uploads, backups, keys, and secrets during upgrades.
 - Never hardcode or commit production IPs, credentials, tokens, stream IDs, school-specific calendars, or private URLs.
 - Keep backend/controller/display/maintenance/host-agent version strings converged for every release.
-- Classroom display receivers use stable direct URLs `/display/<id>`, but the receiver browser must also hold its own revocable display credential. Provision it with a one-use enrollment URL; never make knowledge of an enabled display ID sufficient for access.
-- Unknown or disabled display IDs, missing credentials, revoked credentials, and credentials bound to another display must be rejected. Controller/user authentication and Windows lab-agent enrollment remain separately credentialed.
-- Display credentials and one-use enrollment records are active runtime security state. Preserve them across upgrades and never log or embed the credential secret in routine controller pages.
-- Direct displays use short-lived signed, credential-bound asset tokens for protected `/media/*` and `/presentations/*` requests. Asset authorization must retain the display credential binding.
+- Classroom display receivers use stable direct URLs `/display/<id>` without credentials by default. This is an intentional product contract for trusted classroom networks; do not silently make enrollment mandatory again.
+- Unknown or disabled display IDs must always be rejected. Administrators may explicitly enable individual credential authentication only after enrolling their displays. Controller/user authentication and Windows lab-agent enrollment remain mandatory and separate.
+- Display credentials and one-use enrollment records remain active optional security state. Preserve them across upgrades and never log or embed credential secrets in routine controller pages.
+- Direct displays still receive short-lived signed asset tokens for protected `/media/*` and `/presentations/*` requests. URL-only display access must not make protected asset paths public.
 - A successful automation result does not prove media rendered; tests for display media must verify the receiver can fetch and render the protected asset.
 - `Use class default display targets` is persisted independently of the primary action domain. Do not silently clear it just because an event starts with lighting or another non-display action.
 - Morning Announcements are highest priority. When they end, re-evaluate and re-trigger the currently applicable winning display automations before Background Music resumes; do not restore stale snapshots.

@@ -84,7 +84,7 @@ docker compose exec -T maintenance-agent node -e \
 sudo ss -lntup
 ```
 
-Both core modes must be `host`. Empty published-port columns are expected; inspect actual listeners. Maintenance must listen only on loopback and reject unauthenticated requests. From another machine, confirm maintenance is unreachable while the intended controller LAN address works. Verify display enrollment/WebSockets, MQTT authentication, Govee control/discovery, Music Assistant playback/discovery, Veyon authentication/control, and a backup/restore health probe. Host networking does not repair VLAN isolation, Wi-Fi client isolation, firewalls, invalid credentials, or application/rendering bugs.
+Both core modes must be `host`. Empty published-port columns are expected; inspect actual listeners. Maintenance must listen only on loopback and reject unauthenticated requests. From another machine, confirm maintenance is unreachable while the intended controller LAN address works. Verify stable display URL/WebSocket access (and enrollment if optional authentication is enabled), MQTT authentication, Govee control/discovery, Music Assistant playback/discovery, Veyon authentication/control, and a backup/restore health probe. Host networking does not repair VLAN isolation, Wi-Fi client isolation, firewalls, invalid credentials, or application/rendering bugs.
 
 ## Rollback and validation evidence
 

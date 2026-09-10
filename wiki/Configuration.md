@@ -143,9 +143,9 @@ Rules:
 - editing the receiver list synchronizes the display count;
 - changing the display count adds/removes trailing default IDs;
 - saving a reduced receiver set prunes every display group's member list to IDs that still exist;
-- friendly display names may change without changing receiver IDs or invalidating enrolled credentials.
+- friendly display names may change without changing receiver IDs or invalidating optional credentials.
 
-Enroll receivers under **Settings → Classroom Display Enrollment**. Each expiring link can be consumed once and issues a unique credential bound to the stable display ID.
+Enabled receivers connect through their stable `/display/<id>` URL without credentials by default. **Settings → Classroom Display Access** offers optional one-use enrollment and a deliberate **Require individual display credentials** switch for environments that need per-browser revocation.
 
 ## Access profiles and passwords
 

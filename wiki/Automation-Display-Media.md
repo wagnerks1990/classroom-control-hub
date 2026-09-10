@@ -1,6 +1,6 @@
 # Automation Display Media
 
-Classroom display receivers use stable direct URLs (`/display/tv1`, `/display/tv2`, and so on). Display enrollment tokens are not part of the normal receiver workflow.
+Classroom display receivers use stable direct URLs (`/display/tv1`, `/display/tv2`, and so on) without credentials by default. Display enrollment is an optional administrator-enabled security mode, not part of the normal receiver workflow.
 
 Uploaded media is still protected. The backend issues each connected enabled display a short-lived signed asset token for `/media/*` and `/presentations/*`. A successful automation result does not by itself prove an image rendered; the receiver must also be able to fetch the protected asset.
 

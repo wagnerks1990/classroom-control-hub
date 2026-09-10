@@ -2,7 +2,7 @@
 
 Classroom Control Hub is a centralized classroom automation and control platform for displays, AV routing, lighting, media, live announcements, Background Music, schedules, lab infrastructure, and appliance integration management.
 
-> **Status:** `1.0.0-alpha.72` — security and functional-correctness stabilization release.
+> **Status:** `1.0.0-alpha.73` — stable URL display access with optional credential authentication.
 
 ## Start here
 

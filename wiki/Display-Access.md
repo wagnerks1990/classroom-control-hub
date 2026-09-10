@@ -1,19 +1,15 @@
 # Display Access
 
-Every classroom receiver uses a stable display ID plus an individual, revocable browser credential. Knowing `/display/<id>` is not sufficient to connect as a physical display.
+Enabled classroom receivers use stable URLs such as `/display/tv1` without credentials by default. Unknown or disabled IDs remain rejected. This policy is deliberate so upgrades and cleared browser storage do not unexpectedly take classroom displays offline.
 
-## Setup
+Keep the HTTP deployment restricted to the trusted classroom/admin network. Anyone who can reach the Hub and knows an enabled display ID can connect as that display while URL-only mode is active.
 
-In **Settings → Classroom Display Enrollment**, create a one-use link for the enabled display and open it on the assigned TV/browser:
+Administrators may opt into per-browser credentials under **Settings → Classroom Display Access**:
 
-```text
-http://hub.example:3000/display/tv1#enrollmentToken=<one-use-token>
-```
+1. Create and consume a one-use enrollment link for every enabled display.
+2. Verify enrollment coverage.
+3. Enable **Require individual display credentials**.
 
-The receiver consumes the expiring token once, stores its issued credential locally, and reconnects at the stable `/display/tv1` path. The Hub stores only hashes.
+The Hub then rejects missing, revoked, or mismatched credentials. Turning the option off restores stable URL access. Existing credentials can remain stored for later use.
 
-Administrators can cancel pending links, revoke one credential, or rotate all credentials for a display. Renaming a receiver does not invalidate its credential. Removing or disabling a receiver prevents it from connecting.
-
-Keep `DISPLAY_TOKEN` only as a temporary migration fallback, then disable legacy access when enrollment coverage is complete. If a TV loses browser storage, enroll it again.
-
-The HTTP-only alpha deployment must remain on a trusted classroom/admin network with normal VLAN and firewall controls.
+Protected media and presentation files always use short-lived signed asset URLs. `DISPLAY_TOKEN` is only a legacy fallback when credential authentication is required.

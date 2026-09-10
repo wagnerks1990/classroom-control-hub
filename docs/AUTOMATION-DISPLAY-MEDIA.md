@@ -2,9 +2,9 @@
 
 ## Direct display media access
 
-Classroom displays use stable direct URLs such as `/display/tv1` and `/display/tv2`. Per-browser display enrollment is retired.
+Classroom displays use stable direct URLs such as `/display/tv1` and `/display/tv2` without credentials by default. Per-browser enrollment remains an optional administrator-enabled security mode.
 
-Uploaded media remains protected behind signed, short-lived asset URLs. A connected enabled display receives a device-bound HMAC asset token from the backend and uses that token when loading `/media/*` and `/presentations/*` resources. Direct display mode must not depend on the retired display-enrollment policy for those signed asset requests.
+Uploaded media remains protected behind signed, short-lived asset URLs. A connected enabled display receives a device-bound HMAC asset token from the backend and uses that token when loading `/media/*` and `/presentations/*` resources. Stable URL mode must not depend on optional display enrollment for those signed asset requests.
 
 A scheduled event can therefore complete at the automation layer while a display still fails to render media if the browser's asset request is rejected. When troubleshooting a media action, validate both the automation execution and the display's subsequent `/media/...` request.
 

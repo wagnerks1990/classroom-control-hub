@@ -69,7 +69,7 @@ The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades
 
 ## Current known-good baseline
 
-`1.0.0-alpha.72` is the current security and functional-correctness review baseline.
+`1.0.0-alpha.73` is the current display-access policy and functional-correctness review baseline.
 
 Alpha.71 recovery invariants:
 
@@ -180,7 +180,7 @@ The standard production checkout is `/opt/classroom-hub`. Older documentation or
 
 School/classroom identity, integration settings and update policy are database-backed. Integration passwords, private keys, and tokens belong in the encrypted secret store and must never be returned by browser APIs. Environment variables remain bootstrap/migration fallbacks and host/container boundary configuration.
 
-Browser displays use individually enrolled, revocable credentials. Enrollment links are one-use and expiring; raw enrollment codes and credentials must never be persisted or returned by administrative read APIs. Stable display IDs survive friendly-name changes.
+Browser displays use enabled stable display IDs without credentials by default. This URL-only behavior is an intentional trusted-classroom-network contract and must not silently become mandatory enrollment during security work. Administrators may opt into individually enrolled, revocable credentials after enrolling every enabled display. Enrollment links are one-use and expiring; raw codes and credentials must never be persisted or returned by administrative read APIs. Protected assets remain signed in either mode.
 
 ## Git and release workflow
 
