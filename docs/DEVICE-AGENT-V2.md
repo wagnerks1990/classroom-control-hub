@@ -9,6 +9,12 @@ Device Agent v2 changes Managed Displays from an ADB-dependent design into a dua
 
 The package ID remains `org.classroomhub.display`. Existing enrolled device records and display URLs are intentionally retained.
 
+## Persistence invariant
+
+Device Agent v2 enrollment is part of the managed-display inventory schema, not transient UI state. A successfully configured display must persist `agentV2.enabled`, `agentV2.port`, the server-side device token, and `agentV2.configuredAt` in `data/android-tv/devices.json`. Every read/normalize/write cycle must preserve those fields. If the token is malformed, the v2 configuration is rejected rather than silently accepted.
+
+A regression discovered during the first physical Onn Android 14 validation caused `normalizeDevice()` to drop the `agentV2` object immediately after configuration. The UI therefore reported configuration success once, then subsequent status requests returned `Device Agent v2 is not configured for this display`. Regression tests now require v2 enrollment to survive a new `JsonStore` instance and a complete inventory reload.
+
 ## First-build philosophy
 
 The first v2 build is a capability-discovery build. It intentionally exposes a broad runtime matrix so physical Android TV hardware can tell us which capabilities are:
@@ -111,14 +117,9 @@ Consumer devices generally require provisioning before normal setup and may requ
 
 ### Tier 4 — optional root/Magisk laboratory profile
 
-Root is **not** a production requirement. Agent v2 only detects/tests it when explicitly requested.
+Root is **not** a production requirement. Root/Magisk remains research-only for comparing the elevated-control ceiling on sacrificial hardware. The production Agent v2 control plane must not expose arbitrary root command execution.
 
-Current experimental root actions:
-
-- `root-probe` — explicitly invokes `su -c id` so the physical device can report whether superuser is available/granted.
-- `root-command` — available only when the Hub explicitly provisions `allow_root_tools=true`; default is false.
-
-Potential root-only capabilities to test on a sacrificial/lab device include power control, arbitrary shell operations, deeper package/system inspection, input injection, privileged settings, remapping, and recovery hooks. These are not appropriate baseline assumptions for school-wide deployments.
+Potential root-only capabilities to study separately include power control, deeper package/system inspection, input injection, privileged settings, remapping, and recovery hooks. These are not appropriate baseline assumptions for school-wide deployments.
 
 ## Research references and decisions
 
@@ -162,8 +163,8 @@ Fermata discussions are useful as evidence that Android 14 tightened behavior ar
 
 1. The Agent management listener is authenticated. No unauthenticated command endpoint is allowed.
 2. Per-device tokens remain server-side in the browser architecture. Browser clients receive only redacted configuration state.
-3. External ADB and local ADB are recovery/elevated channels, not the primary application control plane.
-4. Root tools default to disabled even when `su` exists.
+3. Device Agent v2 enrollment fields must survive every inventory normalization/read/write cycle.
+4. External ADB and local ADB are recovery/elevated channels, not the primary application control plane.
 5. Capability probes must report failure/permission-required truthfully rather than silently presenting a capability as available.
 6. A device must remain usable if any optional tier is unavailable.
 7. ADB port `5555` must only be enabled on a trusted/isolated management network and retain Android ADB authentication.
@@ -176,7 +177,7 @@ For each test build, record results from `/agent/v2/capabilities` and explicit a
 Baseline stock-device sequence:
 
 1. install/reinstall v2 APK,
-2. configure v2 token/port,
+2. configure v2 token/port and verify the configuration survives an inventory reload,
 3. confirm Agent HTTP health from the Hub,
 4. disable external ADB or stop relying on the temporary TLS port,
 5. verify Agent status, reload, wake, volume and available navigation still work,
@@ -186,4 +187,4 @@ Baseline stock-device sequence:
 9. attempt local ADB discovery/self-grant/fixed-port switch,
 10. reboot and determine whether local ADB can restore `:5555` without manual Wireless Debugging intervention.
 
-Optional elevated tests are then run independently for Accessibility, Device Admin, Device Owner and root. Results belong in the capability matrix rather than being assumed from API documentation.
+Optional elevated tests are then run independently for Accessibility, Device Admin and Device Owner. Root testing remains separate research on sacrificial hardware. Results belong in the capability matrix rather than being assumed from API documentation.
