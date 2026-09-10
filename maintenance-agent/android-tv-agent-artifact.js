@@ -18,8 +18,22 @@ function artifact(){
     fs.accessSync(APK,fs.constants.R_OK);
     const meta=JSON.parse(fs.readFileSync(META,"utf8"));
     const actualSha=sha256(APK);
-    const valid=meta.package==="org.classroomhub.display"&&typeof meta.versionName==="string"&&meta.versionName&&Number.isInteger(Number(meta.versionCode))&&meta.sha256===actualSha;
-    return {available:valid,readable:true,package:meta.package||null,versionName:meta.versionName||null,versionCode:Number(meta.versionCode)||null,sha256:actualSha,source:meta.source||null,stagedAt:meta.stagedAt||null,verified:valid,error:valid?null:"Staged Android agent metadata does not match the APK"};
+    const valid=meta.package==="org.classroomhub.display"&&typeof meta.versionName==="string"&&meta.versionName&&Number.isInteger(Number(meta.versionCode))&&meta.sha256===actualSha&&/^[0-9a-f]{64}$/i.test(String(meta.signerSha256||""));
+    return {
+      available:valid,
+      readable:true,
+      package:meta.package||null,
+      versionName:meta.versionName||null,
+      versionCode:Number(meta.versionCode)||null,
+      sha256:actualSha,
+      signerSha256:meta.signerSha256||null,
+      signingMode:meta.signingMode||null,
+      sourceDigest:meta.sourceDigest||null,
+      source:meta.source||null,
+      stagedAt:meta.stagedAt||null,
+      verified:valid,
+      error:valid?null:"Staged Android agent metadata does not match the APK"
+    };
   }catch(error){return {available:false,readable:false,verified:false,error:error.message}}
 }
 function installRoutes(app){
