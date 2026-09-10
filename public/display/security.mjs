@@ -2,10 +2,16 @@
 export const IDENTIFY_DEFAULT_MS = 8000;
 export const IDENTIFY_MAX_MS = 30000;
 
+const DISPLAY_GATEWAY_HOSTS = new Set(['stream.carlisleschools.org']);
+
 export function identifyDuration(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || value === undefined || value === null || value === '') return IDENTIFY_DEFAULT_MS;
   return Math.max(1000, Math.min(IDENTIFY_MAX_MS, Math.trunc(number)));
+}
+
+function displayGatewayUrl(url, origin) {
+  return `${origin}/display-gateway/${url.protocol.slice(0, -1)}/${encodeURIComponent(url.host)}${url.pathname}${url.search}${url.hash}`;
 }
 
 // External HTTP(S) content is an intentional operator-controlled signage feature.
@@ -27,7 +33,12 @@ export function authorizeMediaUrl(value, baseOrigin, accessToken = '', depth = 0
     if (url.pathname.startsWith('/media/') || url.pathname.startsWith('/presentations/')) {
       url.searchParams.set('access_token', accessToken);
     }
+    return url.href;
   }
+  // Managed-display domain routes stay same-origin with Classroom Control Hub.
+  // The backend gateway preserves the original Host/TLS SNI while applying its
+  // configured DNS/IP override, so TVs do not need hosts-file changes.
+  if (DISPLAY_GATEWAY_HOSTS.has(url.hostname.toLowerCase())) return displayGatewayUrl(url, origin);
   return url.href;
 }
 
