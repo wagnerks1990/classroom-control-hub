@@ -135,6 +135,15 @@ test("core runtime and upgrade paths retain the host-network contract", () => {
   assert.match(read("install.sh"), /EnvironmentFile=-\$TARGET\/\.env/);
 });
 
+test("application updater force-recreates maintenance so new persistent mounts are applied", () => {
+  const runner=read("host-agent/app-update-runner.sh");
+  const compose=read("docker-compose.override.yml");
+  assert.match(compose,/classroom-hub-android-adb:\/managed\/classroom-hub\/data\/android-tv\/\.android/);
+  assert.match(runner,/docker compose up -d --no-build --force-recreate --remove-orphans maintenance-agent classroom-hub/);
+  assert.match(runner,/adb_storage_check\(\)/);
+  assert.match(runner,/test -w \/managed\/classroom-hub\/data\/android-tv\/\.android/);
+});
+
 test("installer never changes tracked updater modes in the production checkout", () => {
   const installer=read("install.sh"),runner=read("host-agent/app-update-runner.sh");
   assert.doesNotMatch(installer,/chmod 0755 "\$TARGET\/host-agent\/update-runner\.sh"/);
