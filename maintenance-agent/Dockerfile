@@ -23,6 +23,7 @@ COPY network.js ./
 COPY android-tv-lib.js ./
 COPY android-tv-extension.js ./
 COPY android-tv-persistent-adb.js ./
+COPY android-tv-agent-v2.js ./
 # server.js remains the audited recovery implementation. Stamp its embedded
 # diagnostic/health version from package metadata at image build time so the
 # wrapper can evolve without duplicating that large file.
@@ -33,7 +34,7 @@ ENV PORT=3010
 ENV ANDROID_TV_DATA_ROOT=/managed/classroom-hub/data/android-tv
 ENV HOME=/managed/classroom-hub/data/android-tv
 ENV ANDROID_USER_HOME=/managed/classroom-hub/data/android-tv
-ENV NODE_OPTIONS=--require=/app/extensions.js\ --require=/app/android-tv-extension.js\ --require=/app/android-tv-persistent-adb.js
+ENV NODE_OPTIONS=--require=/app/extensions.js\ --require=/app/android-tv-extension.js\ --require=/app/android-tv-persistent-adb.js\ --require=/app/android-tv-agent-v2.js
 EXPOSE 3010
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/ready',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
