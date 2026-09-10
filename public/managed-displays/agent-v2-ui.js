@@ -2,15 +2,25 @@
 (()=>{
   const root=document.getElementById("devices");
   if(!root)return;
+  let artifactCache={at:0,value:null};
   async function call(id,path,opt={}){
     const r=await fetch(`/api/v1/maintenance/android/devices/${encodeURIComponent(id)}/agent/v2${path}`,{credentials:"same-origin",cache:"no-store",headers:{"content-type":"application/json",...(opt.headers||{})},...opt});
     const text=await r.text();let j={};try{j=JSON.parse(text)}catch{throw Error(text||`HTTP ${r.status}`)}
-    if(!r.ok||j.ok===false){const e=Error(j.error||`HTTP ${r.status}`);e.status=r.status;throw e}return j;
+    if(!r.ok||j.ok===false){const e=Error(j.error||`HTTP ${r.status}`);e.status=r.status;e.payload=j;throw e}return j;
   }
   async function maintenanceCall(id,path,opt={}){
     const r=await fetch(`/api/v1/maintenance/android/devices/${encodeURIComponent(id)}${path}`,{credentials:"same-origin",cache:"no-store",headers:{"content-type":"application/json",...(opt.headers||{})},...opt});
     const text=await r.text();let j={};try{j=JSON.parse(text)}catch{throw Error(text||`HTTP ${r.status}`)}
-    if(!r.ok||j.ok===false){const e=Error(j.error||`HTTP ${r.status}`);e.status=r.status;throw e}return j;
+    if(!r.ok||j.ok===false){const e=Error(j.error||`HTTP ${r.status}`);e.status=r.status;e.payload=j;throw e}return j;
+  }
+  async function stagedArtifact(force=false){
+    if(!force&&artifactCache.value&&Date.now()-artifactCache.at<15000)return artifactCache.value;
+    try{
+      const r=await fetch('/api/v1/maintenance/android/agent/artifact',{credentials:'same-origin',cache:'no-store'});
+      const text=await r.text();let j={};try{j=JSON.parse(text)}catch{}
+      artifactCache={at:Date.now(),value:j.artifact||{available:false,error:j.error||text||`HTTP ${r.status}`}};
+    }catch(error){artifactCache={at:Date.now(),value:{available:false,error:error.message}}}
+    return artifactCache.value;
   }
   function terminal(title,value){const el=document.getElementById("terminal");if(el)el.textContent=`${title}\n${typeof value==='string'?value:JSON.stringify(value,null,2)}`}
   function decorate(){
@@ -53,14 +63,40 @@
     if(card.dataset.v2ProbeBusy==="1")return;card.dataset.v2ProbeBusy="1";
     const id=card.dataset.id,status=card.querySelector("[data-v2-status]");
     try{
-      const j=await call(id,"/health");const a=j.status?.sendspin;
-      status.textContent=`Online · ${j.status?.agentVersion||"version unknown"}${a?.enabled?` · Sendspin ${a.connected?(a.playing?'playing':'connected'):'offline'}`:''}`;status.style.color="";
+      const [j,artifact]=await Promise.all([call(id,"/health"),stagedArtifact()]);const a=j.status?.sendspin,installedVersion=j.status?.agentVersion||"version unknown";
+      const staged=artifact?.available?artifact.versionName:null,update=!!staged&&installedVersion!==staged;
+      status.textContent=`Online · ${installedVersion}${staged?` · staged ${staged}${update?' · update available':''}`:' · staged APK unavailable'}${a?.enabled?` · Sendspin ${a.connected?(a.playing?'playing':'connected'):'offline'}`:''}`;status.style.color="";
+      const installButton=card.querySelector('.controls button[data-op="install"]');
+      if(installButton&&staged){installButton.textContent=update?`Update Agent → ${staged}`:`Reinstall Agent ${staged}`;installButton.title="Installs the verified APK staged from the current Classroom Hub source.";}
       const navAvailable=j.status?.capabilities?.globalNavigation?.available===true;
       for(const op of ["home","back","recents"]){const b=card.querySelector(`button[data-v2-action="${op}"]`);if(b){b.title=navAvailable?"Uses the enabled Classroom Hub Accessibility service.":"Requires Enable Accessibility on the TV before this action can work.";}}
     }catch(e){status.textContent=e.status===409?"Not configured":`Unavailable · ${e.message}`;status.style.color=""}
     finally{delete card.dataset.v2ProbeBusy}
   }
   root.addEventListener("click",async e=>{
+    const installButton=e.target.closest('button[data-op="install"]');
+    if(installButton){
+      e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
+      const card=installButton.closest('.card[data-id]'),id=card?.dataset.id;if(!id)return;
+      installButton.disabled=true;
+      try{
+        const artifact=await stagedArtifact(true);
+        if(!artifact?.available)throw Error(artifact?.error||'No verified current Android agent APK is staged');
+        let result;
+        try{result=await maintenanceCall(id,"/agent/artifact/install",{method:"POST",body:JSON.stringify({replaceExisting:false})})}
+        catch(error){
+          if(error.payload?.code!=="signature_transition_required")throw error;
+          const confirmed=window.confirm(`This device has an older Classroom Hub agent signed with a different temporary key. Replace it with ${artifact.versionName} using this appliance's persistent signing identity? Classroom Hub will immediately restore the saved display and Agent v2 configuration.`);
+          if(!confirmed)return;
+          result=await maintenanceCall(id,"/agent/artifact/install",{method:"POST",body:JSON.stringify({replaceExisting:true})});
+        }
+        terminal("Android agent installation",result);
+        window.alert(result.message||`Installed Classroom Hub Display Agent ${artifact.versionName}.`);
+        await new Promise(resolve=>setTimeout(resolve,1200));
+        await probe(card);
+      }catch(error){window.alert(`Android agent install: ${error.message}`)}finally{installButton.disabled=false}
+      return;
+    }
     const lifecycleButton=e.target.closest("button[data-lifecycle-action]");
     if(lifecycleButton){
       e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
