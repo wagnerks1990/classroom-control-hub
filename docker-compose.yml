@@ -85,7 +85,8 @@ services:
 
   maintenance-agent:
     build:
-      context: ./maintenance-agent
+      context: .
+      dockerfile: maintenance-agent/Dockerfile
       network: host
     # Host system management is delegated to the native Classroom Control Hub Host Agent
     # over a local Unix socket. Only the network namespace is shared; PID and
@@ -121,6 +122,7 @@ services:
       - /run/classroom-control-hub:/run/classroom-control-hub
       - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}:/managed/classroom-hub:ro
       - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}/data:/managed/classroom-hub/data
+      - ${CLASSROOM_HUB_ANDROID_SIGNING_DIR:-/etc/classroom-control-hub/android-agent-signing}:/signing
       - ${HOST_SERVICES_DIR:-/opt/services}:/managed/services:ro
       # Keep the services root read-only and grant write access only to reviewed
       # managed integration directories. This preserves the maintenance-agent
@@ -133,10 +135,10 @@ services:
       - ${HOST_BACKUP_DIR:-/opt/classroom-hub-backups}:/host-backups:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "const fs=require('fs');const apk='/managed/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.apk';if(!fs.existsSync('/managed/classroom-hub'))process.exit(1);if(fs.existsSync(apk)){try{fs.accessSync(apk,fs.constants.R_OK)}catch{process.exit(1)}}fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(async r=>{const j=await r.json();if(!r.ok||!j.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "const fs=require('fs');const apk='/managed/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.apk',meta='/managed/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.json';if(!fs.existsSync('/managed/classroom-hub')||!fs.existsSync(apk)||!fs.existsSync(meta))process.exit(1);try{fs.accessSync(apk,fs.constants.R_OK);fs.accessSync(meta,fs.constants.R_OK)}catch{process.exit(1)}fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(async r=>{const j=await r.json();if(!r.ok||!j.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
-      start_period: 20s
+      start_period: 30s
       retries: 3
     security_opt:
       - no-new-privileges:true

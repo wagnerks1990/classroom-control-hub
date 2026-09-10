@@ -14,7 +14,7 @@ test("Device Agent v2 maintenance bridge parses",()=>{
 
 test("maintenance image loads Device Agent v2 bridge",()=>{
   const docker=read("maintenance-agent/Dockerfile");
-  assert.match(docker,/COPY android-tv-agent-v2\.js/);
+  assert.match(docker,/COPY (?:maintenance-agent\/)?android-tv-agent-v2\.js/);
   assert.match(docker,/--require=\/app\/android-tv-agent-v2\.js/);
 });
 
