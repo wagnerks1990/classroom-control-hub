@@ -134,3 +134,10 @@ test("core runtime and upgrade paths retain the host-network contract", () => {
   assert.match(read("install.sh"), /Environment=HOST_SERVICES_DIR=\$SERVICES/);
   assert.match(read("install.sh"), /EnvironmentFile=-\$TARGET\/\.env/);
 });
+
+test("installer never changes tracked updater modes in the production checkout", () => {
+  const installer=read("install.sh"),runner=read("host-agent/app-update-runner.sh");
+  assert.doesNotMatch(installer,/chmod 0755 "\$TARGET\/host-agent\/update-runner\.sh"/);
+  assert.doesNotMatch(runner,/chmod 0755 "\$HUB_ROOT\/host-agent\/update-runner\.sh"/);
+  assert.match(installer,/install -D -m 0755 "\$TARGET\/host-agent\/app-update-runner\.sh" \/usr\/local\/libexec\/classroom-control-hub\/app-update-runner\.sh/);
+});

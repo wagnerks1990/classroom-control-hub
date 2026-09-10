@@ -21,7 +21,7 @@ Do not infer production configuration from public defaults. Site-specific config
 
 ## Current baseline
 
-The current review baseline is `1.0.0-alpha.73`.
+The current review baseline is `1.0.0-alpha.74`.
 
 Verified live-test/recovery behaviors at this baseline include:
 
@@ -77,6 +77,8 @@ music-assistant-server     ghcr.io/music-assistant/server:2.9.13
 Native Veyon services remain host-managed. Existing Docker containers may be discovered and adopted for safe lifecycle/diagnostic control. Creation of new containers remains restricted to these pinned reviewed integration images; do not turn the Host Agent into an arbitrary root Docker command API.
 
 Persistent/runtime data must survive source updates. Never replace or commit production `.env`, databases, data, uploads, backups, master keys, private keys, credentials, or site-specific secrets.
+
+Supported installers and update runners must not edit tracked files or change tracked executable bits inside the production checkout. Install executable copies into `/usr/local/libexec`; a completed install must leave `git status --short` empty when the checkout was clean beforehand.
 
 ## Upgrade model
 

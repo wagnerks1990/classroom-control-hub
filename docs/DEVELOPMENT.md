@@ -103,7 +103,7 @@ Tests must verify the stamping/wrapper contracts so releases do not rely on manu
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.73` is the display-access policy and functional-correctness review baseline. It keeps stable URL display access as the default, makes individual credentials optional, and retains the alpha.72 gateway, Android, media, and updater repairs.
+At the time this document was updated, `1.0.0-alpha.74` is the display-access and clean-worktree installer baseline. It keeps stable URL display access as the default, makes individual credentials optional, and prevents supported installs from modifying tracked source modes.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 
@@ -138,6 +138,8 @@ git pull --ff-only origin main
 cat VERSION
 sudo bash install.sh
 ```
+
+The installer copies host runners to `/usr/local/libexec` with executable permissions. It must not chmod or rewrite tracked source files in `/opt/classroom-hub`; `git status --short` should remain empty after a supported update when the checkout began clean.
 
 For development rebuilds after the installer has established the host state:
 

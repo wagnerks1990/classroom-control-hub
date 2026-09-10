@@ -105,7 +105,6 @@ refresh_host_agent(){
   if [[ "$HUB_ROOT" != /opt/classroom-hub ]]; then sed -i "s#/opt/classroom-hub#$HUB_ROOT#g" /etc/systemd/system/classroom-hub-host-agent.service; fi
   sed -i "s#^Environment=HOST_SERVICES_DIR=.*#Environment=HOST_SERVICES_DIR=${HOST_SERVICES_DIR:-/opt/services}#" /etc/systemd/system/classroom-hub-host-agent.service
   python3 -m py_compile "$HUB_ROOT/host-agent/server.py"
-  chmod 0755 "$HUB_ROOT/host-agent/update-runner.sh" "$HUB_ROOT/host-agent/app-update-runner.sh"
   systemctl daemon-reload
   systemctl restart classroom-hub-host-agent.service
 }
