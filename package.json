@@ -7,7 +7,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check src/storage.js && node --check src/security.js && node --check src/school-schedule.js && node --check src/version.js && node --check src/startup-recovery.js && node --check src/direct-display-compat.js && node --check maintenance-agent/server.js && node --check maintenance-agent/extensions.js && node --check public/shared/branding.js && node --check public/shared/automation-hotfix.js && node --check public/shared/attribution.js && node tools/validate-controller.js",
+    "check": "node --check src/server.js && node --check src/storage.js && node --check src/security.js && node --check src/school-schedule.js && node --check src/version.js && node --check src/startup-recovery.js && node --check src/direct-display-compat.js && node --check src/display-gateway.js && node --check maintenance-agent/server.js && node --check maintenance-agent/extensions.js && node --check public/shared/branding.js && node --check public/shared/automation-hotfix.js && node --check public/shared/attribution.js && node tools/validate-controller.js",
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "dependencies": {
