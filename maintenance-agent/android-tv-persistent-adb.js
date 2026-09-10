@@ -23,6 +23,21 @@ async function requireOnline(d){
   try{await adb(["-s",d.serial,"get-state"],5000);return d}
   catch{try{await adb(["connect",d.serial],12000);await adb(["-s",d.serial,"get-state"],5000);return d}catch{const e=Error("Device must be online once to bootstrap persistent wireless debugging.");e.status=503;throw e}}
 }
+async function agentStatus(d){
+  d=await requireOnline(d);
+  const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
+  let installed=false,running=false;
+  try{
+    const r=await adb(["-s",d.serial,"shell","pm","path",pkg],8000);
+    installed=String(r.stdout||"").split(/\r?\n/).some(line=>line.startsWith("package:"));
+  }catch(error){
+    if(!/unknown package|not found/i.test(error.message))throw error;
+  }
+  if(installed){
+    try{const r=await adb(["-s",d.serial,"shell","pidof",pkg],5000);running=String(r.stdout||"").trim().length>0}catch{running=false}
+  }
+  return {ok:true,deviceId:d.id,package:pkg,installed,running};
+}
 async function broadcastPolicy(d,enabled,targetPort){
   const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
   await adb(["-s",d.serial,"shell","am","broadcast","-a","org.classroomhub.display.CONFIGURE","-p",pkg,"--ez","persistent_adb",enabled?"true":"false","--ei","target_adb_port",String(targetPort)],15000);
@@ -49,6 +64,7 @@ async function bootstrap(d,targetPort){
 }
 
 function installRoutes(app){if(installed)return;installed=true;
+  app.get("/android/devices/:id/agent/status",route(async(req,res)=>res.json(await agentStatus(device(req.params.id)))));
   app.post("/android/devices/:id/persistent-adb/bootstrap",route(async(req,res)=>{
     const targetPort=cleanPort(req.body?.targetPort||5555);
     const result=await bootstrap(device(req.params.id),targetPort);
@@ -64,4 +80,4 @@ function installRoutes(app){if(installed)return;installed=true;
 }
 
 express.application.listen=function(...args){installRoutes(this);return originalListen.apply(this,args)};
-module.exports={installRoutes,bootstrap};
+module.exports={installRoutes,bootstrap,agentStatus};
