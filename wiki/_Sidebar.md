@@ -17,6 +17,7 @@
 - [Persistent Android ADB](Persistent-Android-ADB)
 - [Android Agent Control Pilot](Android-Agent-Control-Pilot)
 - [Device Agent v2](Device-Agent-v2)
+- [Android Agent Artifact Pipeline](Android-Agent-Artifact-Pipeline)
 - [Image Permissions Recovery](Image-Permissions-Recovery)
 - [Automation Display Media](Automation-Display-Media)
 - [Veyon and Music Assistant](Veyon-and-Music-Assistant)
