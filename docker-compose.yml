@@ -91,7 +91,6 @@ services:
     image: classroom-hub-android-agent-builder:local
     pull_policy: build
     restart: "no"
-    network_mode: host
     environment:
       ANDROID_AGENT_SOURCE_ROOT: /workspace/agents/android-tv
       ANDROID_AGENT_STAGE_ROOT: /stage
