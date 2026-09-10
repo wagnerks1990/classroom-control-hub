@@ -2,6 +2,7 @@
 
 const fs=require("fs");
 const path=require("path");
+const crypto=require("crypto");
 const {DatabaseSync}=require("node:sqlite");
 process.umask(0o077);
 
@@ -11,6 +12,49 @@ function canonicalDatabaseFile(){
   const dataDir=path.resolve(process.env.DATA_DIR||path.join(__dirname,"..","data"));
   const canonical=path.join(dataDir,"classroom-control-hub.db");
   return canonical;
+}
+
+function sha256File(file){
+  const hash=crypto.createHash("sha256");
+  hash.update(fs.readFileSync(file));
+  return hash.digest("hex");
+}
+
+function stageBundledAndroidAgent(){
+  const bundledDir=path.join(__dirname,"..","bundled");
+  const bundledApk=path.join(bundledDir,"ClassroomHub-Display-Agent.apk");
+  const bundledMeta=path.join(bundledDir,"ClassroomHub-Display-Agent.json");
+  if(!fs.existsSync(bundledApk)||!fs.existsSync(bundledMeta)){
+    console.warn("Bundled Android Display Agent artifact is missing; managed-display reinstall will not be current.");
+    return;
+  }
+  let metadata;
+  try{metadata=JSON.parse(fs.readFileSync(bundledMeta,"utf8"))}catch(error){throw Error(`Bundled Android agent metadata is invalid: ${error.message}`)}
+  const bundledSha=sha256File(bundledApk);
+  if(metadata.package!=="org.classroomhub.display"||!metadata.versionName||!Number.isInteger(Number(metadata.versionCode))||metadata.sha256!==bundledSha){
+    throw Error("Bundled Android Display Agent metadata does not match the packaged APK");
+  }
+  const dataDir=path.resolve(process.env.DATA_DIR||path.join(__dirname,"..","data"));
+  const targetDir=path.join(dataDir,"android-tv");
+  const targetApk=path.join(targetDir,"ClassroomHub-Display-Agent.apk");
+  const targetMeta=path.join(targetDir,"ClassroomHub-Display-Agent.json");
+  fs.mkdirSync(targetDir,{recursive:true,mode:0o770});
+  let currentSha="";
+  try{if(fs.existsSync(targetApk))currentSha=sha256File(targetApk)}catch{}
+  if(currentSha!==bundledSha){
+    const temp=`${targetApk}.${process.pid}.tmp`;
+    fs.copyFileSync(bundledApk,temp);
+    fs.chmodSync(temp,0o660);
+    fs.renameSync(temp,targetApk);
+    console.warn(`Startup recovery staged current Android Display Agent ${metadata.versionName}.`);
+  }else{
+    try{fs.chmodSync(targetApk,0o660)}catch{}
+  }
+  const staged={...metadata,stagedAt:new Date().toISOString(),source:"bundled-with-hub-image"};
+  const metaTemp=`${targetMeta}.${process.pid}.tmp`;
+  fs.writeFileSync(metaTemp,`${JSON.stringify(staged,null,2)}\n`,{mode:0o660});
+  fs.chmodSync(metaTemp,0o660);
+  fs.renameSync(metaTemp,targetMeta);
 }
 
 function validCapabilityArray(value){return Array.isArray(value)&&value.length>0&&value.every(x=>typeof x==="string"&&x.trim())}
@@ -101,6 +145,7 @@ function reconcileVeyonSecretMetadata(db){
   console.warn(`Startup recovery reconciled Veyon private-key metadata to '${keyName}'.`);
 }
 
+stageBundledAndroidAgent();
 adoptSynchronizedVeyonKeyName();
 const dbFile=canonicalDatabaseFile();
 process.env.DATABASE_FILE=dbFile;
