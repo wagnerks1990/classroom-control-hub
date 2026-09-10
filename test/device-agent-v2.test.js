@@ -21,7 +21,8 @@ test("maintenance image loads Device Agent v2 bridge",()=>{
 test("Device Agent v2 keeps the existing package identity",()=>{
   const gradle=read("agents/android-tv/app/build.gradle.kts");
   assert.match(gradle,/applicationId = "org\.classroomhub\.display"/);
-  assert.match(gradle,/versionCode = 2/);
+  assert.match(gradle,/versionCode = 3/);
+  assert.match(gradle,/versionName = "0\.2\.1-agent-v2"/);
 });
 
 test("Device Agent v2 declares durable boot and foreground service",()=>{

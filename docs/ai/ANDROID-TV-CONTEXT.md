@@ -34,6 +34,23 @@ Android TV management is a reusable device-provider subsystem. Onn Google TV is 
 
 Do not assume the distribution-provided ADB is new enough. Debian Bookworm can provide ADB 29.0.6, which supports classic TCP ADB but does not implement the `adb pair` command required by modern Wireless debugging. The maintenance image therefore installs the current official Google Linux Platform Tools on amd64 and places that `adb` ahead of `/usr/bin/adb`. Image construction fails if the installed ADB does not expose the pairing command. On non-amd64 platforms, pairing support must be explicitly validated before claiming Android wireless enrollment support.
 
+### Onn Android 14 command safety — mandatory
+
+The validated Onn 4K Streaming Device running Android 14 (`wayne`) has repeatedly shown that `dumpsys package <package>` can block or hang indefinitely. **Do not use `dumpsys package` for routine package presence, version, process, health, or agent-status checks on this target. Do not recommend it to operators.**
+
+Preferred bounded/direct commands are:
+
+- package installed/path: `adb -s <serial> shell pm path org.classroomhub.display`
+- process running: `adb -s <serial> shell pidof org.classroomhub.display`
+- platform/device identity: targeted `getprop` calls
+- package receiver discovery: `cmd package query-receivers ...`
+- Device Owner/Profile Owner state: `dpm list-owners` or `cmd device_policy list-owners`
+- service/listener state: targeted `ss`, agent HTTP health, or direct API probes
+
+If a diagnostic has no direct command and `dumpsys` is unavoidable, it MUST be bounded with a short timeout and must never be placed on a primary UI/status path. Full unbounded `dumpsys package` is a known-bad diagnostic on the validated Onn Android 14 target.
+
+This is an AI/operator invariant. Future troubleshooting instructions, generated commands, tests, and UI health checks must prefer the direct commands above and must not regress to `dumpsys package`.
+
 ## Persistence
 
 `ANDROID_TV_DATA_ROOT` defaults to `/managed/classroom-hub/data/android-tv`, which maps to the existing writable Hub data volume. The ADB client HOME/ANDROID_USER_HOME is pointed at the same root so pairing keys survive container replacement. `devices.json` contains non-secret inventory/profile data plus recovery policy metadata; protect the directory because it also contains ADB authorization keys and may contain a staged signed APK.
