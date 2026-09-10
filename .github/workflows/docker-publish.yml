@@ -50,10 +50,10 @@ jobs:
           bash -n install.sh deploy/bootstrap.sh host-agent/update-runner.sh host-agent/app-update-runner.sh
           docker compose config >/dev/null
           docker build -t classroom-control-hub:release-gate .
-          docker build -t classroom-control-hub-maintenance:release-gate maintenance-agent
+          docker build -f maintenance-agent/Dockerfile -t classroom-control-hub-maintenance:release-gate .
           expected="$(cat VERSION)"
           docker run --rm --entrypoint node classroom-control-hub:release-gate -e "const fs=require('fs');const v=fs.readFileSync('/app/VERSION','utf8').trim();if(v!=='$expected')process.exit(1);for(const f of ['/app/public/controller/app.js','/app/public/display/index.html','/app/public/lab-agent/ClassroomHubAgent.ps1'])if(!fs.readFileSync(f,'utf8').includes(v))process.exit(2)"
-          docker run --rm --entrypoint node classroom-control-hub-maintenance:release-gate -e "const fs=require('fs');if(!fs.readFileSync('/app/server.js','utf8').includes('$expected'))process.exit(1)"
+          docker run --rm --entrypoint node classroom-control-hub-maintenance:release-gate -e "const fs=require('fs');if(!fs.readFileSync('/app/server.js','utf8').includes('$expected'))process.exit(1);if(!fs.existsSync('/app/android-agent/agent-release-unsigned.apk')||!fs.existsSync('/app/android-agent/agent-build.json'))process.exit(2)"
 
   hub:
     needs: preflight
@@ -102,7 +102,8 @@ jobs:
             type=raw,value=alpha,enable=${{ contains(github.ref_name, '-alpha.') }}
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
-          context: maintenance-agent
+          context: .
+          file: maintenance-agent/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
