@@ -112,6 +112,11 @@ services:
       APP_GID: 10001
       HOST_AGENT_SOCKET: /run/classroom-control-hub/host-agent.sock
       MASTER_KEY_FILE: /run/secrets/classroom-control-hub-master-key
+    # Files staged by the application are group-owned by the shared host GID.
+    # The hardened maintenance container intentionally lacks CAP_DAC_OVERRIDE, so
+    # it must explicitly join this group to read APKs and other managed artifacts.
+    group_add:
+      - "10001"
     volumes:
       - /run/classroom-control-hub:/run/classroom-control-hub
       - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}:/managed/classroom-hub:ro
@@ -128,7 +133,7 @@ services:
       - ${HOST_BACKUP_DIR:-/opt/classroom-hub-backups}:/host-backups:ro
       - ${CLASSROOM_HUB_MASTER_KEY_FILE:-/etc/classroom-control-hub/master.key}:/run/secrets/classroom-control-hub-master-key:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "const fs=require('fs');if(!fs.existsSync('/managed/classroom-hub'))process.exit(1);fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(async r=>{const j=await r.json();if(!r.ok||!j.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "const fs=require('fs');const apk='/managed/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.apk';if(!fs.existsSync('/managed/classroom-hub'))process.exit(1);if(fs.existsSync(apk)){try{fs.accessSync(apk,fs.constants.R_OK)}catch{process.exit(1)}}fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(async r=>{const j=await r.json();if(!r.ok||!j.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 20s
