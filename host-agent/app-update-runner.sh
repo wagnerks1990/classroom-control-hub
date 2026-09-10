@@ -50,6 +50,7 @@ health_check(){
 
 adb_storage_check(){
   docker compose exec -T maintenance-agent sh -lc 'test -w /managed/classroom-hub/data/android-tv/.android' || return 1
+  docker compose exec -T maintenance-agent sh -lc 'test ! -e /managed/classroom-hub/data/android-tv/devices.json || test -r /managed/classroom-hub/data/android-tv/devices.json' || return 1
 }
 
 appliance_health_check(){
@@ -83,6 +84,11 @@ ensure_runtime_layout(){
   local value
   install -d -m 0770 -o root -g 10001 "$HUB_ROOT/data"
   install -d -m 0700 -o root -g 10001 "$HUB_ROOT/data/backups"
+  install -d -m 2770 -o root -g 10001 "$HUB_ROOT/data/android-tv"
+  if [[ -f "$HUB_ROOT/data/android-tv/devices.json" ]]; then
+    chown root:10001 "$HUB_ROOT/data/android-tv/devices.json"
+    chmod 0660 "$HUB_ROOT/data/android-tv/devices.json"
+  fi
   [[ -f .env ]] || cp .env.example .env
   value="$(sed -n 's/^MAINTENANCE_TOKEN=//p' .env | tail -n 1)"
   if [[ -z "$value" ]]; then
@@ -241,7 +247,7 @@ write_state deploying "Force-recreating appliance containers so current Compose 
 docker compose up -d --no-build --force-recreate --remove-orphans maintenance-agent classroom-hub
 # Remove the legacy Caddy container from releases that included the TLS gateway.
 docker rm -f classroom-control-hub-tls >/dev/null 2>&1 || true
-write_state verifying "Waiting for backend HTTP, maintenance, Host Agent, ADB key storage, and version convergence." null
+write_state verifying "Waiting for backend HTTP, maintenance, Host Agent, ADB key storage, Android inventory access, and version convergence." null
 appliance_health_check "$ACTUAL_VERSION"
 
 trap - ERR
