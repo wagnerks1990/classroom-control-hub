@@ -1,0 +1,62 @@
+name: Apply morning stream hotfix
+
+on:
+  push:
+    branches:
+      - fix/morning-announcement-stream-stability
+    paths:
+      - '.github/workflows/apply-morning-stream-hotfix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/morning-announcement-stream-stability
+          fetch-depth: 0
+      - name: Patch server and controller defaults
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('src/server.js')
+          s=p.read_text()
+          replacements={
+            'offlineConfirmations:finite(input.offlineConfirmations??existing.offlineConfirmations,2,1,8),':'offlineConfirmations:finite(input.offlineConfirmations??existing.offlineConfirmations,6,1,12),',
+            'if(!morningAnnouncementsRuntime.active||Date.now()-morningAnnouncementsRuntime.lastAssertAt>30000)await assertMorningAnnouncements({mode:"automatic"});':'if(!morningAnnouncementsRuntime.active)await assertMorningAnnouncements({mode:"automatic"});',
+            "style-src 'self' 'unsafe-inline'; ${scriptPolicy}; connect-src 'self' http: https: ws: wss:; frame-src 'self' http: https:; frame-ancestors 'self'":"style-src 'self' 'unsafe-inline'; ${scriptPolicy}; worker-src 'self' blob:; connect-src 'self' http: https: ws: wss:; frame-src 'self' http: https:; frame-ancestors 'self'",
+          }
+          for old,new in replacements.items():
+            count=s.count(old)
+            if count!=1:
+              raise SystemExit(f'server.js expected exactly one match for {old!r}, found {count}')
+            s=s.replace(old,new)
+          p.write_text(s)
+
+          p=Path('public/controller/app.js')
+          s=p.read_text()
+          old="offlineConfirmations:2,checkIntervalSeconds:15"
+          new="offlineConfirmations:6,checkIntervalSeconds:15"
+          count=s.count(old)
+          if count!=1:
+            raise SystemExit(f'app.js expected exactly one morning watch default match, found {count}')
+          p.write_text(s.replace(old,new))
+          PY
+      - name: Validate syntax and focused tests
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+          npm test
+          git diff --check
+      - name: Commit patch
+        run: |
+          git config user.name 'classroom-hub-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/server.js public/controller/app.js
+          git commit -m 'Stabilize Morning Announcements playback'
+          git push origin HEAD:fix/morning-announcement-stream-stability
