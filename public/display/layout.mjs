@@ -189,7 +189,7 @@ export function createDisplayLayout(nodes, getState) {
   if (document.fonts) {
     Promise.all([document.fonts.load('16px "Classroom Display"'), document.fonts.load('700 16px "Classroom Display"')])
       .then(() => document.fonts.ready).then(finishFonts, finishFonts).finally(() => clearTimeout(fontTimeout));
-    document.fonts.addEventListener('loadingdone', fontsChanged);
+    document.fonts.addEventListener?.('loadingdone', fontsChanged);
   } else finishFonts();
   request();
   return {
@@ -198,7 +198,7 @@ export function createDisplayLayout(nodes, getState) {
     dispose() {
       disposed = true; clearTimeout(fontTimeout);
       if (frame !== null) cancelAnimationFrame(frame);
-      document.fonts?.removeEventListener('loadingdone', fontsChanged);
+      document.fonts?.removeEventListener?.('loadingdone', fontsChanged);
     }
   };
 }

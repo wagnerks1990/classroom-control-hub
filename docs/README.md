@@ -21,6 +21,15 @@ This directory is the canonical technical documentation set for Classroom Contro
 - [Database](DATABASE.md) — SQLite storage and migration notes.
 - [Host Agent](HOST-AGENT.md) — host-level service responsibilities, migration verification, and security boundary.
 - [Windows Lab Agent](LAB-AGENT.md) — one-time enrollment, per-computer credentials, signing, removal, and privacy controls.
+- [Android TV Displays](ANDROID-TV-DISPLAYS.md) — pairing, assignment, Display Agent lifecycle, and device recovery.
+- [Persistent Android ADB](PERSISTENT-ANDROID-ADB.md) — trusted-network wireless-debugging recovery and boundaries.
+- [Android TV Support Matrix](ANDROID-TV-SUPPORT-MATRIX.md) — tested, pending, and unsupported physical-device behavior.
+- [Display Access](DISPLAY-ACCESS.md) — one-use receiver enrollment and credential rotation/revocation.
+- [Display Layout Contract](DISPLAY-LAYOUT-CONTRACT.md) — single layout owner, bounded sizing, hard containment, and compact timers.
+- [Managed Display Gateway](MANAGED-DISPLAY-GATEWAY.md) — configured media relay, header isolation, sandboxing, and verification.
+- [Automation Framework](AUTOMATION-FRAMEWORK.md) — schedule resolution, actions, targets, and execution evidence.
+- [Manual Media Audio](MANUAL-MEDIA-AUDIO.md) — operator video/web volume behavior and limitations.
+- [Veyon and Music Integrations](VEYON-MUSIC-INTEGRATIONS.md) — native Veyon and Music Assistant ownership.
 - [Wiki Synchronization](WIKI-SYNC.md) — how the Git-tracked `wiki/` mirror is published to the actual GitHub Wiki.
 
 ## AI and contributor instructions

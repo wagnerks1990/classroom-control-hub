@@ -49,7 +49,7 @@ JSON.stringify(window.ClassroomDisplayDiagnostics(), null, 2)
 
 The report contains renderer revision, CSS viewport, DPR, stage scale, font-load status, layout pass count, fitted logical sizes, region geometry, and containment warnings. It does not expose credentials or the lesson body. Layout telemetry also accompanies receiver heartbeats.
 
-Expected renderer revision: `single-fit-20260909-2`. A source rebuild may still report application alpha.71 because this is not a new tagged release. Use the renderer revision and commit, not just the application version, to distinguish this correction.
+Expected renderer revision: `single-fit-20260909-4`, released with alpha.72. Configured sizes are the visual baseline; automatic growth is bounded near that baseline, and mandatory shrink-to-fit containment prevents title, subtitle, body, and compact timer overflow.
 
 Browser regression tests load the real receiver HTML, layout module, CSS, shared scripts, and fonts. Only transport, the branding API, and the unrelated audio SDK are mocked. Chromium and Firefox CI tests cover P6/P7 samples, 1080p/4K, DPR 1/2, 720p, 1082x1226, reload/reconnect, live commands versus replay, colors, timer ticks/expiry/hour changes, timer positions, long labels, style-only changes, clear, manual sizes, long unbroken words, and dense content. They measure element and text-range bounds and check component overlap. Screenshots and measurement JSON are retained as CI artifacts.
 

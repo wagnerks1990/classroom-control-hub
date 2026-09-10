@@ -10,6 +10,7 @@ Group=root
 WorkingDirectory=/opt/classroom-hub/host-agent
 EnvironmentFile=-/opt/classroom-hub/.env
 Environment=CLASSROOM_HUB_DIR=/opt/classroom-hub
+Environment=HOST_SERVICES_DIR=/opt/services
 Environment=CLASSROOM_HUB_HOST_AGENT_SOCKET=/run/classroom-control-hub/host-agent.sock
 RuntimeDirectory=classroom-control-hub
 RuntimeDirectoryMode=0750

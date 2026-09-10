@@ -21,8 +21,8 @@ test("startup recovery restores missing built-in capabilities before the applica
   const recovery=read("src/startup-recovery.js"),dockerfile=read("Dockerfile");
   assert.match(dockerfile,/CMD \["node",(?:\s*"--require",\s*"\.\/src\/direct-display-compat\.js",)?\s*"src\/startup-recovery\.js"\]/);
   assert.match(recovery,/administrator:[\s\S]*?capabilities:\["\*"\]/);
-  assert.match(recovery,/if\(validCapabilityArray\(config\.capabilities\)\)continue/);
-  assert.match(recovery,/UPDATE access_profiles SET config_json=\?,updated_at=\?/);
+  assert.match(recovery,/repairAdministrator/);
+  assert.match(recovery,/UPDATE access_profiles SET role=\?,enabled=\?,config_json=\?,updated_at=\?/);
 });
 
 test("setup wizard keeps receiver IDs editable and removes stale group members",()=>{

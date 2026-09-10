@@ -1,47 +1,16 @@
 # AI Context — Managed Display Gateway
 
-This file is concise implementation context for AI coding/review agents working on Classroom Control Hub.
+The gateway is installed by the `src/direct-display-compat.js` preload before Express is created. Despite the historical filename, this preload must not replace `ClassroomHubStorage.authenticateDisplay` or enable credentialless display access.
 
-## Intent
+Authoritative implementation:
 
-Managed classroom displays should not require per-device hosts-file or DNS changes for approved signage/streaming destinations. The Hub owns upstream resolution and relays the approved web traffic to the display.
+- Backend: `src/display-gateway.js`
+- Browser policy: `public/display/security.mjs`
+- Handshake configuration: `DISPLAY_GATEWAY_HOSTS` in `src/server.js`
+- Route: `/display-gateway/{http|https}/{encoded-host}/...`
 
-## Current implementation
+Public defaults are intentionally empty. Never add a production hostname or IP to source, tests, or `.env.example`.
 
-- Preload entry point: `src/direct-display-compat.js`
-- Gateway implementation: `src/display-gateway.js`
-- Display URL routing policy: `public/display/security.mjs`
-- Default upstream mapping: `stream.carlisleschools.org=100.88.92.111`
-- Gateway route shape: `/display-gateway/{http|https}/{encoded-host}/...`
-- Existing Morning Announcements HLS probes benefit from the process-local DNS override automatically.
-- The integrated `/antmedia-player/` path remains the preferred Morning Announcements playback mechanism.
+Non-negotiable rules: configured hosts only; ports 80/443; GET/HEAD only; no request credentials/tokens/forwarding headers; no response cookies; CSP-sandbox proxied active content; no `allow-same-origin` on gateway frames; bounded response/time; no CONNECT or generic WebSocket tunnel. Browser and backend allowlists must come from the same runtime configuration.
 
-## Non-negotiable security rules
-
-1. Do not turn the gateway into an unrestricted forward proxy.
-2. Only configured/allowlisted hostnames may be proxied.
-3. Preserve original Host and TLS SNI when applying an IP override.
-4. Reject embedded URL credentials and unsupported schemes.
-5. Do not add generic HTTP CONNECT tunneling.
-6. Generic WebSocket proxying, if added later, must use an explicit hostname allowlist and bounded payload/timeouts.
-
-## Functional expectations
-
-For the Carlisle deployment, the physical TV should be able to play Morning Announcements even when neither the TV nor the Hub host operating system has a hosts-file entry for `stream.carlisleschools.org`. The Node process itself resolves that hostname to `100.88.92.111`, while certificates are still validated against `stream.carlisleschools.org`.
-
-Display-side authorization should rewrite approved external URLs to the Hub gateway. Other external sites continue to use their existing direct path unless explicitly added to gateway policy.
-
-## Known limitation
-
-This phase handles HTTP(S), redirects, ordinary web assets, and HLS. It does not yet implement arbitrary proxied WebSocket upgrades. Do not claim full WebRTC transparency until that feature exists and has been validated on the physical Onn Google TV.
-
-## Verification contract
-
-A deployment is not considered validated until all of the following are true:
-
-- repository validation tests pass;
-- the Hub starts with the gateway preload enabled;
-- `Check Stream Now` works after removing the operating-system hosts-file override;
-- the physical managed display requests the stream through `/display-gateway/`;
-- HLS manifests and segments load through the gateway;
-- playback succeeds on the physical TV.
+Repository tests prove policy mechanics. Actual announcement/HLS playback on a physical TV remains a deployment acceptance test and must not be claimed from unit tests alone.

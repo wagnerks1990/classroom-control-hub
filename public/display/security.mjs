@@ -2,7 +2,16 @@
 export const IDENTIFY_DEFAULT_MS = 8000;
 export const IDENTIFY_MAX_MS = 30000;
 
-const DISPLAY_GATEWAY_HOSTS = new Set(['stream.carlisleschools.org']);
+const DISPLAY_GATEWAY_HOSTS = new Set();
+
+export function setDisplayGatewayHosts(values = []) {
+  DISPLAY_GATEWAY_HOSTS.clear();
+  for (const value of Array.isArray(values) ? values : []) {
+    const host = String(value || '').trim().toLowerCase();
+    if (/^[a-z0-9.-]+$/.test(host)) DISPLAY_GATEWAY_HOSTS.add(host);
+  }
+  return [...DISPLAY_GATEWAY_HOSTS];
+}
 
 export function identifyDuration(value) {
   const number = Number(value);

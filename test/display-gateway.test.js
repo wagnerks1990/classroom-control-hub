@@ -1,12 +1,12 @@
 "use strict";
 const test=require("node:test");
 const assert=require("node:assert/strict");
-const {parseOverrides,parseAllowedHosts,gatewayPathFor,parseGatewayRequest}=require("../src/display-gateway");
+const {parseOverrides,parseAllowedHosts,gatewayPathFor,parseGatewayRequest,upstreamRequestHeaders}=require("../src/display-gateway");
 
-test("display gateway defaults the Carlisle stream hostname to the controller override",()=>{
+test("display gateway has no school-specific default override",()=>{
   const overrides=parseOverrides();
-  assert.equal(overrides.get("stream.carlisleschools.org"),"100.88.92.111");
-  assert.equal(parseAllowedHosts("",overrides).has("stream.carlisleschools.org"),true);
+  assert.equal(overrides.size,0);
+  assert.equal(parseAllowedHosts("",overrides).size,0);
 });
 
 test("display gateway preserves target hostname and path in same-origin URLs",()=>{
@@ -19,10 +19,17 @@ test("display gateway preserves target hostname and path in same-origin URLs",()
 test("display gateway rejects arbitrary hosts",()=>{
   assert.throws(()=>parseGatewayRequest("/display-gateway/https/127.0.0.1/admin",new Set(["stream.carlisleschools.org"])),/not allowed/);
   assert.throws(()=>parseGatewayRequest("/display-gateway/http/example.com/",new Set(["stream.carlisleschools.org"])),/not allowed/);
+  assert.throws(()=>parseGatewayRequest("/display-gateway/https/stream.carlisleschools.org%3A8443/admin",new Set(["stream.carlisleschools.org"])),/port is not allowed/);
+});
+
+test("display gateway strips Hub credentials and forwarding identity",()=>{
+  const headers=upstreamRequestHeaders({cookie:"classroom_hub_session=secret",authorization:"Bearer secret","x-setup-token":"secret","x-maintenance-token":"secret","x-forwarded-for":"127.0.0.1",accept:"text/html"});
+  assert.deepEqual(headers,{accept:"text/html","accept-encoding":"identity"});
 });
 
 test("display media policy routes the approved stream hostname through the Hub",async()=>{
-  const {authorizeMediaUrl}=await import("../public/display/security.mjs");
+  const {authorizeMediaUrl,setDisplayGatewayHosts}=await import("../public/display/security.mjs");
+  setDisplayGatewayHosts(["stream.carlisleschools.org"]);
   const result=new URL(authorizeMediaUrl("https://stream.carlisleschools.org/LiveApp/play.html?id=test","http://172.16.127.5:3000"));
   assert.equal(result.origin,"http://172.16.127.5:3000");
   assert.equal(result.pathname,"/display-gateway/https/stream.carlisleschools.org/LiveApp/play.html");

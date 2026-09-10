@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   packages: write
+  checks: read
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -29,7 +30,7 @@ jobs:
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
           checks="$(gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100")"
-          for required in validate windows-agent; do
+          for required in validate windows-agent private-context build 'display-browser (chromium)' 'display-browser (firefox)'; do
             jq -e --arg name "$required" '[.check_runs[] | select(.name==$name and .conclusion=="success")] | length > 0' <<<"$checks" >/dev/null \
               || { echo "Required Validate workflow job did not pass for tag commit: $required" >&2; exit 1; }
           done
@@ -44,11 +45,7 @@ jobs:
           npm test
           npm --prefix maintenance-agent ci --ignore-scripts --no-audit --no-fund
           npm --prefix maintenance-agent audit --omit=dev --audit-level=high
-          node --check src/server.js
-          node --check src/storage.js
-          node --check src/startup-recovery.js
-          node --check maintenance-agent/server.js
-          node --check maintenance-agent/extensions.js
+          npm run check
           python3 -m py_compile host-agent/server.py host-agent/start.py
           bash -n install.sh deploy/bootstrap.sh host-agent/update-runner.sh host-agent/app-update-runner.sh
           docker compose config >/dev/null

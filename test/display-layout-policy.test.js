@@ -44,5 +44,5 @@ test('receiver cache key matches active renderer revision', () => {
   const source = fs.readFileSync(indexPath, 'utf8');
   assert.match(source, /layout\.mjs\?v=single-fit-20260909-4/);
   assert.match(source, /layout\.css\?v=single-fit-20260909-4/);
-  assert.match(source, /DISPLAY_BUILD='1\.0\.0-alpha\.71'/);
+  assert.match(source, /DISPLAY_BUILD='1\.0\.0-alpha\.72'/);
 });

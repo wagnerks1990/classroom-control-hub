@@ -1,96 +1,48 @@
 # Managed Display Gateway
 
-## Purpose
+The Managed Display Gateway lets classroom receivers fetch explicitly approved HTTP(S) media through the Hub when a TV cannot use the required DNS route directly. It is a narrow signage/media relay, not a general forward proxy.
 
-The Managed Display Gateway lets Classroom Control Hub displays access approved external web resources through the Hub instead of resolving those sites directly from the TV/browser.
+## Configuration
 
-The first production use case is Morning Announcements at `stream.carlisleschools.org`, which must resolve to `100.88.92.111` from the Classroom Hub environment.
-
-## Traffic flow
-
-```text
-Managed display
-  -> Classroom Hub /display-gateway/...
-  -> upstream hostname preserved for HTTP Host and TLS SNI
-  -> process-local DNS override resolves stream.carlisleschools.org to 100.88.92.111
-  -> Ant Media / web resource
-```
-
-The browser therefore does not require a hosts-file entry. The upstream TLS certificate continues to be validated for the original hostname rather than the forced IPv4 address.
-
-## Default mapping
-
-The compatibility default is:
-
-```text
-stream.carlisleschools.org=100.88.92.111
-```
-
-It can be overridden with:
+Public defaults are empty. Put site mappings only in the deployment's protected `.env`:
 
 ```dotenv
-DISPLAY_GATEWAY_OVERRIDES=stream.carlisleschools.org=100.88.92.111
+DISPLAY_GATEWAY_OVERRIDES=media.example.edu=192.0.2.10
+DISPLAY_GATEWAY_ALLOWED_HOSTS=signage.example.edu
 ```
 
-Multiple entries are comma separated.
+Override entries are comma-separated `hostname=IPv4` pairs. Their hostnames are automatically allowlisted. Additional comma-separated allowlist hosts use normal DNS. Restart the Hub after changes; the allowed host list is sent to authenticated display clients during the WebSocket handshake, so the browser and backend use the same policy.
 
-Hosts present in `DISPLAY_GATEWAY_OVERRIDES` are automatically allowed through the gateway. Additional approved hostnames can be added with:
-
-```dotenv
-DISPLAY_GATEWAY_ALLOWED_HOSTS=media.example.edu,signage.example.edu
-```
-
-## Display behavior
-
-`public/display/security.mjs` rewrites approved `stream.carlisleschools.org` HTTP(S) media URLs to the same-origin gateway path before the display renderer creates an image, video, or web frame.
-
-Example:
+Gateway URLs have this form:
 
 ```text
-https://stream.carlisleschools.org/LiveApp/play.html?id=morning
+http://hub.example:3000/display-gateway/https/media.example.edu/path/playlist.m3u8
 ```
 
-becomes:
+The upstream hostname remains the HTTP `Host` and TLS SNI/certificate name even when the Node process uses a forced IPv4 address.
 
-```text
-http://HUB:3000/display-gateway/https/stream.carlisleschools.org/LiveApp/play.html?id=morning
-```
+## Security contract
 
-This keeps the browser connected to Classroom Control Hub while the Hub owns the upstream connection.
+- Only configured hostnames, HTTP/HTTPS, ports 80/443, and GET/HEAD are accepted.
+- Client cookies, authorization, setup/control/maintenance tokens, forwarding identity, and hop-by-hop headers are never sent upstream.
+- Upstream `Set-Cookie`, `Clear-Site-Data`, CSP, and hop-by-hop response headers are not copied to the Hub origin.
+- Gateway responses receive a CSP sandbox. Receiver gateway iframes also omit `allow-same-origin`, preventing proxied scripts from receiving Hub-origin authority.
+- Rewritable text is limited to 8 MiB. Request timeout is 15 seconds.
+- `CONNECT`, arbitrary ports, embedded URL credentials, and unlisted hosts are rejected.
 
-## Morning Announcements
+The route remains reachable on the classroom network because display media subrequests do not carry WebSocket credentials. Its authority is therefore bounded by the fixed allowlist, safe methods/ports, header isolation, response sandbox, and normal network segmentation.
 
-The Hub process installs the same DNS override before `server.js` starts. Existing server-side HLS live probes therefore resolve the Ant Media hostname to the configured forced address without requiring `/etc/hosts` on the controller.
+## Rewriting and limitations
 
-The integrated Ant Media HLS player receives the gateway URL and derives its `.m3u8` candidates from that same gateway path, keeping HLS manifests and media segments on the Hub path.
+The gateway rewrites common root-relative HTML/CSS resource URLs, redirect locations, absolute upstream origins, and HLS playlist entries back through the same gateway. The integrated local Ant Media/HLS player remains the preferred announcement path.
 
-## Full-site resources
-
-The gateway forwards HTTP methods and response bodies for the approved hostname. It preserves relative URLs naturally and rewrites common root-relative HTML/CSS resource references and HLS playlist entries back through the gateway. Redirect `Location` headers are also rewritten.
-
-This is intended for managed-display content, not as a general-purpose forward proxy.
-
-## Security boundaries
-
-- Only HTTP and HTTPS targets are accepted.
-- Embedded URL credentials are rejected.
-- Only allowlisted hostnames may be proxied.
-- `CONNECT` is not supported.
-- Hop-by-hop proxy headers are stripped.
-- Upstream Host and TLS SNI remain the configured hostname.
-- Text responses larger than 8 MiB are not rewritten.
-- Arbitrary private-network destinations are not accepted unless an administrator explicitly adds their hostname to the allowlist/override configuration.
-
-## Current limitation
-
-This phase covers HTTP(S), HLS manifests/segments, redirects, and ordinary web assets. It does not yet provide a generic WebSocket tunnel for arbitrary proxied websites. Morning Announcements should continue to use the integrated HLS player as the reliable transport. A future WebSocket gateway can be added with explicit per-host upgrade routing instead of opening an unrestricted tunnel.
+Generic WebSocket tunneling and arbitrary WebRTC proxying are not supported. Do not claim physical-TV playback until it has been validated on the actual device/firmware.
 
 ## Verification
 
-After deployment, remove the controller `/etc/hosts` entry for `stream.carlisleschools.org`, restart Classroom Hub, and verify:
-
-1. `Check Stream Now` still reaches the stream through the process-local override.
-2. A managed display loads the Morning Announcements URL.
-3. Browser network requests use `/display-gateway/https/stream.carlisleschools.org/...`.
-4. Response headers include `X-Classroom-Hub-Display-Gateway: 1`.
-5. HLS playback remains functional while the TV itself has no DNS/hosts override for the stream hostname.
+1. Configure the site mapping and restart the Hub.
+2. Confirm an authenticated display handshake receives the configured hostname.
+3. Confirm the receiver requests `/display-gateway/...` and receives `X-Classroom-Hub-Display-Gateway: 1`.
+4. Verify non-GET requests, unlisted hosts, and nonstandard ports return 403/405.
+5. Verify no Hub cookie/token reaches the upstream and upstream cookies are not installed.
+6. Test HLS manifests, segments, redirects, and physical-TV playback.

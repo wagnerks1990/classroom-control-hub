@@ -1,6 +1,8 @@
 {
   "name": "classroom-control-hub-maintenance-agent",
-  "version": "1.0.0-alpha.71",
+  "version": "1.0.0-alpha.72",
+  "engines": {"node": ">=22"},
+  "packageManager": "npm@11",
   "private": true,
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "server.js",

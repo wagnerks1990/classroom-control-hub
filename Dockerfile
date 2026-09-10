@@ -30,6 +30,8 @@ RUN bash tools/prepare-display-fonts.sh
 RUN RELEASE_VERSION="$(cat VERSION)" \
  && sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+/${RELEASE_VERSION}/g" \
       public/controller/app.js \
+      public/controller/index.html \
+      public/controller/display.html \
       public/display/index.html \
       public/lab-agent/ClassroomHubAgent.ps1
 

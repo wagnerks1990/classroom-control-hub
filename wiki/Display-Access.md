@@ -1,24 +1,19 @@
 # Display Access
 
-Classroom TVs and browser receivers connect directly with their configured display ID.
-
-For the BLC classroom:
-
-```text
-http://172.16.127.5:3000/display/tv1
-http://172.16.127.5:3000/display/tv2
-```
-
-No enrollment token or one-use link is required.
+Every classroom receiver uses a stable display ID plus an individual, revocable browser credential. Knowing `/display/<id>` is not sufficient to connect as a physical display.
 
 ## Setup
 
-Create/enable the display in Classroom Control Hub, assign a stable ID, and configure the TV/mini-PC browser to launch `/display/<id>` automatically. The controller Settings page lists the direct URLs for every enabled display and provides copy/open actions.
+In **Settings → Classroom Display Enrollment**, create a one-use link for the enabled display and open it on the assigned TV/browser:
 
-Unknown or disabled display IDs are rejected. Enabled display IDs are allowed to connect from the trusted classroom/admin network.
+```text
+http://hub.example:3000/display/tv1#enrollmentToken=<one-use-token>
+```
 
-## Security
+The receiver consumes the expiring token once, stores its issued credential locally, and reconnects at the stable `/display/tv1` path. The Hub stores only hashes.
 
-This is a trusted-network design. Do not expose the Hub's HTTP display endpoint directly to an untrusted/public network. Use network segmentation or an access layer if remote/untrusted access is required.
+Administrators can cancel pending links, revoke one credential, or rotate all credentials for a display. Renaming a receiver does not invalidate its credential. Removing or disabling a receiver prevents it from connecting.
 
-Windows lab-agent enrollment is separate and remains credentialed.
+Keep `DISPLAY_TOKEN` only as a temporary migration fallback, then disable legacy access when enrollment coverage is complete. If a TV loses browser storage, enroll it again.
+
+The HTTP-only alpha deployment must remain on a trusted classroom/admin network with normal VLAN and firewall controls.

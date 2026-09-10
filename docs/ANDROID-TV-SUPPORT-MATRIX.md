@@ -4,7 +4,7 @@ This document records hardware/firmware behavior observed during physical valida
 
 ## Onn 4K Streaming Device — Android 14
 
-Status: **Experimental / active validation**
+Status: **Supported for the validated capabilities below**
 
 Observed on 2026-09-09:
 
@@ -21,11 +21,11 @@ Observed on 2026-09-09:
 | Wireless Debugging toggle after reboot | Fail / firmware behavior | The device disabled Wireless Debugging after reboot while preserving pairing authorization. |
 | Secure ADB port after reboot | Dynamic | Port changed after reboot. |
 | Reconnect after manually re-enabling Wireless Debugging | Pass | Managed Displays Status recovered the device without re-pairing. |
-| Persistent ADB agent bootstrap | Pending | New opt-in `WRITE_SECURE_SETTINGS` boot-restoration path requires physical test. |
-| Display Agent install | Pending | Requires current test APK staging. |
-| Kiosk display URL | Pending | Requires agent install/configuration. |
-| Auto-launch after boot | Pending | Requires agent install/configuration. |
-| Fixed ADB port after reboot | Pending | Persistent ADB bootstrap targets port 5555; needs cold-reboot validation. |
+| Persistent ADB agent bootstrap | Pass | Opt-in `WRITE_SECURE_SETTINGS` boot-restoration path recovered Wireless Debugging after reboot. |
+| Display Agent install | Pass | APK installation and status/configuration were verified. |
+| Kiosk display URL | Pass | Assigned Classroom Hub content loaded fullscreen. |
+| Auto-launch after boot | Pass | Agent and assigned content returned after reboot. |
+| Fixed ADB port after reboot | Pass | Persistent ADB restored the managed endpoint on port 5555 after the temporary boot gap. |
 | HDMI-CEC physical panel power | Not tested | Must be validated separately from Android sleep/wake. |
 
 ## Promotion criteria

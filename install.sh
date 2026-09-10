@@ -181,6 +181,7 @@ if [[ ! -e /etc/classroom-control-hub/veyon/private.pem ]]; then install -m 0640
 command -v python3 >/dev/null 2>&1 || { apt-get update && apt-get install -y python3; }
 install -D -m 0644 "$TARGET/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-hub-host-agent.service
 if [[ "$TARGET" != "/opt/classroom-hub" ]]; then sed -i "s#/opt/classroom-hub#$TARGET#g" /etc/systemd/system/classroom-hub-host-agent.service; fi
+sed -i "s#^Environment=HOST_SERVICES_DIR=.*#Environment=HOST_SERVICES_DIR=$SERVICES#" /etc/systemd/system/classroom-hub-host-agent.service
 python3 -m py_compile "$TARGET/host-agent/server.py" "$TARGET/host-agent/start.py"
 install -d -m 0750 /run/classroom-control-hub
 chmod 0755 "$TARGET/host-agent/update-runner.sh" "$TARGET/host-agent/app-update-runner.sh"
@@ -219,6 +220,8 @@ Type=oneshot
 User=root
 Group=root
 Environment=CLASSROOM_HUB_DIR=$TARGET
+Environment=HOST_SERVICES_DIR=$SERVICES
+EnvironmentFile=-$TARGET/.env
 ExecStart=/usr/local/libexec/classroom-control-hub/app-update-runner.sh
 TimeoutStartSec=0
 Nice=10

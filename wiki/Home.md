@@ -2,7 +2,7 @@
 
 Classroom Control Hub is a centralized classroom automation and control platform for displays, AV routing, lighting, media, live announcements, Background Music, schedules, lab infrastructure, and appliance integration management.
 
-> **Status:** `1.0.0-alpha.71` — live-test recovery/stabilization release.
+> **Status:** `1.0.0-alpha.72` — security and functional-correctness stabilization release.
 
 ## Start here
 
@@ -66,10 +66,9 @@ Ubuntu host
 Optional managed add-ons:
 
 ```text
-mosquitto                 eclipse-mosquitto:latest
-govee2mqtt                ghcr.io/wez/govee2mqtt:latest
-music-assistant-server     ghcr.io/music-assistant/server:latest
-veyon-webapi               veyon/webapi-proxy:latest
+mosquitto                 eclipse-mosquitto:2.0.22
+govee2mqtt                ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72
+music-assistant-server     ghcr.io/music-assistant/server:2.9.13
 ```
 
 ## Repository and documentation

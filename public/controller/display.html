@@ -147,7 +147,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
   <div class="top">
     <div>
       <h1>Classroom Control Hub Controller</h1>
-      <div class="muted">Classroom Control Hub • v1.0.0-alpha.70 • multi-display controller</div>
+      <div class="muted">Classroom Control Hub • v1.0.0-alpha.72 • multi-display controller</div>
     </div>
     <div id="conn" class="muted">Connecting…</div>
   </div>
@@ -655,6 +655,10 @@ async function cmd(type,target,payload={}){
     return j;
   }catch(e){setResultSummary('✕ '+e.message,false,{error:e.message});throw e}
 }
+// Narrow bridge for separately loaded controller enhancements. Module-scoped
+// declarations are not exposed on window automatically.
+window.controllerDisplayCommand=cmd;
+window.controllerDisplayTargetArg=targetArg;
 window.sendTitle=()=>cmd('display.title',targetArg(),{text:el('titleText').value,color:el('titleColor').value,size:Number(el('titleSize').value)});
 window.sendSubtitle=()=>cmd('display.subtitle',targetArg(),{text:el('subtitleText').value,color:el('subtitleColor').value,size:Number(el('subtitleSize').value)});
 window.sendText=()=>cmd('display.text',targetArg(),{text:el('text').value,color:el('textColor').value,size:Number(el('fontSize').value),position:el('position').value,background:rgba(el('textBg').value,Number(el('textBgOpacity').value))});
@@ -667,7 +671,9 @@ function selectedTimerClass(){return timerClasses.find(c=>c.id===el('timerClassS
 function selectedClassEndAt(){const c=selectedTimerClass();if(!c)return null;const [h,m]=c.endTime.split(':').map(Number),x=new Date();x.setHours(h,m,0,0);return x}
 function refreshClassTimerPreview(){const c=selectedTimerClass();if(!c)return;const end=selectedClassEndAt(),rem=end?Math.max(0,(end-Date.now())/1000):0;el('timerClassStatus').textContent=`${c.name} • ends ${c.endTime} • ${fmtControllerTimer(rem)} remaining`;if(el('timerSource').value==='class-end'){localTimerState={...localTimerState,mode:'countdown',remainingSeconds:rem,endAt:end?.getTime()||null};paintControllerTimer()}}
 window.useCurrentClassTimer=async()=>{if(!timerClasses.length)await loadTimerClasses();const a=timerClassStatusData?.activeClass;if(!a){setResultSummary('✕ No class is currently active',false,{});return}el('timerSource').value='class-end';timerSourceChanged();el('timerClassSelect').value=a.id;refreshClassTimerPreview();if(!el('timerLabelInput').value)el('timerLabelInput').value=`${a.shortName||a.name} • Class Ends`;await startScreenTimer()};
-let localTimerState={running:false,mode:'countdown',remainingSeconds:300,elapsedSeconds:0,startedAt:null,endAt:null};
+let localTimerState={running:false,mode:'countdown',remainingSeconds:300,elapsedSeconds:0,startedAt:null,endAt:null},localTimerTargetsKey='';
+function selectedTargetsKey(){return [...selected].sort().join(',')}
+function requireLocalTimerTargets(){if(!localTimerTargetsKey||localTimerTargetsKey!==selectedTargetsKey())throw new Error('Start a timer for the currently selected display targets before pausing it.')}
 let localTimerTick=null;
 function timerStylePayload(){
   const bg=rgba(el('timerBgColor').value,Number(el('timerBgOpacity').value));
@@ -738,6 +744,7 @@ window.startScreenTimer=async()=>{
   const now=Date.now();
   const configured=timerInputSeconds();
   localTimerState.mode=mode;
+  localTimerTargetsKey=selectedTargetsKey();
   if(mode==='countdown'){
     const classEndMode=el('timerSource')?.value==='class-end',exactEnd=classEndMode?selectedClassEndAt():null;
     const remaining=classEndMode?configured:((localTimerState.remainingSeconds>0&&localTimerState.remainingSeconds!==300&&configured===300)?localTimerState.remainingSeconds:configured);
@@ -758,6 +765,7 @@ window.startScreenTimer=async()=>{
   startLocalTimerTick();
 };
 window.pauseScreenTimer=async()=>{
+  requireLocalTimerTargets();
   const seconds=currentLocalTimerSeconds();
   localTimerState.running=false;
   if(localTimerState.mode==='countdown')localTimerState.remainingSeconds=seconds;
@@ -774,6 +782,7 @@ window.pauseScreenTimer=async()=>{
 };
 window.resetScreenTimer=async()=>{
   const configured=timerInputSeconds(),mode=el('timerMode').value;
+  localTimerTargetsKey=selectedTargetsKey();
   localTimerState={running:false,mode,remainingSeconds:configured,elapsedSeconds:0,startedAt:null,endAt:null};
   if(localTimerTick){clearInterval(localTimerTick);localTimerTick=null}
   await cmd('display.timer',targetArg(),{
@@ -784,16 +793,10 @@ window.resetScreenTimer=async()=>{
   });
   paintControllerTimer();
 };
-window.updateScreenTimerStyle=()=>cmd('display.timer',targetArg(),{
-  visible:true,running:localTimerState.running,mode:localTimerState.mode,
-  remainingSeconds:localTimerState.mode==='countdown'?currentLocalTimerSeconds():undefined,
-  elapsedSeconds:localTimerState.mode==='countup'?currentLocalTimerSeconds():undefined,
-  endAt:localTimerState.mode==='countdown'&&localTimerState.running?localTimerState.endAt:null,
-  startedAt:localTimerState.mode==='countup'&&localTimerState.running?localTimerState.startedAt:null,
-  ...timerStylePayload()
-});
+window.updateScreenTimerStyle=()=>cmd('display.timer',targetArg(),timerStylePayload());
 window.hideScreenTimer=async()=>{
   localTimerState.running=false;
+  localTimerTargetsKey='';
   if(localTimerTick){clearInterval(localTimerTick);localTimerTick=null}
   await cmd('display.timer.hide',targetArg(),{});
 };
@@ -977,14 +980,15 @@ async function refreshStatus(){
 setInterval(refreshStatus,5000);
 setInterval(()=>renderTargets(window._status),1000);
 
-let reconnectDelay=1500,reconnectBlocked=false;
+let reconnectDelay=1500,reconnectBlocked=false,reconnectTimer=null;
 function connect(){
-  if(reconnectBlocked||document.hidden)return;
+  if(reconnectBlocked||document.hidden||(ws&&ws.readyState<2))return;
+  if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null}
   ws=new WebSocket(wsUrl());
-  ws.onopen=()=>{el('conn').textContent='Connected';ws.send(JSON.stringify({type:'hello',role:'controller',token:''}))};
-  ws.onclose=()=>{if(reconnectBlocked)return;el('conn').textContent='Disconnected · retrying';setTimeout(connect,reconnectDelay);reconnectDelay=Math.min(30000,reconnectDelay*2)};
+  ws.onopen=()=>{reconnectDelay=1500;el('conn').textContent='Connected';ws.send(JSON.stringify({type:'hello',role:'controller',token:''}))};
+  ws.onclose=()=>{ws=null;if(reconnectBlocked)return;el('conn').textContent='Disconnected · retrying';if(!reconnectTimer)reconnectTimer=setTimeout(()=>{reconnectTimer=null;connect()},reconnectDelay);reconnectDelay=Math.min(30000,reconnectDelay*2)};
   ws.onmessage=e=>{
-    const m=JSON.parse(e.data);
+    let m;try{m=JSON.parse(e.data)}catch{return}
     if(m.type==='hello.ack'){
       reconnectDelay=1500;
       devices=m.devices||{};groups=m.groups||{};window._status=m.runtime?.displays||{};
@@ -1001,7 +1005,7 @@ function connect(){
   };
 }
 connect();
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!reconnectBlocked&&(!ws||ws.readyState>1))connect()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!reconnectBlocked)connect()});
 </script>
 </body>
 </html>

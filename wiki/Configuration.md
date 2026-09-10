@@ -58,10 +58,11 @@ Current first-class add-ons:
 
 | Integration | Container | Managed image |
 | --- | --- | --- |
-| Mosquitto | `mosquitto` | `eclipse-mosquitto:latest` |
-| Govee2MQTT | `govee2mqtt` | `ghcr.io/wez/govee2mqtt:latest` |
-| Music Assistant | `music-assistant-server` | `ghcr.io/music-assistant/server:latest` |
-| Veyon WebAPI | `veyon-webapi` | `veyon/webapi-proxy:latest` |
+| Mosquitto | `mosquitto` | `eclipse-mosquitto:2.0.22` |
+| Govee2MQTT | `govee2mqtt` | `ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72` |
+| Music Assistant | `music-assistant-server` | `ghcr.io/music-assistant/server:2.9.13` |
+
+Veyon and Veyon WebAPI are native, host-managed services rather than a managed proxy container.
 
 Supported actions are intentionally distinct:
 
@@ -134,7 +135,7 @@ The product is intentionally education-specific and does not expose a neutral or
 
 ## Display configuration
 
-Displays use stable receiver IDs. In alpha.71 the Setup Wizard Receiver IDs field is editable rather than a disabled preview.
+Displays use stable receiver IDs. The Setup Wizard Receiver IDs field is editable rather than a disabled preview.
 
 Rules:
 

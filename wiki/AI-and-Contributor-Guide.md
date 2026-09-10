@@ -14,7 +14,7 @@ AI coding assistants and contributors should treat the GitHub repository `main` 
 
 ## Current baseline
 
-The current live-test recovery/stabilization baseline is `1.0.0-alpha.71`.
+The current security and functional-correctness review baseline is `1.0.0-alpha.72`.
 
 Critical invariants:
 

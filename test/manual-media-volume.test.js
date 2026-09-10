@@ -15,5 +15,9 @@ test("manual display media exposes explicit playback volume",()=>{
   assert.match(helper,/type=\"range\" min=\"0\" max=\"100\"/);
   assert.match(helper,/volume,\n\s*\.\.\.\(isWeb\?\{forceAudio:volume>0\}/);
   assert.match(helper,/muted:muted\.checked\|\|volume<=0/);
+  assert.match(helper,/window\.controllerDisplayCommand\(type,window\.controllerDisplayTargetArg\(\)/);
+  const controller=read("public/controller/display.html");
+  assert.match(controller,/window\.controllerDisplayCommand=cmd/);
+  assert.match(controller,/window\.controllerDisplayTargetArg=targetArg/);
   assert.match(receiver,/n\.volume=Math\.max\(0,Math\.min\(1,Number\(m\.volume\?\?1\)\)\)/);
 });

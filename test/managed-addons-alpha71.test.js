@@ -12,9 +12,9 @@ test("supported optional integrations can be adopted or Hub-managed",()=>{
   const host=read("host-agent/start.py");
   const dockerfile=read("maintenance-agent/Dockerfile");
   for(const image of [
-    "eclipse-mosquitto:latest",
-    "ghcr.io/wez/govee2mqtt:latest",
-    "ghcr.io/music-assistant/server:latest"
+    "eclipse-mosquitto:2.0.22",
+    "ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72",
+    "ghcr.io/music-assistant/server:2.9.13"
   ]){
     assert.ok(ext.includes(image),`maintenance add-on catalog missing ${image}`);
     assert.ok(host.includes(image),`Host Agent allowlist missing ${image}`);

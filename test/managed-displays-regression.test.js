@@ -28,3 +28,10 @@ test('managed displays preserves inventory while adb is unavailable',()=>{
   assert.match(source,/\.controls button:not\(\[data-op="edit"\]\)/);
   assert.match(source,/classroom-control-hub-android-adb volume is mounted/);
 });
+
+test('managed display shell sends raw scripts and retries offline devices',()=>{
+  const source=read('public/managed-displays/app.js');
+  assert.match(source,/command:String\(script\)/);
+  assert.doesNotMatch(source,/command:quoteRemoteScript\(script\)/);
+  assert.doesNotMatch(source,/if\(d\.lastStatus\?\.online===true\)\{/);
+});

@@ -2,14 +2,8 @@ name: Android TV Display Agent
 
 on:
   pull_request:
-    paths:
-      - 'agents/android-tv/**'
-      - '.github/workflows/android-tv-agent.yml'
   push:
     branches: [main]
-    paths:
-      - 'agents/android-tv/**'
-      - '.github/workflows/android-tv-agent.yml'
   workflow_dispatch:
 
 permissions:
