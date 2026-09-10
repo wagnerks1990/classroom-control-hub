@@ -56,6 +56,16 @@ test("maintenance startup signs, verifies and stages the image-matched APK",()=>
   assert.equal(syntax.status,0,syntax.stderr||syntax.stdout);
 });
 
+test("apksigner receives independent environment-backed store and key passwords",()=>{
+  const extension=read("maintenance-agent/android-tv-agent-artifact.js");
+  assert.match(extension,/CLASSROOM_HUB_APK_KS_PASS:password/);
+  assert.match(extension,/CLASSROOM_HUB_APK_KEY_PASS:password/);
+  assert.match(extension,/"--ks-pass","env:CLASSROOM_HUB_APK_KS_PASS"/);
+  assert.match(extension,/"--key-pass","env:CLASSROOM_HUB_APK_KEY_PASS"/);
+  assert.doesNotMatch(extension,/"--ks-pass",`file:\$\{PASSWORD_FILE\}`/);
+  assert.doesNotMatch(extension,/"--key-pass",`file:\$\{PASSWORD_FILE\}`/);
+});
+
 test("artifact API and install flow reject stale artifacts and handle one-time signature transition",()=>{
   const extension=read("maintenance-agent/android-tv-agent-artifact.js");
   assert.match(extension,/\/android\/agent\/artifact/);
