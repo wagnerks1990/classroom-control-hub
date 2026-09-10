@@ -112,7 +112,9 @@ docker build -t classroom-control-hub-maintenance:test maintenance-agent
 
 ## Current known-good baseline
 
-`1.0.0-alpha.73` is the display-access policy and functional-correctness review baseline at the time this page was updated. A newer `VERSION` supersedes the version number but not these invariants unless deliberately changed and documented.
+`1.0.0-alpha.74` is the display-access and clean-worktree installer baseline at the time this page was updated. A newer `VERSION` supersedes the version number but not these invariants unless deliberately changed and documented.
+
+Installers copy executable host runners into `/usr/local/libexec` and must not change tracked source modes in `/opt/classroom-hub`. A supported update that starts from a clean checkout must leave `git status --short` empty.
 
 ## Testing areas
 

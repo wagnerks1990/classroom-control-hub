@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-alpha.74 - 2026-09-10
+
+- Stopped the installer and application updater from changing executable bits on tracked scripts inside the production Git checkout.
+- Kept executable permissions on the installed `/usr/local/libexec` copies, leaving `git status --short` clean after a supported installation.
+- Added a regression test for clean-worktree preservation.
+
 ## 1.0.0-alpha.73 - 2026-09-10
 
 - Restored stable URL-only access for enabled configured classroom displays as the default policy.

@@ -69,7 +69,7 @@ The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades
 
 ## Current known-good baseline
 
-`1.0.0-alpha.73` is the current display-access policy and functional-correctness review baseline.
+`1.0.0-alpha.74` is the current display-access and clean-worktree installer baseline.
 
 Alpha.71 recovery invariants:
 

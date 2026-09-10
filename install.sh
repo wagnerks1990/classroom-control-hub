@@ -184,7 +184,6 @@ if [[ "$TARGET" != "/opt/classroom-hub" ]]; then sed -i "s#/opt/classroom-hub#$T
 sed -i "s#^Environment=HOST_SERVICES_DIR=.*#Environment=HOST_SERVICES_DIR=$SERVICES#" /etc/systemd/system/classroom-hub-host-agent.service
 python3 -m py_compile "$TARGET/host-agent/server.py" "$TARGET/host-agent/start.py"
 install -d -m 0750 /run/classroom-control-hub
-chmod 0755 "$TARGET/host-agent/update-runner.sh" "$TARGET/host-agent/app-update-runner.sh"
 install -D -m 0755 "$TARGET/host-agent/update-runner.sh" /usr/local/libexec/classroom-control-hub/update-runner.sh
 install -D -m 0755 "$TARGET/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
 cat >/etc/systemd/system/classroom-hub-update.service <<UNIT

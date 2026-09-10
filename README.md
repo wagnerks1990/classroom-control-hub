@@ -6,7 +6,7 @@ The Linux Hub and maintenance containers, plus reviewed managed add-on templates
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.73` — stable URL display access with optional credential authentication, a hardened media gateway, repaired Android TV control, and updater fixes.
+> **Status:** `1.0.0-alpha.74` — stable URL display access, optional credential authentication, and clean-worktree installer/updater behavior.
 
 ## What it does
 
