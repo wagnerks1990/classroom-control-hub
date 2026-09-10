@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         AgentService.start(this);
+        KioskWatchdog.start(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         enterImmersive();
         webView = new WebView(this);
@@ -102,13 +103,21 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume(){
         super.onResume();
+        KioskWatchdog.markDisplayResumed();
         AgentService.start(this);
         enterImmersive();
         enforceManagementPolicy("resume");
+        NativeSendspinManager.INSTANCE.ensureStarted(this);
         if(webView!=null)loadConfiguredUrl();
     }
 
+    @Override protected void onPause(){
+        KioskWatchdog.markDisplayPaused();
+        super.onPause();
+    }
+
     @Override protected void onDestroy(){
+        KioskWatchdog.markDisplayPaused();
         policyHandler.removeCallbacks(policyWatchdog);
         if(webView!=null){webView.destroy();webView=null;}
         super.onDestroy();
