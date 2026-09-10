@@ -83,6 +83,35 @@ services:
     tmpfs:
       - /tmp:size=512m,mode=1777
 
+  android-agent-builder:
+    build:
+      context: ./agents/android-tv
+      dockerfile: Dockerfile.builder
+      network: host
+    image: classroom-hub-android-agent-builder:local
+    pull_policy: build
+    restart: "no"
+    network_mode: host
+    environment:
+      ANDROID_AGENT_SOURCE_ROOT: /workspace/agents/android-tv
+      ANDROID_AGENT_STAGE_ROOT: /stage
+      ANDROID_AGENT_SIGNING_ROOT: /signing
+      ANDROID_AGENT_STAGE_GID: "10001"
+      GRADLE_USER_HOME: /tmp/gradle-home
+    group_add:
+      - "10001"
+    volumes:
+      - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}:/workspace:ro
+      - ${HOST_CLASSROOM_HUB_DIR:-/opt/classroom-hub}/data/android-tv:/stage
+      - ${CLASSROOM_HUB_ANDROID_SIGNING_DIR:-/etc/classroom-control-hub/android-agent-signing}:/signing
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=2048m,mode=1777
+
   maintenance-agent:
     build:
       context: ./maintenance-agent
@@ -94,6 +123,9 @@ services:
     container_name: classroom-control-hub-maintenance
     restart: unless-stopped
     network_mode: host
+    depends_on:
+      android-agent-builder:
+        condition: service_completed_successfully
     environment:
       PORT: ${MAINTENANCE_PORT:-3010}
       BIND_ADDRESS: 127.0.0.1
