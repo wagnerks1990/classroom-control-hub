@@ -92,6 +92,14 @@ chown -R 10001:10001 "$TARGET/data"
 chown root:10001 "$TARGET/data" "$TARGET/data/backups"
 chmod 0770 "$TARGET/data"
 chmod 0700 "$TARGET/data/backups"
+# Managed Android inventory is shared between the hardened maintenance container
+# and persistent host state. Root in the container has no DAC-override capability,
+# so the parent must be traversable and devices.json must be group readable/writable.
+install -d -m 2770 -o root -g "$HUB_INSTALL_GROUP" "$TARGET/data/android-tv"
+if [[ -f "$TARGET/data/android-tv/devices.json" ]]; then
+  chown root:"$HUB_INSTALL_GROUP" "$TARGET/data/android-tv/devices.json"
+  chmod 0660 "$TARGET/data/android-tv/devices.json"
+fi
 if [[ "$SOURCE_REAL" != "$TARGET_REAL" ]]; then
   if [[ -d "$SOURCE/config/schema" ]]; then rsync -a "$SOURCE/config/schema/" "$TARGET/config/schema/"; fi
   if [[ -f "$SOURCE/config/integrations.catalog.json" ]]; then cp -f "$SOURCE/config/integrations.catalog.json" "$TARGET/config/"; fi
@@ -265,6 +273,8 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok){console.error(JSON.stringify(j));process.exit(1)}})" || { echo "Maintenance-to-Host-Agent verification failed." >&2; exit 1; }
+docker compose exec -T maintenance-agent sh -lc 'test -w /managed/classroom-hub/data/android-tv/.android' || { echo "Android ADB key storage is not writable." >&2; exit 1; }
+docker compose exec -T maintenance-agent sh -lc 'test ! -e /managed/classroom-hub/data/android-tv/devices.json || test -r /managed/classroom-hub/data/android-tv/devices.json' || { echo "Managed Android display inventory is not readable." >&2; exit 1; }
 
 echo "Starting Classroom Control Hub backend (HTTP) ..."
 docker compose up -d --force-recreate --remove-orphans classroom-hub

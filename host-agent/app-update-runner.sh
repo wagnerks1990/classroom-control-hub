@@ -48,12 +48,18 @@ health_check(){
   return 1
 }
 
+adb_storage_check(){
+  docker compose exec -T maintenance-agent sh -lc 'test -w /managed/classroom-hub/data/android-tv/.android' || return 1
+  docker compose exec -T maintenance-agent sh -lc 'test ! -e /managed/classroom-hub/data/android-tv/devices.json || test -r /managed/classroom-hub/data/android-tv/devices.json' || return 1
+}
+
 appliance_health_check(){
   local expected="$1"
   health_check "$expected" || return 1
   docker compose ps --status running --services | grep -qx classroom-hub || return 1
   docker compose ps --status running --services | grep -qx maintenance-agent || return 1
   docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3010)+'/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok||j.version!==process.argv[1]||!j.hostAgent?.ok||j.hostAgent.version!==process.argv[1])process.exit(1)}).catch(()=>process.exit(1))" "$expected" || return 1
+  adb_storage_check || return 1
 }
 
 capture_recovery_image(){
@@ -78,6 +84,11 @@ ensure_runtime_layout(){
   local value
   install -d -m 0770 -o root -g 10001 "$HUB_ROOT/data"
   install -d -m 0700 -o root -g 10001 "$HUB_ROOT/data/backups"
+  install -d -m 2770 -o root -g 10001 "$HUB_ROOT/data/android-tv"
+  if [[ -f "$HUB_ROOT/data/android-tv/devices.json" ]]; then
+    chown root:10001 "$HUB_ROOT/data/android-tv/devices.json"
+    chmod 0660 "$HUB_ROOT/data/android-tv/devices.json"
+  fi
   [[ -f .env ]] || cp .env.example .env
   value="$(sed -n 's/^MAINTENANCE_TOKEN=//p' .env | tail -n 1)"
   if [[ -z "$value" ]]; then
@@ -169,7 +180,7 @@ rollback(){
   docker compose stop classroom-hub || true
   docker compose up --no-start --no-deps --force-recreate classroom-hub || rollback_ok=false
   restore_safety_backup "$FAILUREBACKUPNAME" "$FAILUREBACKUPSHA256" || rollback_ok=false
-  docker compose up -d --no-build --remove-orphans || rollback_ok=false
+  docker compose up -d --no-build --force-recreate --remove-orphans maintenance-agent classroom-hub || rollback_ok=false
   appliance_health_check "$CURRENT_VERSION" || rollback_ok=false
   if [[ "$rollback_ok" == true ]]; then
     set_state_fields "rollback=true" "activeCommit=$CURRENT_COMMIT" "activeVersion=$CURRENT_VERSION"
@@ -232,11 +243,11 @@ if [[ "$ACTION" == revert ]]; then
   docker compose up --no-start --no-deps --force-recreate classroom-hub
   restore_safety_backup "$BACKUPNAME" "$BACKUPSHA256"
 fi
-write_state deploying "Recreating HTTP appliance containers while preserving persistent state." null
-docker compose up -d --no-build --remove-orphans
+write_state deploying "Force-recreating appliance containers so current Compose mounts and hardening are applied while preserving persistent state." null
+docker compose up -d --no-build --force-recreate --remove-orphans maintenance-agent classroom-hub
 # Remove the legacy Caddy container from releases that included the TLS gateway.
 docker rm -f classroom-control-hub-tls >/dev/null 2>&1 || true
-write_state verifying "Waiting for backend HTTP, maintenance, Host Agent, and version convergence." null
+write_state verifying "Waiting for backend HTTP, maintenance, Host Agent, ADB key storage, Android inventory access, and version convergence." null
 appliance_health_check "$ACTUAL_VERSION"
 
 trap - ERR

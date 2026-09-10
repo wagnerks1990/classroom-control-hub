@@ -105,6 +105,8 @@ Take a filesystem/database-safe backup before production upgrades.
 
 The GUI updater accepts only semantic-version GitHub releases and delegates the durable update to `classroom-hub-app-update.service`. Preserve its invariant: every update has a matching operational backup, version-aware health check, and automatic source/database rollback. Automatic updates remain opt-in and bounded by the database-backed maintenance window.
 
+Core service recreation is also part of the updater contract. A release can change mounts, read-only/writable paths, environment, or networking without changing an image ID. The updater must therefore force-recreate `maintenance-agent` and `classroom-hub` when applying or rolling back a release. In particular, Managed Displays depends on the dedicated `classroom-control-hub-android-adb` volume mounted at `/managed/classroom-hub/data/android-tv/.android`; the updater must verify this path is writable before declaring the release healthy. Do not replace the force-recreate deployment with a plain `docker compose up -d` unless equivalent tested mount reconciliation exists. See `docs/MANAGED-DISPLAYS-RECOVERY.md`.
+
 ## Database identity and recovery
 
 `DATABASE_FILE` is authoritative. Installer/update logic must never silently select another SQLite filename merely because it exists. Before a migration, back up every `data/*.db` with SQLite's `.backup` API. If database filenames are reconciled, stop the application first, verify the destination with `PRAGMA quick_check`, preserve the previous file for rollback, and update `.env` before recreating the container.
@@ -197,7 +199,7 @@ Authenticated maintenance mutations share an appliance-wide limit of 30 requests
 
 ## Host installer group prerequisite
 
-Resolve host GID 10001 before backup/data/secret mutation. The group inside the image is not a host group record. Source `deploy/host-group.sh`, reuse an existing GID or create `classroom-hub` only when its name and ID are free, and pass the verified name to `install`. Fail closed on conflicts/lookup errors; never renumber existing groups, add host users to this secret-readable group, or regenerate keys for this error. Keep `test/installer-host-group.test.js` coverage and `docs/HOST-NETWORKING.md` recovery instructions synchronized.
+Resolve host GID 10001 before backup/data/secret mutation. The group inside the image is not a host group record. Source `deploy/host-group.sh`, reuse an existing GID or create `classroom-hub` only when its name and ID are free, and pass the verified name to install. Fail closed on conflicts/lookup errors; never renumber existing groups, add host users to this secret-readable group, or regenerate keys for this error. Keep `test/installer-host-group.test.js` coverage and `docs/HOST-NETWORKING.md` recovery instructions synchronized.
 
 ### Sendspin transport ownership
 
