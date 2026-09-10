@@ -33,9 +33,27 @@ async function configure(d,body={}){
   const port=cleanPort(body.port||d.agentV2?.port||8765);
   const agentToken=body.rotateToken||!d.agentV2?.token?token():d.agentV2.token;
   const url=String(body.displayUrl||d.displayUrl||"").trim();if(!/^https?:\/\//i.test(url)){const e=Error("A valid HTTP(S) display URL is required");e.status=400;throw e}
-  await adb(["-s",d.serial,"shell","am","broadcast","-a","org.classroomhub.display.CONFIGURE","-p",pkg,"--es","display_url",url,"--ez","agent_enabled","true","--ei","agent_port",String(port),"--es","agent_token",agentToken],20000);
+  const persistentAdb=d.persistentAdb?.enabled===true;
+  const targetAdbPort=cleanPort(d.persistentAdb?.targetPort||5555);
+  await adb(["-s",d.serial,"shell","am","broadcast","-a","org.classroomhub.display.CONFIGURE","-p",pkg,"--es","display_url",url,"--ez","agent_enabled","true","--ei","agent_port",String(port),"--es","agent_token",agentToken,"--ez","persistent_adb",String(persistentAdb),"--ei","target_adb_port",String(targetAdbPort)],20000);
   const updated=STORE.upsertDevice({...d,displayUrl:url,agentPackage:pkg,agentV2:{enabled:true,port,token:agentToken,configuredAt:new Date().toISOString()}});
   return updated;
+}
+async function activateDeviceAdmin(d){
+  const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
+  const component=`${pkg}/.AgentDeviceAdminReceiver`;
+  const result=await adb(["-s",d.serial,"shell","am","start","-a","android.app.action.ADD_DEVICE_ADMIN","--ecn","android.app.extra.DEVICE_ADMIN",component,"--es","android.app.extra.ADD_EXPLANATION","Classroom Hub uses Device Administrator for managed display sleep and lock controls."],15000);
+  return {component,message:String(result.stdout||result.stderr||"").trim()};
+}
+function lifecycle(d,action){
+  if(action==="enable")return {removed:false,device:STORE.upsertDevice({...d,enabled:true})};
+  if(action==="disable")return {removed:false,device:STORE.upsertDevice({...d,enabled:false})};
+  if(action==="remove"){
+    const removed=STORE.deleteDevice(d.id);
+    if(!removed){const e=Error("Managed Android display not found");e.status=404;throw e}
+    return {removed:true,deviceId:d.id,dataPreserved:true,message:"Managed display enrollment removed from Classroom Hub. The Android app, device data, and server-wide data were not deleted."};
+  }
+  const e=Error("Lifecycle action must be enable, disable, or remove");e.status=400;throw e;
 }
 
 function installRoutes(app){if(installed)return;installed=true;
@@ -44,7 +62,9 @@ function installRoutes(app){if(installed)return;installed=true;
   app.get("/android/devices/:id/agent/v2/capabilities",route(async(req,res)=>{const d=device(req.params.id);const capabilities=await agentFetch(d,"/v1/capabilities",{timeout:8000});res.json({ok:true,transport:"agent-http",deviceId:d.id,capabilities})}));
   app.post("/android/devices/:id/agent/v2/action",route(async(req,res)=>{const d=device(req.params.id);const result=await agentFetch(d,"/v1/action",{method:"POST",body:req.body||{},timeout:Number(req.body?.timeoutMs||10000)});res.json({ok:true,transport:"agent-http",deviceId:d.id,result})}));
   app.get("/android/devices/:id/agent/v2/health",route(async(req,res)=>{const d=device(req.params.id);try{const status=await agentFetch(d,"/v1/status",{timeout:3000});res.json({ok:true,reachable:true,transport:"agent-http",status})}catch(error){res.status(503).json({ok:false,reachable:false,error:error.message})}}));
+  app.post("/android/devices/:id/agent/v2/device-admin/activate",route(async(req,res)=>{const d=device(req.params.id);const result=await activateDeviceAdmin(d);res.json({ok:true,deviceId:d.id,requiresUserConfirmation:true,...result})}));
+  app.post("/android/devices/:id/lifecycle",route(async(req,res)=>{const d=device(req.params.id);const result=lifecycle(d,String(req.body?.action||"").trim().toLowerCase());res.json({ok:true,...result})}));
 }
 
 express.application.listen=function(...args){installRoutes(this);return originalListen.apply(this,args)};
-module.exports={installRoutes,configure,agentFetch};
+module.exports={installRoutes,configure,agentFetch,activateDeviceAdmin,lifecycle};
