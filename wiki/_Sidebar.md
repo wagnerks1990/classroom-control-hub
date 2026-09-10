@@ -10,6 +10,7 @@
 - [Display Sizing Recovery](Display-Sizing-Recovery)
 - [Display Hard Containment](Display-Hard-Containment)
 - [Managed Display Gateway](Managed-Display-Gateway)
+- [Morning Announcements Diagnostics](Morning-Announcements-Diagnostics)
 - [Managed Displays Recovery](Managed-Displays-Recovery)
 - [Manual Media Audio](Manual-Media-Audio)
 - [Android TV Displays](Android-TV-Displays)
