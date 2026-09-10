@@ -103,7 +103,7 @@ Tests must verify the stamping/wrapper contracts so releases do not rely on manu
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.72` is the security and functional-correctness review baseline. It includes credential-bound displays, gateway isolation, Android and manual-media repairs, custom-port rollback, and the earlier alpha.70/alpha.71 recovery work.
+At the time this document was updated, `1.0.0-alpha.73` is the display-access policy and functional-correctness review baseline. It keeps stable URL display access as the default, makes individual credentials optional, and retains the alpha.72 gateway, Android, media, and updater repairs.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 

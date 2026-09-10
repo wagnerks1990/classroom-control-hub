@@ -14,7 +14,7 @@ AI coding assistants and contributors should treat the GitHub repository `main` 
 
 ## Current baseline
 
-The current security and functional-correctness review baseline is `1.0.0-alpha.72`.
+The current display-access policy and functional-correctness review baseline is `1.0.0-alpha.73`.
 
 Critical invariants:
 

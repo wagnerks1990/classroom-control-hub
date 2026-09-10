@@ -1,36 +1,31 @@
 # Classroom Display Access
 
-Each classroom TV/browser has a stable display ID and an individual, revocable credential. A display ID identifies the receiver; it is not authentication by itself.
+Classroom receivers use stable URLs such as `/display/tv1`. By default, any enabled configured display ID may connect without a browser credential. This is intentional for trusted classroom networks and avoids taking displays offline after browser storage is cleared, a device is replaced, or the Hub is upgraded.
 
-## Enrollment
+Unknown, removed, or disabled display IDs are always rejected. URL-only display access does not authenticate the person or device using an enabled ID, so keep the HTTP deployment restricted to the trusted classroom/admin network with VLAN and firewall controls.
+
+## Default: stable URL access
 
 1. Create or enable the receiver under **Settings → Displays**.
-2. Open **Settings → Classroom Display Enrollment**.
-3. Select **Create Link** for that receiver.
-4. Open the one-use URL on the assigned TV/browser before it expires.
-5. Confirm the receiver reports Online, then disable the legacy shared-token fallback after every enabled receiver is enrolled.
+2. Configure the TV, kiosk browser, or Android Display Agent to open `/display/<id>`.
+3. No enrollment link, display token, or browser credential is required.
 
-The URL has this form:
+Protected `/media/*` and `/presentations/*` resources still use short-lived signed asset URLs issued after the receiver connects. Disabling display authentication does not make those application paths public.
+
+## Optional credential authentication
+
+Administrators who need per-browser revocation can open **Settings → Classroom Display Access**, enroll every enabled receiver with a one-use link, and then select **Require individual display credentials**. The controller refuses to enable this mode while an enabled display lacks a credential unless the administrator explicitly overrides the safety check through the API.
+
+Enrollment URLs have this form:
 
 ```text
 http://hub.example:3000/display/tv1#enrollmentToken=<one-use-token>
 ```
 
-The fragment is not sent in the initial HTTP request. The receiver exchanges it over its WebSocket, receives a random credential, stores that credential locally under the display ID, and removes the fragment. The server stores only SHA-256 hashes.
+The receiver exchanges the token over its WebSocket, stores the issued credential locally, and removes the URL fragment. The server stores only hashes. Credentials can be revoked or rotated independently.
 
-## Rotation and revocation
+Turning credential authentication off restores stable URL access immediately. Existing credentials may remain stored for a future opt-in; they are not required while the policy is off.
 
-- **Revoke** invalidates one browser credential and disconnects that receiver.
-- **Rotate All** revokes every credential for the display and creates a replacement enrollment URL.
-- **Cancel Link** invalidates a pending, unused enrollment URL.
-- Display renames and ordinary configuration edits preserve credentials; removing a display removes its credentials.
+`DISPLAY_TOKEN` is only a legacy fallback when credential authentication is required. It is not needed in the default stable URL mode.
 
-`DISPLAY_TOKEN` exists only as an explicit migration fallback. It works only when a non-empty token is configured and the administrator policy allows it. Do not use it for new deployments.
-
-## Provisioning and recovery
-
-Use kiosk/full-screen mode and configure the browser or Android TV Display Agent to reopen the stable `/display/<id>` path at boot. The credential remains in browser storage. If browser storage is cleared, the receiver must be enrolled again. Managed Android TVs can be sent the enrollment URL through the existing authenticated ADB management channel.
-
-Controller previews use `/display/<id>?preview=1` and require an authenticated controller session; they are not physical display receivers.
-
-Keep the HTTP-only alpha deployment on a trusted classroom/admin network. Individual receiver credentials do not replace VLAN, firewall, and management-network controls.
+Controller previews use `/display/<id>?preview=1` and remain protected by the authenticated controller session.

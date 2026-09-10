@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0-alpha.73 - 2026-09-10
+
+- Restored stable URL-only access for enabled configured classroom displays as the default policy.
+- Kept individual one-use enrollment and revocable credentials as an explicit administrator opt-in.
+- Added a controller policy switch and a full-enrollment safety check before mandatory display authentication can be enabled.
+- Kept unknown/disabled display rejection and short-lived signed protection for media and presentation assets in both modes.
+- Documented the URL-only default across operator, contributor, wiki, configuration, and AI guidance so later security reviews do not silently make display enrollment mandatory.
+
 ## 1.0.0-alpha.72 - 2026-09-10
 
 ### Security and correctness review

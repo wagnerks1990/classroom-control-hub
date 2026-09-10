@@ -21,7 +21,7 @@ Do not infer production configuration from public defaults. Site-specific config
 
 ## Current baseline
 
-The current review baseline is `1.0.0-alpha.72`.
+The current review baseline is `1.0.0-alpha.73`.
 
 Verified live-test/recovery behaviors at this baseline include:
 
@@ -125,7 +125,7 @@ Passwords are opaque strings to the application. Characters such as `!`, `#`, `$
 
 ### Setup wizard displays
 
-Receiver IDs are stable identifiers and remain editable. Reducing the receiver list must remove stale references from every display group before saving. Friendly names may change without changing receiver IDs or invalidating display credentials.
+Receiver IDs are stable identifiers and remain editable. Reducing the receiver list must remove stale references from every display group before saving. Friendly names may change without changing receiver IDs or invalidating optional display credentials. Stable URL-only access for enabled configured displays is the default and must not be changed to mandatory enrollment without an explicit product decision and migration plan.
 
 ### Managed integrations and Docker control
 
@@ -149,7 +149,7 @@ Normal visual automations do not disturb Background Music. Unmuted priority vide
 
 ### Display authentication
 
-Classroom receivers use individually enrolled, revocable credentials bound to stable display IDs. Store only hashes server-side and return a raw credential only once during enrollment. Configuration saves and display renames must not invalidate credentials; removing a display must remove its credentials.
+Classroom receivers use enabled stable display IDs without credentials by default. This is an intentional trusted-network product choice. Individual enrollment is optional and administrator-controlled; when enabled, store only hashes server-side and return a raw credential only once. Configuration saves and display renames must not invalidate optional credentials; removing a display must remove them.
 
 ## Hardware and integrations
 

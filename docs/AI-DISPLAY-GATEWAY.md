@@ -1,6 +1,6 @@
 # AI Context — Managed Display Gateway
 
-The gateway is installed by the `src/direct-display-compat.js` preload before Express is created. Despite the historical filename, this preload must not replace `ClassroomHubStorage.authenticateDisplay` or enable credentialless display access.
+The gateway is installed by the `src/direct-display-compat.js` preload before Express is created. Display access policy belongs to the normal WebSocket handshake: enabled configured IDs use stable URL-only access by default, while administrators can explicitly require individual credentials. The preload must not override either policy.
 
 Authoritative implementation:
 

@@ -269,7 +269,7 @@ nav button{min-width:135px}
       </div>
       <div>
         <div class="brand" id="brandProductName">Classroom <span class="green">Hub</span></div>
-        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.72</span></div>
+        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.73</span></div>
         <div class="brandStatus">
           <div id="brandDateTime">Loading date/time…</div>
           <div id="brandCycle">Loading school cycle…</div>
@@ -987,8 +987,8 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 
   <div class="panel">
-    <div class="top" style="position:static;box-shadow:none;margin:0 0 10px"><div><h2 class="sectionTitle">Classroom Display Enrollment</h2><div class="muted">Give each TV/browser its own revocable credential. Enrollment links are one-use and expire automatically.</div></div><button onclick="loadDisplayCredentialSecurity()">Refresh</button></div>
-    <div class="toolbar"><label><input id="cfgLegacyDisplayToken" type="checkbox"> Temporarily allow the legacy shared display token</label><label>Enrollment link lifetime <input id="cfgEnrollmentTtl" type="number" min="5" max="60" value="15" style="width:75px"> minutes</label><button class="primary" onclick="saveDisplayCredentialPolicy()">Save Security Policy</button></div>
+    <div class="top" style="position:static;box-shadow:none;margin:0 0 10px"><div><h2 class="sectionTitle">Classroom Display Access</h2><div class="muted">Stable display URLs work without credentials by default. Credential enrollment is an optional higher-security mode.</div></div><button onclick="loadDisplayCredentialSecurity()">Refresh</button></div>
+    <div class="toolbar"><label><input id="cfgRequireDisplayAuth" type="checkbox"> Require individual display credentials</label><label><input id="cfgLegacyDisplayToken" type="checkbox"> Allow the legacy shared display token when authentication is required</label><label>Enrollment link lifetime <input id="cfgEnrollmentTtl" type="number" min="5" max="60" value="15" style="width:75px"> minutes</label><button class="primary" onclick="saveDisplayCredentialPolicy()">Save Display Access Policy</button></div>
     <div id="cfgDisplayCredentialCoverage" class="muted" style="margin:10px 0"></div>
     <div id="cfgDisplayCredentials" class="scroll">Loading display enrollment status…</div>
     <div id="cfgEnrollmentResult" class="card" style="display:none;box-shadow:none;margin-top:12px"></div>
@@ -1146,7 +1146,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 </section>
 <div class="footerBrand" data-kyle-attribution="true">
-  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.72</span>
+  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.73</span>
   <span>CLASSROOM READY</span>
   <span>Built by <a href="https://github.com/wagnerks1990" target="_blank" rel="author noopener noreferrer">Kyle Wagner</a></span>
 </div>

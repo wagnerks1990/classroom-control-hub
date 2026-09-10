@@ -6,13 +6,13 @@ The Linux Hub and maintenance containers, plus reviewed managed add-on templates
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.72` — security and functional-correctness stabilization release with credential-bound displays, a hardened media gateway, repaired Android TV control, and updater fixes.
+> **Status:** `1.0.0-alpha.73` — stable URL display access with optional credential authentication, a hardened media gateway, repaired Android TV control, and updater fixes.
 
 ## What it does
 
 Classroom Control Hub provides a single web controller for classroom and lab operations, including:
 
-- individually enrolled, revocable browser display clients and digital signage
+- stable URL browser displays with optional individually enrolled credentials and digital signage
 - scheduled classroom automations
 - priority live/morning announcements
 - Background Music through Music Assistant

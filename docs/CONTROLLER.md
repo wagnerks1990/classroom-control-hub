@@ -27,16 +27,11 @@ Administrators configure MQTT/Govee, Pluto AV matrix, and Veyon classroom-comput
 
 Environment values remain first-start and migration fallbacks. Once the form is saved, its database record is authoritative. Host/container boundary settings and bootstrap credentials remain outside this screen because they are required before the application can safely open its database and serve the controller.
 
-## Classroom display enrollment
+## Classroom display access
 
-Administrators enroll receivers under **Settings → Classroom Display
-Enrollment**. The panel reports enabled/enrolled coverage, creates an expiring
-one-use link, cancels an unused link, revokes an individual browser credential,
-or rotates every credential for one display. Raw credentials are never listed.
+Enabled configured displays connect through their stable `/display/<id>` URLs without credentials by default. Under **Settings → Classroom Display Access**, administrators may optionally create expiring one-use enrollment links, inspect coverage, revoke credentials, and enable **Require individual display credentials** after every receiver is enrolled. Raw credentials are never listed.
 
-Keep legacy shared-token access enabled only while migrating existing displays.
-After every enabled display is enrolled, turn it off in the same panel. The
-controller refuses to disable the migration path while coverage is incomplete.
+Turning the requirement off immediately restores stable URL access. The legacy shared display token is only a fallback when credential authentication is enabled.
 
 ## Cross-domain scheduled actions (alpha.17)
 

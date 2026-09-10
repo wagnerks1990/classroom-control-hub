@@ -1,6 +1,6 @@
 {
   "name": "classroom-control-hub",
-  "version": "1.0.0-alpha.72",
+  "version": "1.0.0-alpha.73",
   "engines": {"node": ">=22"},
   "packageManager": "npm@11",
   "private": true,

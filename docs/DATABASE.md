@@ -11,7 +11,7 @@ in-memory data shapes intact.
 Normalized data now includes:
 
 - site/display configuration (`site_settings`, `display_devices`)
-- per-display authentication and one-use enrollment (`display_credentials`, `display_enrollment_codes`)
+- optional per-display authentication and one-use enrollment (`display_credentials`, `display_enrollment_codes`)
 - display and lighting groups (`device_groups`, `device_group_members`)
 - hardware integrations and Govee devices (`integrations`, `integration_devices`)
 - managed Docker modules (`managed_modules`)
