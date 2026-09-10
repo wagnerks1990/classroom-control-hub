@@ -50,14 +50,26 @@ function artifact(){
 }
 function device(id){const d=STORE.getDevice(id);if(!d){const e=Error("Managed Android display not found");e.status=404;throw e}return d}
 function signatureMismatch(error){return /INSTALL_FAILED_UPDATE_INCOMPATIBLE|signatures? do not match|previously installed version has a different signature/i.test(String(error?.message||""))}
+async function restoreTrustedGrants(d,pkg){
+  const result={writeSecureSettings:false};
+  if(d.persistentAdb?.enabled===true){
+    try{
+      await adb(["-s",d.serial,"shell","pm","grant",pkg,"android.permission.WRITE_SECURE_SETTINGS"],15000);
+      result.writeSecureSettings=true;
+    }catch(error){result.writeSecureSettingsError=error.message;}
+  }
+  return result;
+}
 async function restoreAgentConfiguration(d){
   const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
+  const grants=await restoreTrustedGrants(d,pkg);
   if(d.agentV2?.token){
     await configure(d,{});
   }else if(/^https?:\/\//i.test(String(d.displayUrl||""))){
     await adb(["-s",d.serial,"shell","am","broadcast","-a","org.classroomhub.display.CONFIGURE","-p",pkg,"--es","display_url",String(d.displayUrl)],20000);
   }
   try{await adb(["-s",d.serial,"shell","am","start","-W","-n",`${pkg}/.MainActivity`],20000)}catch{}
+  return grants;
 }
 async function installCurrent(d,{replaceExisting=false}={}){
   const info=artifact();
@@ -76,8 +88,8 @@ async function installCurrent(d,{replaceExisting=false}={}){
     await adb(["-s",d.serial,"install","-g",APK]);
     replacedExisting=true;
   }
-  await restoreAgentConfiguration(d);
-  return {installed:true,replacedExisting,artifact:info,message:`Installed Classroom Hub Display Agent ${info.versionName}${replacedExisting?" using the new persistent appliance signing identity":""}.`};
+  const grants=await restoreAgentConfiguration(d);
+  return {installed:true,replacedExisting,grants,artifact:info,message:`Installed Classroom Hub Display Agent ${info.versionName}${replacedExisting?" using the new persistent appliance signing identity":""}.`};
 }
 function route(fn){return (req,res)=>Promise.resolve(fn(req,res)).catch(error=>res.status(error.status||500).json({ok:false,code:error.code||undefined,error:error.message}))}
 function installRoutes(app){
