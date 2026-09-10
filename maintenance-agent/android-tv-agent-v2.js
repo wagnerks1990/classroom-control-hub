@@ -42,8 +42,9 @@ async function configure(d,body={}){
 async function activateDeviceAdmin(d){
   const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
   const component=`${pkg}/.AgentDeviceAdminReceiver`;
-  const result=await adb(["-s",d.serial,"shell","am","start","-a","android.app.action.ADD_DEVICE_ADMIN","--ecn","android.app.extra.DEVICE_ADMIN",component,"--es","android.app.extra.ADD_EXPLANATION","Classroom Hub uses Device Administrator for managed display sleep and lock controls."],15000);
-  return {component,message:String(result.stdout||result.stderr||"").trim()};
+  const activity=`${pkg}/.DeviceAdminActivationActivity`;
+  const result=await adb(["-s",d.serial,"shell","am","start","-W","-n",activity],15000);
+  return {component,activity,message:String(result.stdout||result.stderr||"").trim()};
 }
 function lifecycle(d,action){
   if(action==="enable")return {removed:false,device:STORE.upsertDevice({...d,enabled:true})};
