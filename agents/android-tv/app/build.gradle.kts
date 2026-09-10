@@ -1,4 +1,7 @@
-plugins { id("com.android.application") }
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
 
 android {
     namespace = "org.classroomhub.display"
@@ -10,8 +13,8 @@ android {
         applicationId = "org.classroomhub.display"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.1-agent-v2"
+        versionCode = 4
+        versionName = "0.3.0-agent-v2"
     }
     buildTypes { release { isMinifyEnabled = false } }
 }
@@ -19,4 +22,8 @@ android {
 dependencies {
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     implementation("org.conscrypt:conscrypt-android:2.5.3")
+    implementation("com.github.OnFreund:sendspin-jvm:v0.3.4")
+    implementation("com.squareup.moshi:moshi:1.15.2")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }
