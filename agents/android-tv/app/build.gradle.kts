@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val managedKeystore = System.getenv("CLASSROOM_HUB_ANDROID_KEYSTORE")?.takeIf { it.isNotBlank() }
+val managedStorePassword = System.getenv("CLASSROOM_HUB_ANDROID_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+val managedKeyAlias = System.getenv("CLASSROOM_HUB_ANDROID_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "classroom-hub"
+val managedKeyPassword = System.getenv("CLASSROOM_HUB_ANDROID_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: managedStorePassword
+val managedSigningReady = managedKeystore != null && managedStorePassword != null && managedKeyPassword != null
+
 android {
     namespace = "org.classroomhub.display"
     compileSdk = 35
@@ -16,7 +22,25 @@ android {
         versionCode = 4
         versionName = "0.3.0-agent-v2"
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    signingConfigs {
+        if (managedSigningReady) {
+            create("managed") {
+                storeFile = file(managedKeystore!!)
+                storePassword = managedStorePassword
+                keyAlias = managedKeyAlias
+                keyPassword = managedKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            if (managedSigningReady) signingConfig = signingConfigs.getByName("managed")
+        }
+        release {
+            isMinifyEnabled = false
+            if (managedSigningReady) signingConfig = signingConfigs.getByName("managed")
+        }
+    }
 }
 
 dependencies {
