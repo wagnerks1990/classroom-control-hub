@@ -18,6 +18,7 @@ const mqtt = require("mqtt");
 const { WebSocketServer, WebSocket } = require("ws");
 const {rateLimit}=require("express-rate-limit");
 const {sendspinEndpoint, relaySendspin} = require("./music-assistant-sendspin");
+const {parseAllowedHosts:parseDisplayGatewayAllowedHosts}=require("./display-gateway");
 const AdmZip = require("adm-zip");
 const {ClassroomHubStorage,keyForFile} = require("./storage");
 const {applicationVersion}=require("./version");
@@ -58,7 +59,8 @@ const CORS_ALLOWED_ORIGINS = new Set(String(process.env.CORS_ALLOWED_ORIGINS || 
 const WS_MAX_PAYLOAD_BYTES = Math.max(1024*1024,Math.min(16*1024*1024,Number(process.env.WS_MAX_PAYLOAD_MB||12)*1024*1024));
 const MAINTENANCE_URL = serviceUrl(process.env.MAINTENANCE_URL || "http://127.0.0.1:3010", ["maintenance-agent", "classroom-control-hub-maintenance"]).replace(/\/$/,"");
 const MAINTENANCE_TOKEN = String(process.env.MAINTENANCE_TOKEN || "");
-const TRUST_PROXY_HOPS = Math.max(0, Math.min(5, Number(process.env.TRUST_PROXY_HOPS || 1)));
+const TRUST_PROXY_HOPS = Math.max(0, Math.min(5, Number(process.env.TRUST_PROXY_HOPS || 0)));
+const DISPLAY_GATEWAY_HOSTS=[...parseDisplayGatewayAllowedHosts()].sort();
 const LOGIN_MAX_ATTEMPTS = Math.max(3, Math.min(20, Number(process.env.LOGIN_MAX_ATTEMPTS || 5)));
 const LOGIN_WINDOW_MS = Math.max(60000, Number(process.env.LOGIN_WINDOW_MS || 15 * 60 * 1000));
 const LOGIN_LOCK_MS = Math.max(60000, Number(process.env.LOGIN_LOCK_MS || 15 * 60 * 1000));
@@ -3247,7 +3249,7 @@ function diagnosticError(error,context={}){
   });
 }
 process.on("unhandledRejection",reason=>diagnosticError(reason instanceof Error?reason:new Error(String(reason)),{component:"node",operation:"unhandledRejection"}));
-process.on("uncaughtException",err=>diagnosticError(err,{component:"node",operation:"uncaughtException"}));
+process.on("uncaughtException",err=>{diagnosticError(err,{component:"node",operation:"uncaughtException"});process.exitCode=1;const timer=setTimeout(()=>process.exit(1),100);timer.unref()});
 
 function diagnosticsFileStatus(file){
   try{
@@ -6543,7 +6545,8 @@ wss.on("connection", (ws, req) => {
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
-            state: persistentState.displays[deviceId] || null
+            state: persistentState.displays[deviceId] || null,
+            displayGatewayHosts:DISPLAY_GATEWAY_HOSTS
           });
           return;
         }
@@ -6588,7 +6591,8 @@ wss.on("connection", (ws, req) => {
             authMode,
             credential:issuedCredential?.credential||undefined,
             credentialId:displayCredential?.id||undefined,
-            assetAccessToken:issueAssetAccessToken(deviceId,displayCredential?.id||"")
+            assetAccessToken:issueAssetAccessToken(deviceId,displayCredential?.id||""),
+            displayGatewayHosts:DISPLAY_GATEWAY_HOSTS
           });
 
           // Re-attach persistent Music Assistant browser player bridge after display reconnect/reload.

@@ -45,14 +45,16 @@ test("release version converges across independently deployed runtime surfaces",
   // Native Host Agent version is supplied by the audited wrapper, while the
   // large core implementation remains stable and importable.
   assert.match(read("host-agent/start.py"),new RegExp(version.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
+  assert.match(read("host-agent/server.py"),new RegExp(version.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
   assert.match(read("host-agent/classroom-control-hub-host-agent.service"),/host-agent\/start\.py/);
+  assert.match(read("public/lab-agent/ClassroomHubAgent.ps1"),new RegExp(version.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
 
   // Large browser/agent bundles are mechanically stamped at image build time
   // from VERSION rather than requiring manual release-number edits in each file.
   const dockerfile=read("Dockerfile");
   assert.match(dockerfile,/^COPY VERSION \.\/VERSION$/m,"runtime image must contain VERSION for health and update verification");
   assert.match(dockerfile,/RELEASE_VERSION="\$\(cat VERSION\)"/);
-  for(const file of ["public/controller/app.js","public/display/index.html","public/lab-agent/ClassroomHubAgent.ps1"]){
+  for(const file of ["public/controller/app.js","public/controller/index.html","public/controller/display.html","public/display/index.html","public/lab-agent/ClassroomHubAgent.ps1"]){
     assert.ok(dockerfile.includes(file),`${file} must be stamped from VERSION during the image build`);
   }
   const maintenanceDockerfile=read("maintenance-agent/Dockerfile");

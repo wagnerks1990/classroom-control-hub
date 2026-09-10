@@ -130,4 +130,7 @@ test("core runtime and upgrade paths retain the host-network contract", () => {
   assert.match(read("public/controller/app.js"), /networkMigrationRequired/);
   assert.match(read("public/controller/app.js"), /Adoption does not change networking/);
   assert.match(read("public/controller/app.js"), /Host listeners \(no port mappings\)/);
+  assert.match(read("host-agent/server.py"), /HOST_SERVICES_DIR/);
+  assert.match(read("install.sh"), /Environment=HOST_SERVICES_DIR=\$SERVICES/);
+  assert.match(read("install.sh"), /EnvironmentFile=-\$TARGET\/\.env/);
 });

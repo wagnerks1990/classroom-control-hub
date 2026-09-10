@@ -65,7 +65,7 @@ The earlier TV1/Windows kiosk playback success is historical evidence recorded i
 3. Reload receivers, check MA API readiness and the configured dedicated listener with `ss -lntp | grep ':8927'` (substitute the saved port). A healthy Hub alone does not prove audio availability.
 4. Attach one TV, verify its `classroom-hub-tvN` player is enabled/registered, start Background Music, and check for stable audible playback. Then check announcements pause/resume and remaining targets. Preserve automation settings and confirm the four-component display layout remains unchanged.
 
-The diagnostic event `musicassistant.sendspin.proxy.connected` indicates an upstream socket opened; it does not by itself prove decoded or audible playback. Missing/disabled players, browser autoplay restrictions, network listener bindings, and API-token failures remain separate diagnostic causes. Application VERSION stays alpha.71 until a separately reviewed release is tagged.
+The diagnostic event `musicassistant.sendspin.proxy.connected` indicates an upstream socket opened; it does not by itself prove decoded or audible playback. Missing/disabled players, browser autoplay restrictions, network listener bindings, and API-token failures remain separate diagnostic causes. Application VERSION stays aligned with the repository `VERSION` file and changes only in a reviewed release.
 
 ## Music Assistant route budgets
 

@@ -6,7 +6,7 @@ The Linux Hub and maintenance containers, plus reviewed managed add-on templates
 
 Centralized classroom control and automation platform for displays, AV routing, lighting, media, announcements, schedules, and lab infrastructure.
 
-> **Status:** `1.0.0-alpha.71` — live-test recovery/stabilization release with direct HTTP deployment, database/profile migration repair, setup-wizard fixes, and expanded appliance integration control.
+> **Status:** `1.0.0-alpha.72` — security and functional-correctness stabilization release with credential-bound displays, a hardened media gateway, repaired Android TV control, and updater fixes.
 
 ## What it does
 
@@ -45,13 +45,12 @@ The controller inventories Docker containers already present on the appliance an
 First-class optional add-ons can also be deployed/recreated from Setup or Infrastructure & Recovery using reviewed image repositories:
 
 ```text
-mosquitto                 eclipse-mosquitto:latest
-govee2mqtt                ghcr.io/wez/govee2mqtt:latest
-music-assistant-server     ghcr.io/music-assistant/server:latest
-veyon-webapi               veyon/webapi-proxy:latest
+mosquitto                 eclipse-mosquitto:2.0.22
+govee2mqtt                ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72
+music-assistant-server     ghcr.io/music-assistant/server:2.9.13
 ```
 
-Persistent add-on state remains under the managed services root rather than container writable layers. Removing/recreating a supported add-on preserves its managed data directory.
+Native `veyon.service` and `veyon-webapi.service` remain host-managed rather than being deployed as a proxy container. Persistent add-on state remains under the managed services root rather than container writable layers. Removing/recreating a supported add-on preserves its managed data directory.
 
 This is intentionally **not** an unrestricted root Docker-command API: new container creation stays restricted to reviewed supported integration images, while existing containers can be discovered/adopted for safe appliance administration.
 

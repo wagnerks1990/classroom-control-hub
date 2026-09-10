@@ -3,15 +3,13 @@
 const fs=require("fs");
 const path=require("path");
 const {DatabaseSync}=require("node:sqlite");
+process.umask(0o077);
 
 function canonicalDatabaseFile(){
   const configured=String(process.env.DATABASE_FILE||"").trim();
   if(configured)return configured;
   const dataDir=path.resolve(process.env.DATA_DIR||path.join(__dirname,"..","data"));
   const canonical=path.join(dataDir,"classroom-control-hub.db");
-  const alpha70=path.join(dataDir,"classroom-hub.db");
-  if(fs.existsSync(canonical))return canonical;
-  if(fs.existsSync(alpha70))return alpha70;
   return canonical;
 }
 
@@ -26,16 +24,17 @@ function reconcileBuiltInProfiles(db){
     teacher:{description:"Daily classroom, display, lighting, AV and schedule operations.",capabilities:["classroom.read","classroom.control","schedule.manage","automation.manage","media.manage","integrations.control","lab.read","lab.control","diagnostics.read"]},
     "read-only":{description:"View classroom status without student browsing history or screenshots.",capabilities:["classroom.read"]}
   };
-  const select=db.prepare("SELECT id,config_json FROM access_profiles WHERE id=?");
-  const update=db.prepare("UPDATE access_profiles SET config_json=?,updated_at=? WHERE id=?");
+  const select=db.prepare("SELECT id,role,enabled,config_json FROM access_profiles WHERE id=?");
+  const update=db.prepare("UPDATE access_profiles SET role=?,enabled=?,config_json=?,updated_at=? WHERE id=?");
   for(const [id,def] of Object.entries(defaults)){
     const row=select.get(id);if(!row)continue;
     let config={};try{config=JSON.parse(row.config_json||"{}")||{}}catch{}
-    if(validCapabilityArray(config.capabilities))continue;
-    config.description=String(config.description||def.description);
-    config.capabilities=def.capabilities;
-    update.run(JSON.stringify(config),new Date().toISOString(),id);
-    console.warn(`Startup recovery restored capabilities for built-in access profile ${id}.`);
+    const repairCapabilities=!validCapabilityArray(config.capabilities);
+    const repairAdministrator=id==="administrator"&&(row.role!=="admin"||Number(row.enabled)!==1);
+    if(!repairCapabilities&&!repairAdministrator)continue;
+    if(repairCapabilities){config.description=String(config.description||def.description);config.capabilities=def.capabilities}
+    update.run(id==="administrator"?"admin":row.role,id==="administrator"?1:Number(row.enabled)!==0,JSON.stringify(config),new Date().toISOString(),id);
+    console.warn(`Startup recovery restored the built-in access profile ${id}.`);
   }
 }
 
@@ -102,22 +101,6 @@ function reconcileVeyonSecretMetadata(db){
   console.warn(`Startup recovery reconciled Veyon private-key metadata to '${keyName}'.`);
 }
 
-function enableDirectDisplayAccess(){
-  const {ClassroomHubStorage}=require("./storage");
-  const previous=ClassroomHubStorage.prototype.authenticateDisplay;
-  if(previous?.__directDisplayAccess)return;
-  function authenticateConfiguredDisplay(displayId){
-    const id=String(displayId||"").trim();
-    if(!id)return null;
-    const row=this.db.prepare("SELECT id,enabled FROM display_devices WHERE id=? LIMIT 1").get(id);
-    if(!row||Number(row.enabled)===0)return null;
-    return {id:`direct:${id}`,displayId:id,label:"Configured display URL",direct:true};
-  }
-  authenticateConfiguredDisplay.__directDisplayAccess=true;
-  ClassroomHubStorage.prototype.authenticateDisplay=authenticateConfiguredDisplay;
-  console.warn("Direct display URL access enabled: configured displays authenticate by stable display ID; enrollment credentials are no longer required.");
-}
-
 adoptSynchronizedVeyonKeyName();
 const dbFile=canonicalDatabaseFile();
 process.env.DATABASE_FILE=dbFile;
@@ -130,7 +113,6 @@ if(fs.existsSync(dbFile)){
   }finally{db.close()}
 }
 
-enableDirectDisplayAccess();
 // Register scoped maintenance-agent route mirrors before server.js creates the
 // Express routes. Database writes and secret encryption still execute inside
 // server.js handlers; the bridge only supplies maintenance-token authorization.

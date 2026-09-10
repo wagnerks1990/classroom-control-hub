@@ -68,3 +68,11 @@ Schema 7 adds individually revocable display credentials and expiring one-use
 enrollment codes. Both tables store SHA-256 token hashes only. Credentials are
 owned by stable `display_devices` IDs, survive display renames/configuration
 updates, and cascade away when the display itself is deleted.
+
+## Schema versions 8–10
+
+- Schema 8 separates high-volume polling telemetry from durable audit events so routine discovery does not grow the audit table without bound.
+- Schema 9 adds individually revocable Windows lab-agent credentials and expiring enrollment codes. Raw tokens are returned only during enrollment.
+- Schema 10 expands built-in access profiles with granular schedule, automation, media, integration, lab, and diagnostic capabilities.
+
+Migration versions are inserted only after their transaction completes. Startup recovery may repair an incomplete built-in Administrator profile, but it does not rewrite a valid non-empty custom capability list. `DATABASE_FILE` is the authoritative database identity; startup does not silently select a differently named legacy database. Installer reconciliation must stop the app, create SQLite-safe backups, validate `PRAGMA quick_check`, and preserve the prior file for rollback.

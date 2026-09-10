@@ -31,10 +31,9 @@ The controller is the appliance control plane. It inventories Docker containers 
 First-class optional managed add-ons are:
 
 ```text
-mosquitto                 eclipse-mosquitto:latest
-govee2mqtt                ghcr.io/wez/govee2mqtt:latest
-music-assistant-server     ghcr.io/music-assistant/server:latest
-veyon-webapi               veyon/webapi-proxy:latest
+mosquitto                 eclipse-mosquitto:2.0.22
+govee2mqtt                ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72
+music-assistant-server     ghcr.io/music-assistant/server:2.9.13
 ```
 
 Setup and Infrastructure & Recovery expose these services. Existing containers should be **adopted without recreation** unless the administrator explicitly chooses deploy/recreate. Managed persistent data must live beneath the services root rather than container writable layers and should survive container removal/recreation.
@@ -70,7 +69,7 @@ The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades
 
 ## Current known-good baseline
 
-`1.0.0-alpha.71` is the current live-test recovery/stabilization baseline.
+`1.0.0-alpha.72` is the current security and functional-correctness review baseline.
 
 Alpha.71 recovery invariants:
 
@@ -242,7 +241,7 @@ Authenticated maintenance mutations share an appliance-wide limit of 30 requests
 
 ## Display merge review boundaries (2026-09-09)
 
-PR #27 retains one logical layout owner and adds `public/display/security.mjs` for receiver URL/proxy/identify validation. Never return a rejected raw URL from a catch block. External media is an explicit HTTP(S) signage feature, not permission to load javascript/data/file schemes or to navigate the top-level receiver. Keep external frames isolated, proxy paths same-Hub and identify resources bounded. See `docs/DISPLAY-LAYOUT-CONTRACT.md` for behavior and browser verification. Renderer revision: `single-fit-20260909-2`; this source change does not create a new semantic-version release.
+PR #27 retains one logical layout owner and adds `public/display/security.mjs` for receiver URL/proxy/identify validation. Never return a rejected raw URL from a catch block. External media is an explicit HTTP(S) signage feature, not permission to load javascript/data/file schemes or to navigate the top-level receiver. Keep external frames isolated, proxy paths same-Hub and identify resources bounded. See `docs/DISPLAY-LAYOUT-CONTRACT.md` for behavior and browser verification. Renderer revision: `single-fit-20260909-4`, released with alpha.72.
 
 ## Host installer group prerequisite
 

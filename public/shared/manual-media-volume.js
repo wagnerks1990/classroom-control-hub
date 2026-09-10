@@ -39,7 +39,8 @@
       const volume=Math.max(0,Math.min(1,Number(slider.value||0)/100));
       const isVideo=type==="display.video";
       const isWeb=type==="display.web";
-      return window.cmd(type,window.targetArg(),{
+      if(typeof window.controllerDisplayCommand!=="function"||typeof window.controllerDisplayTargetArg!=="function")throw new Error("Display controller command bridge is unavailable");
+      return window.controllerDisplayCommand(type,window.controllerDisplayTargetArg(),{
         url:el("mediaUrl").value,
         fit:el("mediaFit").value,
         opacity:Number(el("mediaOpacity").value),

@@ -17,9 +17,9 @@ const NATIVE_VEYON_URL="http://127.0.0.1:11080";
 const MUSIC_ASSISTANT_URL="http://127.0.0.1:8095";
 
 const ADDONS={
-  mosquitto:{id:"mosquitto",name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:latest",dataRoot:"mosquitto",description:"MQTT broker used by Classroom Control Hub integrations."},
-  govee2mqtt:{id:"govee2mqtt",name:"Govee Lighting",container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:latest",dataRoot:"govee2mqtt",description:"Govee discovery and LAN/cloud control through MQTT."},
-  musicassistant:{id:"musicassistant",name:"Music Assistant",container:"music-assistant-server",image:"ghcr.io/music-assistant/server:latest",dataRoot:"music-assistant",description:"Classroom audio and media service. A valid long-lived Music Assistant access token is required before Classroom Control Hub marks this integration ready."},
+  mosquitto:{id:"mosquitto",name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:2.0.22",dataRoot:"mosquitto",description:"MQTT broker used by Classroom Control Hub integrations."},
+  govee2mqtt:{id:"govee2mqtt",name:"Govee Lighting",container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72",dataRoot:"govee2mqtt",description:"Govee discovery and LAN/cloud control through MQTT."},
+  musicassistant:{id:"musicassistant",name:"Music Assistant",container:"music-assistant-server",image:"ghcr.io/music-assistant/server:2.9.13",dataRoot:"music-assistant",description:"Classroom audio and media service. A valid long-lived Music Assistant access token is required before Classroom Control Hub marks this integration ready."},
   veyonwebapi:{id:"veyonwebapi",name:"Veyon WebAPI",container:"veyon-webapi",image:null,dataRoot:"veyon-webapi",description:"Native Veyon WebAPI service discovered on the appliance host. Service lifecycle remains host-managed while Classroom Control Hub manages Veyon application configuration."}
 };
 

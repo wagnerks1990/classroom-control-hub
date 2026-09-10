@@ -103,6 +103,7 @@ ensure_runtime_layout(){
 refresh_host_agent(){
   install -D -m 0644 "$HUB_ROOT/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-hub-host-agent.service
   if [[ "$HUB_ROOT" != /opt/classroom-hub ]]; then sed -i "s#/opt/classroom-hub#$HUB_ROOT#g" /etc/systemd/system/classroom-hub-host-agent.service; fi
+  sed -i "s#^Environment=HOST_SERVICES_DIR=.*#Environment=HOST_SERVICES_DIR=${HOST_SERVICES_DIR:-/opt/services}#" /etc/systemd/system/classroom-hub-host-agent.service
   python3 -m py_compile "$HUB_ROOT/host-agent/server.py"
   chmod 0755 "$HUB_ROOT/host-agent/update-runner.sh" "$HUB_ROOT/host-agent/app-update-runner.sh"
   systemctl daemon-reload
@@ -117,9 +118,9 @@ restore_safety_backup(){
     actual_sha="$(sha256sum "$HUB_ROOT/data/backups/$backup" | awk '{print $1}')"
     [[ "$actual_sha" == "$expected_sha" ]] || { echo "Safety backup checksum mismatch" >&2; return 1; }
   fi
-  docker exec -i -e BACKUP_NAME="$backup" classroom-control-hub-maintenance node - <<'NODE'
-const name=process.env.BACKUP_NAME,token=process.env.MAINTENANCE_TOKEN;
-fetch(`http://127.0.0.1:3010/backup/${encodeURIComponent(name)}/restore`,{method:'POST',headers:{'content-type':'application/json','x-maintenance-token':token},body:JSON.stringify({mode:'configuration-data',confirm:'RESTORE'})})
+  docker exec -i -e BACKUP_NAME="$backup" -e PORT="${MAINTENANCE_PORT:-3010}" classroom-control-hub-maintenance node - <<'NODE'
+const name=process.env.BACKUP_NAME,token=process.env.MAINTENANCE_TOKEN,port=process.env.PORT||3010;
+fetch(`http://127.0.0.1:${port}/backup/${encodeURIComponent(name)}/restore`,{method:'POST',headers:{'content-type':'application/json','x-maintenance-token':token},body:JSON.stringify({mode:'configuration-data',confirm:'RESTORE'})})
   .then(async r=>{const text=await r.text();if(!r.ok)throw Error(text);console.log(text)})
   .catch(e=>{console.error(e.message);process.exit(1)});
 NODE

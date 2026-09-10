@@ -21,7 +21,7 @@ Do not infer production configuration from public defaults. Site-specific config
 
 ## Current baseline
 
-The current known-good application baseline is `1.0.0-alpha.71`.
+The current review baseline is `1.0.0-alpha.72`.
 
 Verified live-test/recovery behaviors at this baseline include:
 
@@ -69,13 +69,12 @@ service: maintenance-agent   container: classroom-control-hub-maintenance
 Optional Hub-managed add-ons include:
 
 ```text
-mosquitto                 eclipse-mosquitto:latest
-govee2mqtt                ghcr.io/wez/govee2mqtt:latest
-music-assistant-server     ghcr.io/music-assistant/server:latest
-veyon-webapi               veyon/webapi-proxy:latest
+mosquitto                 eclipse-mosquitto:2.0.22
+govee2mqtt                ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72
+music-assistant-server     ghcr.io/music-assistant/server:2.9.13
 ```
 
-Existing Docker containers may be discovered and adopted for safe lifecycle/diagnostic control. Creation of new containers remains restricted to reviewed supported integration images; do not turn the Host Agent into an arbitrary root Docker command API.
+Native Veyon services remain host-managed. Existing Docker containers may be discovered and adopted for safe lifecycle/diagnostic control. Creation of new containers remains restricted to these pinned reviewed integration images; do not turn the Host Agent into an arbitrary root Docker command API.
 
 Persistent/runtime data must survive source updates. Never replace or commit production `.env`, databases, data, uploads, backups, master keys, private keys, credentials, or site-specific secrets.
 

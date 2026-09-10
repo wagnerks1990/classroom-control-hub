@@ -4,7 +4,7 @@ const dns = require("dns");
 const http = require("http");
 const https = require("https");
 
-const DEFAULT_OVERRIDE = "stream.carlisleschools.org=100.88.92.111";
+const DEFAULT_OVERRIDE = "";
 const GATEWAY_PREFIX = "/display-gateway";
 const MAX_REWRITE_BYTES = 8 * 1024 * 1024;
 
@@ -52,6 +52,8 @@ function parseGatewayRequest(reqUrl, allowedHosts = parseAllowedHosts()) {
   const target = new URL(`${protocol}//${host}${match[3] || "/"}${url.search}`);
   const hostname = target.hostname.toLowerCase();
   if (!allowedHosts.has(hostname)) throw new Error(`Display gateway host is not allowed: ${hostname}`);
+  const effectivePort = target.port || (target.protocol === "https:" ? "443" : "80");
+  if (!new Set(["80", "443"]).has(effectivePort)) throw new Error(`Display gateway port is not allowed: ${effectivePort}`);
   return target;
 }
 
@@ -105,13 +107,33 @@ function rewriteBody(text, target, baseOrigin) {
 }
 
 function copyResponseHeaders(upstream, res, target, baseOrigin) {
-  const blocked = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length", "content-security-policy", "content-security-policy-report-only"]);
+  const blocked = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length", "content-security-policy", "content-security-policy-report-only", "set-cookie", "set-cookie2", "clear-site-data"]);
   for (const [name, value] of Object.entries(upstream.headers || {})) {
     if (value === undefined || blocked.has(name.toLowerCase())) continue;
     if (name.toLowerCase() === "location") res.setHeader(name, rewriteLocation(value, target, baseOrigin));
     else res.setHeader(name, value);
   }
   res.setHeader("X-Classroom-Hub-Display-Gateway", "1");
+  // Proxied active content must never inherit the Hub origin's authority. The
+  // CSP sandbox gives it an opaque origin while retaining the media/player
+  // capabilities required by managed signage pages.
+  res.setHeader("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-presentation; default-src data: blob: http: https:; img-src data: blob: http: https:; media-src data: blob: http: https:; style-src 'unsafe-inline' http: https:; script-src 'unsafe-inline' 'unsafe-eval' http: https:; connect-src http: https: ws: wss:");
+}
+
+function upstreamRequestHeaders(headers = {}) {
+  const blocked = new Set([
+    "authorization", "cookie", "proxy-authorization", "x-api-key",
+    "x-control-token", "x-setup-token", "x-maintenance-token",
+    "connection", "proxy-connection", "keep-alive", "te", "trailer",
+    "transfer-encoding", "upgrade", "content-length", "accept-encoding",
+    "forwarded", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto"
+  ]);
+  const clean = {};
+  for (const [name, value] of Object.entries(headers || {})) {
+    if (!blocked.has(name.toLowerCase()) && value !== undefined) clean[name] = value;
+  }
+  clean["accept-encoding"] = "identity";
+  return clean;
 }
 
 function displayGatewayMiddleware({ allowedHosts = parseAllowedHosts() } = {}) {
@@ -120,12 +142,13 @@ function displayGatewayMiddleware({ allowedHosts = parseAllowedHosts() } = {}) {
     try { target = parseGatewayRequest(req.originalUrl || req.url, allowedHosts); }
     catch (error) { return res.status(403).json({ ok: false, error: error.message }); }
     if (!target) return next();
-    if (req.method === "CONNECT") return res.status(405).json({ ok: false, error: "CONNECT is not supported" });
+    if (!new Set(["GET", "HEAD"]).has(req.method)) {
+      res.setHeader("Allow", "GET, HEAD");
+      return res.status(405).json({ ok: false, error: "Display gateway supports only GET and HEAD" });
+    }
 
     const transport = target.protocol === "https:" ? https : http;
-    const headers = { ...req.headers, host: target.host };
-    for (const name of ["connection", "proxy-connection", "upgrade", "content-length", "accept-encoding"]) delete headers[name];
-    headers["accept-encoding"] = "identity";
+    const headers = { ...upstreamRequestHeaders(req.headers), host: target.host };
 
     const options = {
       protocol: target.protocol,
@@ -194,6 +217,7 @@ module.exports = {
   parseAllowedHosts,
   gatewayPathFor,
   parseGatewayRequest,
+  upstreamRequestHeaders,
   installDnsOverrides,
   displayGatewayMiddleware,
   installDisplayGatewayCompatibility

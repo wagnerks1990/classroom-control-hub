@@ -6,13 +6,11 @@ const path=require("node:path");
 const root=path.resolve(__dirname,"..");
 const read=file=>fs.readFileSync(path.join(root,file),"utf8");
 
-test("direct displays receive signed media access without enrollment credential IDs",async()=>{
+test("credentialed displays receive signed, credential-bound media access",async()=>{
   const compat=read("src/direct-display-compat.js");
   const server=read("src/server.js");
   const display=read("public/display/index.html");
-  assert.match(compat,/prototype\.authenticateDisplay\s*=\s*authenticateConfiguredDisplay/);
-  assert.match(compat,/authenticateConfiguredDisplay\.__directDisplayAccess\s*=\s*true/);
-  assert.doesNotMatch(compat,/return\s*\{[^}]*id:\s*`direct:/s);
+  assert.doesNotMatch(compat,/authenticateConfiguredDisplay|prototype\.authenticateDisplay/);
   assert.match(server,/issueAssetAccessToken\(deviceId,displayCredential\?\.id\|\|""\)/);
   assert.match(server,/if\(parts\[2\]==="legacy"\)return dbStore\.displayCredentialPolicy\(\)\.legacySharedTokenAllowed/);
   assert.match(display,/function authorizeAssetUrl\(value\)/);

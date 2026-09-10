@@ -3,7 +3,7 @@ import os, threading
 from pathlib import Path
 import server as core
 
-core.VERSION='1.0.0-alpha.71'
+core.VERSION='1.0.0-alpha.72'
 
 # Supported first-class add-ons. Existing containers outside this set can still
 # be adopted for inspect/log/start/stop/restart; creation and removal remain
@@ -12,10 +12,9 @@ core.MANAGED_CONTAINERS.update({
     'mosquitto','govee2mqtt','music-assistant-server','veyon-webapi'
 })
 core.MANAGED_IMAGES.update({
-    'eclipse-mosquitto:latest',
-    'ghcr.io/wez/govee2mqtt:latest',
-    'ghcr.io/music-assistant/server:latest',
-    'veyon/webapi-proxy:latest',
+    'eclipse-mosquitto:2.0.22',
+    'ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72',
+    'ghcr.io/music-assistant/server:2.9.13',
 })
 
 _original_managed_docker=core.managed_docker

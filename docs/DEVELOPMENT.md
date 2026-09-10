@@ -103,7 +103,7 @@ Tests must verify the stamping/wrapper contracts so releases do not rely on manu
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.71` is the live-test recovery/stabilization baseline. It includes the HTTP-only deployment change plus database identity, maintenance startup, access-profile, password-symbol, setup wizard, and managed-integration fixes found during the alpha.70 live deployment.
+At the time this document was updated, `1.0.0-alpha.72` is the security and functional-correctness review baseline. It includes credential-bound displays, gateway isolation, Android and manual-media repairs, custom-port rollback, and the earlier alpha.70/alpha.71 recovery work.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 

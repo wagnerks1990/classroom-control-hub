@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -37,13 +40,8 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Validate main application syntax
-        run: |
-          node --check src/server.js
-          node --check src/storage.js
-          node --check src/startup-recovery.js
-          node --check src/school-schedule.js
-          node --check src/security.js
+      - name: Validate application and browser syntax
+        run: npm run check
 
       - name: Install locked maintenance dependencies
         working-directory: maintenance-agent
@@ -68,10 +66,7 @@ jobs:
         run: python -m py_compile host-agent/server.py host-agent/start.py
 
       - name: Validate installer shell syntax
-        run: |
-          bash -n install.sh
-          bash -n deploy/bootstrap.sh
-          bash -n host-agent/app-update-runner.sh
+        run: bash -n install.sh deploy/bootstrap.sh deploy/host-group.sh host-agent/update-runner.sh host-agent/app-update-runner.sh host-agent/sync-veyon-key.sh
 
       - name: Validate Compose configuration
         run: docker compose config --format json | python3 tools/validate-host-network.py

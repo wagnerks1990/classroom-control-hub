@@ -3,7 +3,6 @@ const $=id=>document.getElementById(id);let state={devices:[],profiles:[],adbAva
 async function api(path,opt={}){const r=await fetch(`/api/v1/maintenance${path}`,{credentials:"same-origin",cache:"no-store",headers:{"content-type":"application/json",...(opt.headers||{})},...opt});const text=await r.text();let j={};try{j=JSON.parse(text)}catch{throw Error(text||`HTTP ${r.status}`)}if(!r.ok||j.ok===false){const error=Error(j.error||`HTTP ${r.status}`);error.payload=j;error.httpStatus=r.status;throw error}return j}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
-function quoteRemoteScript(command){return `'${String(command).replace(/'/g,`'\\''`)}'`}
 function deviceById(id){return state.devices.find(d=>String(d.id)===String(id))}
 function profileFor(d){return state.profiles.find(p=>p.id===d.profileId)||null}
 function agentStatusHtml(d){const s=d.agentStatus;if(!s)return state.adbAvailable?'<span class="agent-state pending">Checking…</span>':'<span class="agent-state warn">ADB offline</span>';if(s.starting)return `<span class="agent-state pending">Starting…</span>${s.version?` <small>v${esc(s.version)}</small>`:''}`;if(s.error)return `<span class="agent-state bad">Unavailable</span> <small>${esc(s.error)}</small>`;if(!s.installed)return '<span class="agent-state bad">Not installed</span>';const run=s.running?'<span class="agent-state ok">Running</span>':'<span class="agent-state warn">Installed · stopped</span>';return `${run}${s.version?` <small>v${esc(s.version)}</small>`:''}`}
@@ -18,7 +17,7 @@ function render(){
   applyBridgeAvailability();
 }
 function parseAgentProbe(text){const installed=/^INSTALLED=1$/m.test(text),running=/^RUNNING=1$/m.test(text),version=(String(text).match(/^VERSION=(.+)$/m)?.[1]||'').trim();return {installed,running:installed&&running,version}}
-async function runShell(id,script,timeoutMs=12000){return api(`/android/devices/${encodeURIComponent(id)}/shell`,{method:'POST',body:JSON.stringify({command:quoteRemoteScript(script),timeoutMs})})}
+async function runShell(id,script,timeoutMs=12000){return api(`/android/devices/${encodeURIComponent(id)}/shell`,{method:'POST',body:JSON.stringify({command:String(script),timeoutMs})})}
 async function probeAgent(id,rerender=true){const d=deviceById(id);if(!d)return null;if(!state.adbAvailable){d.agentStatus={error:'ADB bridge unavailable'};if(rerender)render();return d.agentStatus}if(d.lastStatus?.online!==true||d.uiRecovering){d.agentStatus={error:d.uiRecovering?'device recovering':'device offline'};if(rerender)render();return d.agentStatus}try{const pkg=d.agentPackage||'org.classroomhub.display';const script=`pm path ${pkg} >/dev/null 2>&1; rc=$?; if [ $rc -eq 0 ]; then echo INSTALLED=1; dumpsys package ${pkg} | grep versionName | head -n 1 | sed 's/.*versionName=/VERSION=/'; pidof ${pkg} >/dev/null 2>&1; prc=$?; if [ $prc -eq 0 ]; then echo RUNNING=1; else echo RUNNING=0; fi; else echo INSTALLED=0; fi`;const j=await runShell(id,script);d.agentStatus=parseAgentProbe(j.stdout||'');}catch(e){d.agentStatus={error:e.message}}if(rerender)render();return d.agentStatus}
 async function probeAllAgents(){if(!state.adbAvailable)return;for(const d of state.devices)await probeAgent(d.id,false);render()}
 function scheduleRefresh(delay=5000){if(refreshTimer)clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>liveRefresh().catch(()=>{}),document.hidden?15000:delay)}
@@ -29,14 +28,12 @@ async function liveRefresh(){
   try{
     for(const d of state.devices){
       if(d.uiRecovering)continue;
-      if(d.lastStatus?.online===true){
-        try{
-          const j=await api(`/android/devices/${encodeURIComponent(d.id)}/status`);
-          Object.assign(d,j.device||{});
-          await probeAgent(d.id,false);
-        }catch{
-          d.lastStatus={...(d.lastStatus||{}),online:false,checkedAt:new Date().toISOString()};
-        }
+      try{
+        const j=await api(`/android/devices/${encodeURIComponent(d.id)}/status`);
+        Object.assign(d,j.device||{});
+        await probeAgent(d.id,false);
+      }catch{
+        d.lastStatus={...(d.lastStatus||{}),online:false,checkedAt:new Date().toISOString()};
       }
     }
     render();

@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, timezone
 
-VERSION = "1.0.0-alpha.70"
+VERSION = "1.0.0-alpha.72"
 SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-control-hub/host-agent.sock")
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
 
@@ -130,7 +130,7 @@ APP_UPDATE_REQUEST_FILE=Path('/var/lib/classroom-hub/app-update-request.json')
 APP_UPDATE_SERVICE='classroom-hub-app-update.service'
 RELEASE_REF_RE=re.compile(r'^v?\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$')
 HUB_ROOT=Path(os.environ.get('CLASSROOM_HUB_DIR','/opt/classroom-hub')).resolve()
-SERVICES_ROOT=Path(os.environ.get('CLASSROOM_SERVICES_DIR','/opt/services')).resolve()
+SERVICES_ROOT=Path(os.environ.get('HOST_SERVICES_DIR',os.environ.get('CLASSROOM_SERVICES_DIR','/opt/services'))).resolve()
 DOCKER_NAME_RE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
 MANAGED_CONTAINERS={'classroom-control-hub','classroom-control-hub-maintenance','classroom-control-hub-tls','mosquitto','govee2mqtt','music-assistant-server','nodered','portainer'}
 MANAGED_IMAGES={'eclipse-mosquitto:2.0.22','ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72','nodered/node-red:4.1.14-22','ghcr.io/music-assistant/server:2.9.13'}

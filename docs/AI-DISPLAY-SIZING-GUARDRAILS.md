@@ -19,6 +19,6 @@ This file is AI-facing implementation context for future Classroom Control Hub c
 
 If diagnostics for a normally configured scene suddenly show values near title 118, subtitle 82, body 120, and timer 132, while the configured values are around 72/40/54/75, auto-grow has regressed to absolute-cap behavior.
 
-Renderer revision correcting this: `single-fit-20260909-3`.
+Renderer revision correcting this: `single-fit-20260909-4`.
 
 See `docs/DISPLAY-SIZING-RECOVERY.md` for operator verification and recovery details.

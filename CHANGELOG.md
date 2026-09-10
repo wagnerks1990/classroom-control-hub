@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased — selective PR #22 Sendspin migration
+## 1.0.0-alpha.72 - 2026-09-10
+
+### Security and correctness review
+
+- Restored one-use, individually revocable display enrollment and removed the production-only credential bypass that accepted any enabled display ID.
+- Hardened the Managed Display Gateway to GET/HEAD, standard web ports, credential-free upstream requests, cookie-free responses, configured client allowlists, and sandboxed active content.
+- Defaulted direct deployments to zero trusted proxy hops, rejected empty password reset/change requests, repaired disabled/demoted built-in Administrator profiles, and made uncaught exceptions fail for supervisor restart.
+- Removed the school-specific gateway hostname/IP from public defaults; deployments now configure mappings explicitly in protected runtime `.env` state.
+
+### Functional fixes
+
+- Repaired manual video/web playback after the volume-control helper called functions that ES modules did not expose globally.
+- Repaired managed Android remote shell, agent probes, app audit/minimal-mode actions, and offline-device polling.
+- Prevented timer style changes from resending stale clock state to another display selection.
+- Fixed application rollback on non-default maintenance ports and propagated custom service roots into the native Host Agent.
+- Expanded release gating and version stamping so browser, Android, restrictive-image, controller, and host validations cannot be skipped by a release tag.
+
+### Selective PR #22 Sendspin migration
 
 - Rate-limit the touched Music Assistant status/configuration/attachment routes with independent polling and mutation budgets and HTTP regressions.
 
@@ -10,11 +27,11 @@
 - Add real-WebSocket and deterministic lifecycle regressions; leave the renderer, SDK, autoplay and host-network deployment definitions unchanged.
 - Record the selective PR #22 review and rejected legacy experiments in operational, wiki and AI documentation. No new release tag or database migration.
 
-## Unreleased - Host installer group resolution
+### Host installer group resolution
 
 - Resolve or create the fixed host GID 10001 before data/key installation and pass its group name to `install`; preserve existing numeric ownership and fail on name conflicts or lookup errors. Add isolated regression tests and operational/wiki/AI recovery guidance.
 
-## Unreleased - Host-network migration
+### Host-network migration
 
 - Rate-limit authenticated maintenance mutations across legacy and wrapped add-on routes, preserving health polling and returning HTTP 429 with Retry-After under write floods.
 
@@ -23,7 +40,7 @@
 - Resolve exact legacy local integration aliases without rewriting remote endpoints or secrets; fix browser links and display network modes/migration warnings in the controller.
 - Map custom Mosquitto/Node-RED ports to actual service listeners. Require host mode in Host Agent container creation policy and preserve non-destructive adoption.
 - Add regression tests, host-network preflight, real-container networking smoke tests with a fake native-agent fixture, and synchronized operational/wiki/AI documentation.
-## Unreleased — PR #27 display correction
+### PR #27 display correction
 
 - Replace competing inline/observer fitters with one resolution-independent layout engine for title, subtitle, body and timer; grow short content, contain long content and preserve layout across timer ticks/reloads.
 - Package same-origin fonts and add Chromium/Firefox geometry, reload, overflow and timer tests.
