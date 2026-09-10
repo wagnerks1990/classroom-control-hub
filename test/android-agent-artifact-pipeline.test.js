@@ -11,7 +11,9 @@ test("maintenance image builds the current Android agent from repository source"
   const docker=read("maintenance-agent/Dockerfile");
   assert.match(docker,/FROM eclipse-temurin:17-jdk-jammy AS android-agent-build/);
   assert.match(docker,/COPY agents\/android-tv/);
-  assert.match(docker,/gradle :app:assembleRelease/);
+  assert.match(docker,/GRADLE_OPTS=.*-Xmx3072m/);
+  assert.match(docker,/org\.gradle\.workers\.max=2/);
+  assert.match(docker,/gradle :app:assembleRelease --no-daemon --stacktrace --max-workers=2/);
   assert.match(docker,/app-release-unsigned\.apk/);
   assert.match(docker,/aapt dump badging/);
   assert.match(docker,/COPY --from=android-agent-build .*agent-release-unsigned\.apk/);
