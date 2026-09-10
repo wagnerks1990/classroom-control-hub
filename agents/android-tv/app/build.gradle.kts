@@ -3,6 +3,9 @@ plugins { id("com.android.application") }
 android {
     namespace = "org.classroomhub.display"
     compileSdk = 35
+    buildFeatures {
+        buildConfig = true
+    }
     defaultConfig {
         applicationId = "org.classroomhub.display"
         minSdk = 26
