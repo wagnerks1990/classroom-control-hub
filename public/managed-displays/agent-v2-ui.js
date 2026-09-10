@@ -19,14 +19,22 @@
       let panel=card.querySelector(".agent-v2-panel");
       if(!panel){
         panel=document.createElement("div");panel.className="agent-v2-panel";panel.style.cssText="margin-top:.8rem;padding:.7rem;border:1px solid rgba(255,255,255,.12);border-radius:.6rem";
-        panel.innerHTML='<strong>Device Agent v2</strong> <span data-v2-status>Checking…</span><div style="margin-top:.5rem;display:flex;flex-wrap:wrap;gap:.4rem" data-v2-controls></div><div style="margin-top:.55rem;display:flex;flex-wrap:wrap;gap:.4rem" data-lifecycle-controls></div>';
+        panel.innerHTML='<strong>Device Agent v2</strong> <span data-v2-status>Checking…</span><div style="margin-top:.5rem;display:flex;flex-wrap:wrap;gap:.4rem" data-v2-controls></div><div style="margin-top:.55rem;display:flex;flex-wrap:wrap;gap:.4rem" data-audio-controls></div><div style="margin-top:.55rem;display:flex;flex-wrap:wrap;gap:.4rem" data-lifecycle-controls></div>';
         controls.parentNode.insertBefore(panel,controls);
       }
       const box=panel.querySelector("[data-v2-controls]");
       if(!box.dataset.ready){
         box.dataset.ready="1";
-        for(const [label,op] of [["Configure v2","configure"],["Agent Status","status"],["Capabilities","capabilities"],["Reload via Agent","reload"],["Wake via Agent","wake"],["Home via Agent","home"],["Back via Agent","back"],["Recents via Agent","recents"],["Repair ADB Settings","recover-adb-settings"],["Enable Device Admin","enable-device-admin"]]){
+        for(const [label,op] of [["Configure v2","configure"],["Agent Status","status"],["Capabilities","capabilities"],["Reload via Agent","reload"],["Wake via Agent","wake"],["Home via Agent","home"],["Back via Agent","back"],["Recents via Agent","recents"],["Repair ADB Settings","recover-adb-settings"],["Enable Accessibility","enable-accessibility"],["Enable Device Admin","enable-device-admin"]]){
           const b=document.createElement("button");b.type="button";b.textContent=label;b.dataset.v2Action=op;box.appendChild(b);
+        }
+      }
+      const audioBox=panel.querySelector("[data-audio-controls]");
+      if(!audioBox.dataset.ready){
+        audioBox.dataset.ready="1";
+        const label=document.createElement("span");label.textContent="Native Sendspin:";label.style.alignSelf="center";audioBox.appendChild(label);
+        for(const [text,op] of [["Configure","sendspin-configure"],["Status","sendspin-status"],["Reconnect","sendspin-reconnect"]]){
+          const b=document.createElement("button");b.type="button";b.textContent=text;b.dataset.v2Action=op;audioBox.appendChild(b);
         }
       }
       const lifecycleBox=panel.querySelector("[data-lifecycle-controls]");
@@ -36,7 +44,7 @@
           const b=document.createElement("button");b.type="button";b.textContent=label;b.dataset.lifecycleAction=op;if(op==="remove")b.className="danger";lifecycleBox.appendChild(b);
         }
       }
-      box.querySelectorAll("button").forEach(b=>{b.disabled=false;b.title=b.dataset.v2Action==="enable-device-admin"?"One-time ADB bootstrap: opens Android's Device Administrator approval screen on the TV.":"Uses Device Agent v2; ADB is not required after initial v2 configuration."});
+      panel.querySelectorAll("button[data-v2-action]").forEach(b=>{b.disabled=false;if(b.dataset.v2Action==="enable-device-admin")b.title="Opens Android's Device Administrator approval flow on the TV.";else if(b.dataset.v2Action==="enable-accessibility")b.title="Opens Android Accessibility settings so Home/Back/Recents can be granted.";else if(b.dataset.v2Action?.startsWith("sendspin-"))b.title="Native Music Assistant Sendspin playback runs inside the Android agent, independently of the WebView.";else b.title="Uses Device Agent v2; ADB is not required after initial v2 configuration."});
       lifecycleBox.querySelectorAll("button").forEach(b=>{b.disabled=false;b.title="Changes only Classroom Hub enrollment state; it does not factory-reset the TV or uninstall the agent."});
       probe(card).catch(()=>{});
     }
@@ -44,8 +52,12 @@
   async function probe(card){
     if(card.dataset.v2ProbeBusy==="1")return;card.dataset.v2ProbeBusy="1";
     const id=card.dataset.id,status=card.querySelector("[data-v2-status]");
-    try{const j=await call(id,"/health");status.textContent=`Online · ${j.status?.agentVersion||"version unknown"}`;status.style.color=""}
-    catch(e){status.textContent=e.status===409?"Not configured":`Unavailable · ${e.message}`;status.style.color=""}
+    try{
+      const j=await call(id,"/health");const a=j.status?.sendspin;
+      status.textContent=`Online · ${j.status?.agentVersion||"version unknown"}${a?.enabled?` · Sendspin ${a.connected?(a.playing?'playing':'connected'):'offline'}`:''}`;status.style.color="";
+      const navAvailable=j.status?.capabilities?.globalNavigation?.available===true;
+      for(const op of ["home","back","recents"]){const b=card.querySelector(`button[data-v2-action="${op}"]`);if(b){b.title=navAvailable?"Uses the enabled Classroom Hub Accessibility service.":"Requires Enable Accessibility on the TV before this action can work.";}}
+    }catch(e){status.textContent=e.status===409?"Not configured":`Unavailable · ${e.message}`;status.style.color=""}
     finally{delete card.dataset.v2ProbeBusy}
   }
   root.addEventListener("click",async e=>{
@@ -75,7 +87,20 @@
       }else if(op==="capabilities"){
         const j=await call(id,"/capabilities");terminal("Device Agent v2 capabilities",j.capabilities);
       }else if(op==="enable-device-admin"){
-        const j=await call(id,"/device-admin/activate",{method:"POST",body:"{}"});terminal("Device Admin activation",j);window.alert("Android's Device Administrator approval screen was opened on the TV. Approve Classroom Hub there, then run Capabilities again.");
+        const j=await call(id,"/device-admin/activate",{method:"POST",body:"{}"});terminal("Device Admin activation",j);window.alert("Classroom Hub opened its Device Administrator activation helper on the TV. Approve the Android system prompt if shown, then run Capabilities again.");
+      }else if(op==="enable-accessibility"){
+        const j=await call(id,"/action",{method:"POST",body:JSON.stringify({action:"open-accessibility-settings"})});terminal("Accessibility activation",j.result);window.alert("Accessibility settings were requested on the TV. Enable Classroom Hub control fallback, then run Capabilities again.");
+      }else if(op==="sendspin-configure"){
+        const current=(await call(id,"/status")).status?.sendspin||{};
+        const defaultUrl=current.url||"ws://MUSIC_ASSISTANT_HOST:8927/sendspin";
+        const url=window.prompt("Music Assistant Sendspin URL (normally ws://<Music Assistant host>:8927/sendspin)",defaultUrl);if(url===null)return;
+        const defaultName=current.name||card.querySelector("h3")?.textContent||"Classroom Hub Display";
+        const name=window.prompt("Music Assistant player name",defaultName);if(name===null)return;
+        const j=await call(id,"/action",{method:"POST",body:JSON.stringify({action:"sendspin-configure",enabled:true,url:url.trim(),name:name.trim()})});terminal("Native Sendspin configured",j.result);
+      }else if(op==="sendspin-status"){
+        const j=await call(id,"/action",{method:"POST",body:JSON.stringify({action:"sendspin-status"})});terminal("Native Sendspin status",j.result);
+      }else if(op==="sendspin-reconnect"){
+        const j=await call(id,"/action",{method:"POST",body:JSON.stringify({action:"sendspin-reconnect"})});terminal("Native Sendspin reconnect",j.result);
       }else{
         const j=await call(id,"/action",{method:"POST",body:JSON.stringify({action:op})});terminal(`Device Agent v2 action: ${op}`,j.result);
       }
