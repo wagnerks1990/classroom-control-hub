@@ -57,14 +57,24 @@ function normalizeDevice(input={}){
 class JsonStore{
   constructor(root){this.root=path.resolve(root);this.file=path.join(this.root,"devices.json");}
   load(){
-    fs.mkdirSync(this.root,{recursive:true,mode:0o750});
+    fs.mkdirSync(this.root,{recursive:true,mode:0o2770});
     let data={version:1,devices:[],profiles:[DEFAULT_PROFILE]};
-    try{if(fs.existsSync(this.file))data=JSON.parse(fs.readFileSync(this.file,"utf8"))}catch{}
+    if(fs.existsSync(this.file)){
+      try{data=JSON.parse(fs.readFileSync(this.file,"utf8"))}
+      catch(error){const e=Error(`Managed display inventory is unreadable: ${error.message}`);e.code=error.code;throw e}
+    }
     const profiles=(Array.isArray(data.profiles)?data.profiles:[]).map(normalizeProfile);if(!profiles.some(x=>x.id===DEFAULT_PROFILE.id))profiles.unshift(normalizeProfile(DEFAULT_PROFILE));
     const devices=[];for(const raw of Array.isArray(data.devices)?data.devices:[]){try{devices.push(normalizeDevice(raw))}catch{}}
     return {version:1,devices,profiles};
   }
-  save(data){fs.mkdirSync(this.root,{recursive:true,mode:0o750});const tmp=`${this.file}.tmp-${process.pid}`;fs.writeFileSync(tmp,JSON.stringify(data,null,2)+"\n",{mode:0o600});fs.renameSync(tmp,this.file);return data;}
+  save(data){
+    fs.mkdirSync(this.root,{recursive:true,mode:0o2770});
+    const tmp=`${this.file}.tmp-${process.pid}`;
+    fs.writeFileSync(tmp,JSON.stringify(data,null,2)+"\n",{mode:0o660});
+    fs.renameSync(tmp,this.file);
+    fs.chmodSync(this.file,0o660);
+    return data;
+  }
   list(){return this.load()}
   upsertDevice(device){const data=this.load(),normalized=normalizeDevice(device),i=data.devices.findIndex(x=>x.id===normalized.id);if(i>=0)data.devices[i]={...data.devices[i],...normalized,createdAt:data.devices[i].createdAt};else data.devices.push(normalized);this.save(data);return normalized;}
   deleteDevice(id){id=cleanId(id);const data=this.load(),before=data.devices.length;data.devices=data.devices.filter(x=>x.id!==id);this.save(data);return before!==data.devices.length;}
