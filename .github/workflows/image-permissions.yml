@@ -39,6 +39,6 @@ jobs:
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
             --entrypoint node classroom-control-hub:test tools/verify-image-permissions.js
       - name: Build maintenance test companion
-        run: docker build --network host -t classroom-control-hub-maintenance:test maintenance-agent
+        run: docker build --network host -f maintenance-agent/Dockerfile -t classroom-control-hub-maintenance:test .
       - name: Start the restrictive-context image with normal security boundaries
         run: bash tools/smoke-host-network.sh
