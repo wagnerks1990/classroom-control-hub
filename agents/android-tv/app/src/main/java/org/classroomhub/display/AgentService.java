@@ -22,7 +22,6 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
@@ -36,7 +35,6 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Collections;
-import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,20 +53,40 @@ public class AgentService extends Service {
         try{if(Build.VERSION.SDK_INT>=26)context.startForegroundService(i);else context.startService(i);}catch(Exception e){Log.w(TAG,"Unable to start management service",e);}
     }
 
-    @Override public void onCreate(){super.onCreate();createNotificationChannel();Notification n=buildNotification();if(Build.VERSION.SDK_INT>=29){try{startForeground(NOTIFICATION_ID,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);}catch(Throwable ignored){startForeground(NOTIFICATION_ID,n);}}else startForeground(NOTIFICATION_ID,n);startServer();}
-    @Override public int onStartCommand(Intent intent,int flags,int startId){enforcePersistentAdbSettings("service-start");return START_STICKY;}
+    @Override public void onCreate(){
+        super.onCreate();
+        createNotificationChannel();
+        Notification n=buildNotification();
+        if(Build.VERSION.SDK_INT>=29){try{startForeground(NOTIFICATION_ID,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);}catch(Throwable ignored){startForeground(NOTIFICATION_ID,n);}}else startForeground(NOTIFICATION_ID,n);
+        KioskWatchdog.start(this);
+        NativeSendspinManager.INSTANCE.ensureStarted(this);
+        startServer();
+    }
+    @Override public int onStartCommand(Intent intent,int flags,int startId){
+        enforcePersistentAdbSettings("service-start");
+        KioskWatchdog.start(this);
+        NativeSendspinManager.INSTANCE.ensureStarted(this);
+        return START_STICKY;
+    }
     @Override public IBinder onBind(Intent intent){return null;}
-    @Override public void onDestroy(){stopping=true;try{if(server!=null)server.close();}catch(Exception ignored){}workers.shutdownNow();super.onDestroy();}
+    @Override public void onDestroy(){
+        stopping=true;
+        try{if(server!=null)server.close();}catch(Exception ignored){}
+        workers.shutdownNow();
+        NativeSendspinManager.INSTANCE.stop("agent-service-destroyed");
+        KioskWatchdog.stop();
+        super.onDestroy();
+    }
 
-    private void createNotificationChannel(){if(Build.VERSION.SDK_INT<26)return;NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);if(nm==null)return;NotificationChannel c=new NotificationChannel(CHANNEL,"Classroom Hub device management",NotificationManager.IMPORTANCE_LOW);c.setDescription("Keeps the classroom display connected to Classroom Hub management.");nm.createNotificationChannel(c);}
-    private Notification buildNotification(){Intent open=new Intent(this,MainActivity.class);PendingIntent pi=PendingIntent.getActivity(this,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);return b.setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("Classroom Hub display managed").setContentText("Device Agent v2 is running").setOngoing(true).setContentIntent(pi).build();}
+    private void createNotificationChannel(){if(Build.VERSION.SDK_INT<26)return;NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);if(nm==null)return;NotificationChannel c=new NotificationChannel(CHANNEL,"Classroom Hub device management",NotificationManager.IMPORTANCE_LOW);c.setDescription("Keeps the classroom display connected to Classroom Hub management and native audio.");nm.createNotificationChannel(c);}
+    private Notification buildNotification(){Intent open=new Intent(this,MainActivity.class);PendingIntent pi=PendingIntent.getActivity(this,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);return b.setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("Classroom Hub display managed").setContentText("Kiosk watchdog and Device Agent v2 are running").setOngoing(true).setContentIntent(pi).build();}
 
     private void startServer(){SharedPreferences p=HubStorage.prefs(this);if(!p.getBoolean("agent_enabled",true))return;final int port=Math.max(1024,Math.min(65535,p.getInt("agent_port",DEFAULT_PORT)));workers.execute(()->{try{server=new ServerSocket(port,16,InetAddress.getByName("0.0.0.0"));Log.i(TAG,"Agent v2 HTTP management listening on "+port);while(!stopping){Socket socket=server.accept();socket.setSoTimeout(10000);workers.execute(()->handle(socket));}}catch(Exception e){if(!stopping)Log.e(TAG,"Agent management listener failed",e);}});}
 
     private void handle(Socket socket){try(Socket s=socket;BufferedInputStream in=new BufferedInputStream(s.getInputStream());BufferedOutputStream out=new BufferedOutputStream(s.getOutputStream())){String requestLine=readLine(in);if(requestLine==null||requestLine.isEmpty())return;String[] first=requestLine.split(" ",3);if(first.length<2){writeJson(out,400,error("bad_request","Malformed request"));return;}String method=first[0].toUpperCase(Locale.ROOT),path=first[1];int contentLength=0;String token="";for(;;){String line=readLine(in);if(line==null||line.isEmpty())break;int colon=line.indexOf(':');if(colon<1)continue;String name=line.substring(0,colon).trim().toLowerCase(Locale.ROOT),value=line.substring(colon+1).trim();if("content-length".equals(name))try{contentLength=Math.min(65536,Integer.parseInt(value));}catch(Exception ignored){}if("x-classroom-hub-agent-token".equals(name))token=value;}if(!authorized(token)){writeJson(out,401,error("unauthorized","Valid device-agent token required"));return;}byte[] body=contentLength>0?readExact(in,contentLength):new byte[0];JSONObject input=body.length>0?new JSONObject(new String(body,StandardCharsets.UTF_8)):new JSONObject();if("GET".equals(method)&&"/v1/status".equals(path)){writeJson(out,200,status());return;}if("GET".equals(method)&&"/v1/capabilities".equals(path)){writeJson(out,200,AgentCapabilities.snapshot(this));return;}if("POST".equals(method)&&"/v1/action".equals(path)){JSONObject result=action(input);writeJson(out,result.optBoolean("ok",true)?200:409,result);return;}writeJson(out,404,error("not_found","Unknown agent endpoint"));}catch(Exception e){Log.w(TAG,"Agent request failed",e);}}
 
     private boolean authorized(String supplied){String expected=HubStorage.prefs(this).getString("agent_token","");if(expected==null||expected.length()<32||supplied==null)return false;return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),supplied.getBytes(StandardCharsets.UTF_8));}
-    private JSONObject status() throws Exception {SharedPreferences p=HubStorage.prefs(this);JSONObject o=new JSONObject();o.put("ok",true);o.put("agentVersion",BuildConfig.VERSION_NAME);o.put("package",getPackageName());o.put("displayUrl",p.getString("display_url",""));o.put("agentPort",p.getInt("agent_port",DEFAULT_PORT));o.put("persistentAdb",p.getBoolean("persistent_adb",false));o.put("targetAdbPort",p.getInt("target_adb_port",5555));o.put("uptimeMs",android.os.SystemClock.elapsedRealtime());o.put("network",networkInfo());o.put("capabilities",AgentCapabilities.snapshot(this).optJSONObject("capabilities"));return o;}
+    private JSONObject status() throws Exception {SharedPreferences p=HubStorage.prefs(this);JSONObject o=new JSONObject();o.put("ok",true);o.put("agentVersion",BuildConfig.VERSION_NAME);o.put("package",getPackageName());o.put("displayUrl",p.getString("display_url",""));o.put("agentPort",p.getInt("agent_port",DEFAULT_PORT));o.put("persistentAdb",p.getBoolean("persistent_adb",false));o.put("targetAdbPort",p.getInt("target_adb_port",5555));o.put("uptimeMs",android.os.SystemClock.elapsedRealtime());o.put("network",networkInfo());o.put("sendspin",NativeSendspinManager.INSTANCE.status(this));o.put("capabilities",AgentCapabilities.snapshot(this).optJSONObject("capabilities"));return o;}
     private JSONObject networkInfo() throws Exception {JSONObject o=new JSONObject();ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);Network active=cm==null?null:cm.getActiveNetwork();NetworkCapabilities nc=cm==null||active==null?null:cm.getNetworkCapabilities(active);o.put("connected",nc!=null&&nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET));o.put("wifi",nc!=null&&nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI));o.put("ethernet",nc!=null&&nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));StringBuilder addresses=new StringBuilder();for(NetworkInterface ni:Collections.list(NetworkInterface.getNetworkInterfaces()))for(InetAddress a:Collections.list(ni.getInetAddresses()))if(!a.isLoopbackAddress()){if(addresses.length()>0)addresses.append(',');addresses.append(a.getHostAddress());}o.put("addresses",addresses.toString());return o;}
 
     private JSONObject action(JSONObject input) throws Exception {String name=input.optString("action","");JSONObject result=new JSONObject();result.put("ok",true);result.put("action",name);switch(name){
@@ -83,6 +101,10 @@ public class AgentService extends Service {
         case "reboot":result.put("performed",reboot());break;
         case "recover-adb-settings":result.put("performed",enforcePersistentAdbSettings("remote-action"));break;
         case "capabilities":result.put("capabilities",AgentCapabilities.snapshot(this));break;
+        case "open-accessibility-settings":result.put("performed",openHelperActivity(AccessibilityActivationActivity.class));break;
+        case "sendspin-status":result.put("sendspin",NativeSendspinManager.INSTANCE.status(this));break;
+        case "sendspin-reconnect":result.put("sendspin",NativeSendspinManager.INSTANCE.reconnect(this));break;
+        case "sendspin-configure":result.put("sendspin",NativeSendspinManager.INSTANCE.configure(this,input.optBoolean("enabled",true),input.has("url")?input.optString("url",""):null,input.has("name")?input.optString("name",""):null));break;
         case "local-adb-pair":result.put("result",localAdbPair(input));break;
         case "local-adb-connect":result.put("result",localAdbConnect(input));break;
         case "local-adb-self-grant":result.put("result",localAdbSelfGrant(input));break;
@@ -92,6 +114,7 @@ public class AgentService extends Service {
         default:return error("unsupported_action","Unsupported or intentionally blocked action: "+name);
     }return result;}
 
+    private boolean openHelperActivity(Class<?> cls){try{Intent i=new Intent(this,cls);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);startActivity(i);return true;}catch(Exception e){Log.w(TAG,"Unable to open settings helper",e);return false;}}
     private JSONObject localAdbPair(JSONObject input) throws Exception {int port=input.optInt("port",0);String code=input.optString("code","").trim();if(port<1024||port>65535||!code.matches("\\d{6}"))throw new IllegalArgumentException("Pairing port and six-digit code are required");try(LocalAdbManager m=new LocalAdbManager(this)){JSONObject o=new JSONObject();o.put("paired",m.pairLocal(port,code));return o;}}
     private JSONObject localAdbConnect(JSONObject input) throws Exception {long timeout=Math.max(1000,Math.min(30000,input.optLong("timeoutMs",12000)));try(LocalAdbManager m=new LocalAdbManager(this)){JSONObject o=new JSONObject();o.put("connected",m.discoverAndConnect(this,timeout));return o;}}
     private JSONObject localAdbSelfGrant(JSONObject input) throws Exception {long timeout=Math.max(1000,Math.min(30000,input.optLong("timeoutMs",12000)));try(LocalAdbManager m=new LocalAdbManager(this)){boolean connected=m.discoverAndConnect(this,timeout);String output=connected?m.shell("pm grant "+getPackageName()+" android.permission.WRITE_SECURE_SETTINGS"):"";JSONObject o=new JSONObject();o.put("connected",connected);o.put("granted",checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS")==android.content.pm.PackageManager.PERMISSION_GRANTED);o.put("output",output);return o;}}
