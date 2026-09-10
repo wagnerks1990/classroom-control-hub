@@ -5,8 +5,28 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application android:allowBackup="false" android:usesCleartextTraffic="true" android:label="Classroom Hub Display" android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" android:launchMode="singleTask">
             <intent-filter>
@@ -15,6 +35,32 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".AgentService"
+            android:enabled="true"
+            android:exported="false"
+            android:directBootAware="true"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Persistent classroom display management, health reporting, kiosk recovery, and local administrator control on managed Android TV devices." />
+        </service>
+
+        <service
+            android:name=".AgentAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true"
+            android:label="Classroom Hub control fallback">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/agent_accessibility_service" />
+        </service>
+
+        <receiver android:name=".AgentDeviceAdminReceiver" android:permission="android.permission.BIND_DEVICE_ADMIN" android:exported="true" android:label="Classroom Hub device administration">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+        </receiver>
+
         <receiver android:name=".BootReceiver" android:enabled="true" android:exported="true" android:directBootAware="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
