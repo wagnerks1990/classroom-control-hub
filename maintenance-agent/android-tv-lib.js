@@ -7,6 +7,7 @@ const crypto=require("crypto");
 const DEVICE_ID_RE=/^[a-zA-Z0-9._-]{1,96}$/;
 const HOST_RE=/^[a-zA-Z0-9._:-]{1,255}$/;
 const PACKAGE_RE=/^[A-Za-z][A-Za-z0-9_.]{1,199}$/;
+const AGENT_TOKEN_RE=/^[a-f0-9]{64}$/i;
 const KEYEVENTS={
   power:"KEYCODE_POWER",wake:"KEYCODE_WAKEUP",sleep:"KEYCODE_SLEEP",home:"KEYCODE_HOME",back:"KEYCODE_BACK",
   up:"KEYCODE_DPAD_UP",down:"KEYCODE_DPAD_DOWN",left:"KEYCODE_DPAD_LEFT",right:"KEYCODE_DPAD_RIGHT",select:"KEYCODE_DPAD_CENTER",
@@ -47,11 +48,18 @@ function normalizePersistentAdb(input,devicePort){
   return {enabled:input.enabled===true,targetPort:cleanPort(input.targetPort,cleanPort(devicePort,5555)),bootRestore:input.bootRestore===true,bootstrapAt:input.bootstrapAt?cleanText(input.bootstrapAt,80):null,disabledAt:input.disabledAt?cleanText(input.disabledAt,80):null};
 }
 
+function normalizeAgentV2(input){
+  if(!input||typeof input!=="object")return null;
+  const rawToken=String(input.token||"").trim();
+  if(!AGENT_TOKEN_RE.test(rawToken))return null;
+  return {enabled:input.enabled!==false,port:cleanPort(input.port,8765),token:rawToken.toLowerCase(),configuredAt:input.configuredAt?cleanText(input.configuredAt,80):null};
+}
+
 function normalizeDevice(input={}){
   const id=cleanId(input.id||makeId());const host=cleanHost(input.host);const port=cleanPort(input.port,5555);const serial=cleanSerial(input.serial||`${host}:${port}`);
   return {id,name:cleanText(input.name||id,120),host,port,serial,organization:cleanText(input.organization,120),school:cleanText(input.school,120),building:cleanText(input.building,120),room:cleanText(input.room,80),
     profileId:cleanId(input.profileId||DEFAULT_PROFILE.id),platform:"android-tv",provider:cleanText(input.provider||"android-adb",60),model:cleanText(input.model,160),manufacturer:cleanText(input.manufacturer,120),androidVersion:cleanText(input.androidVersion,60),sdk:cleanText(input.sdk,20),build:cleanText(input.build,160),agentPackage:cleanPackage(input.agentPackage||"org.classroomhub.display"),agentVersion:cleanText(input.agentVersion,40),displayUrl:cleanText(input.displayUrl,500),
-    persistentAdb:normalizePersistentAdb(input.persistentAdb,port),enabled:input.enabled!==false,createdAt:String(input.createdAt||now()),updatedAt:now(),lastSeenAt:input.lastSeenAt||null,lastStatus:input.lastStatus||null};
+    persistentAdb:normalizePersistentAdb(input.persistentAdb,port),agentV2:normalizeAgentV2(input.agentV2),enabled:input.enabled!==false,createdAt:String(input.createdAt||now()),updatedAt:now(),lastSeenAt:input.lastSeenAt||null,lastStatus:input.lastStatus||null};
 }
 
 class JsonStore{
@@ -92,4 +100,4 @@ function adbArgsForAction(device,action,payload={}){
   throw Error(`Unsupported Android action: ${action}`);
 }
 
-module.exports={DEFAULT_PROFILE,KEYEVENTS,JsonStore,normalizeProfile,normalizePersistentAdb,normalizeDevice,cleanId,cleanHost,cleanPort,cleanSerial,cleanPackage,cleanShell,cleanText,makeId,adbArgsForAction};
+module.exports={DEFAULT_PROFILE,KEYEVENTS,JsonStore,normalizeProfile,normalizePersistentAdb,normalizeAgentV2,normalizeDevice,cleanId,cleanHost,cleanPort,cleanSerial,cleanPackage,cleanShell,cleanText,makeId,adbArgsForAction};
