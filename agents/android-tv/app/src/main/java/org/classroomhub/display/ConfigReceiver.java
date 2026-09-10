@@ -12,6 +12,10 @@ public class ConfigReceiver extends BroadcastReceiver {
         SharedPreferences.Editor edit=prefs.edit();
         String url=intent.getStringExtra("display_url");
         if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))) edit.putString("display_url",url);
+        String token=intent.getStringExtra("agent_token");
+        if(token!=null&&token.length()>=32)edit.putString("agent_token",token);
+        if(intent.hasExtra("agent_enabled"))edit.putBoolean("agent_enabled",intent.getBooleanExtra("agent_enabled",true));
+        if(intent.hasExtra("agent_port"))edit.putInt("agent_port",Math.max(1024,Math.min(65535,intent.getIntExtra("agent_port",8765))));
         if(intent.hasExtra("persistent_adb")) edit.putBoolean("persistent_adb",intent.getBooleanExtra("persistent_adb",false));
         if(intent.hasExtra("target_adb_port")) edit.putInt("target_adb_port",Math.max(1024,Math.min(65535,intent.getIntExtra("target_adb_port",5555))));
         edit.apply();
@@ -21,8 +25,7 @@ public class ConfigReceiver extends BroadcastReceiver {
                 Settings.Global.putInt(context.getContentResolver(),"adb_wifi_enabled",1);
             }catch(Exception ignored){}
         }
-        Intent launch=new Intent(context,MainActivity.class);
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        try{context.startActivity(launch);}catch(Exception ignored){}
+        AgentService.start(context);
+        MainActivity.launch(context,false);
     }
 }
