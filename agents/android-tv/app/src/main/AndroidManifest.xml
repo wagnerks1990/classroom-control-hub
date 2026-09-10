@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
@@ -35,17 +36,18 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".DeviceAdminActivationActivity" android:exported="true" android:excludeFromRecents="true" android:noHistory="true" />
+        <activity android:name=".DeviceAdminActivationActivity" android:exported="true" android:excludeFromRecents="true" />
+        <activity android:name=".AccessibilityActivationActivity" android:exported="true" android:excludeFromRecents="true" />
 
         <service
             android:name=".AgentService"
             android:enabled="true"
             android:exported="false"
             android:directBootAware="true"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse|mediaPlayback">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Persistent classroom display management, health reporting, kiosk recovery, and local administrator control on managed Android TV devices." />
+                android:value="Persistent classroom display management, kiosk recovery, native Sendspin audio playback, and local administrator control on managed Android TV devices." />
         </service>
 
         <service
