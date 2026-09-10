@@ -4,6 +4,7 @@ set -Eeuo pipefail
 SOURCE_ROOT="${ANDROID_AGENT_SOURCE_ROOT:-/workspace/agents/android-tv}"
 STAGE_ROOT="${ANDROID_AGENT_STAGE_ROOT:-/stage}"
 SIGNING_ROOT="${ANDROID_AGENT_SIGNING_ROOT:-/signing}"
+STAGE_GID="${ANDROID_AGENT_STAGE_GID:-10001}"
 APK_TARGET="$STAGE_ROOT/ClassroomHub-Display-Agent.apk"
 META_TARGET="$STAGE_ROOT/ClassroomHub-Display-Agent.json"
 KEYSTORE="$SIGNING_ROOT/ClassroomHub-Display-Agent.keystore"
@@ -34,7 +35,8 @@ PY
 )
   actual_sha="$(sha256sum "$APK_TARGET" | awk '{print $1}')"
   if [[ "$old_digest" == "$source_digest" && -n "$old_sha" && "$old_sha" == "$actual_sha" ]]; then
-    chmod 0660 "$APK_TARGET" "$META_TARGET" || true
+    chgrp "$STAGE_GID" "$APK_TARGET" "$META_TARGET"
+    chmod 0660 "$APK_TARGET" "$META_TARGET"
     echo "Android Display Agent staging already matches current source."
     exit 0
   fi
@@ -89,6 +91,7 @@ apk_sha="$(sha256sum "$built" | awk '{print $1}')"
 
 stage_tmp="$STAGE_ROOT/.ClassroomHub-Display-Agent.apk.$$.tmp"
 install -m 0660 "$built" "$stage_tmp"
+chgrp "$STAGE_GID" "$stage_tmp"
 mv -f "$stage_tmp" "$APK_TARGET"
 
 SOURCE_DIGEST="$source_digest" APK_SHA="$apk_sha" SIGNER_SHA="$signer_sha" VERSION_NAME="$version_name" VERSION_CODE="$version_code" META_TARGET="$META_TARGET" python3 - <<'PY'
@@ -110,5 +113,6 @@ with open(tmp,'w') as f: json.dump(data,f,indent=2,sort_keys=True)
 os.chmod(tmp,0o660)
 os.replace(tmp,p)
 PY
+chgrp "$STAGE_GID" "$META_TARGET"
 chmod 0660 "$APK_TARGET" "$META_TARGET"
 echo "Staged Android Display Agent $version_name (versionCode $version_code, signer ${signer_sha:0:12}..., sha256 ${apk_sha:0:12}...)."
