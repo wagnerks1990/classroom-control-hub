@@ -12,6 +12,7 @@ public class BootReceiver extends BroadcastReceiver {
 
     @Override public void onReceive(Context context, Intent intent) {
         SharedPreferences prefs=HubStorage.prefs(context);
+        AgentService.start(context);
         if(prefs.getBoolean("persistent_adb",false)){
             try{
                 Settings.Global.putInt(context.getContentResolver(),"development_settings_enabled",1);
@@ -24,13 +25,9 @@ public class BootReceiver extends BroadcastReceiver {
             }
         }
 
-        // LOCKED_BOOT_COMPLETED is used to restore management access as early as
-        // Android permits. Launch the WebView kiosk at BOOT_COMPLETED/package
-        // replacement when normal application services are ready.
+        // Direct boot starts the durable management service as early as Android permits.
+        // Foreground UI launch waits for normal BOOT_COMPLETED/package replacement.
         if(Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(intent.getAction()))return;
-
-        Intent launch=new Intent(context,MainActivity.class);
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        try{context.startActivity(launch);}catch(Exception error){Log.w(TAG,"Unable to launch display activity during boot",error);}
+        MainActivity.launch(context,false);
     }
 }
