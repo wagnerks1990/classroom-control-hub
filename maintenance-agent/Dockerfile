@@ -77,7 +77,7 @@ ENV PORT=3010
 ENV ANDROID_TV_DATA_ROOT=/managed/classroom-hub/data/android-tv
 ENV ANDROID_AGENT_BUNDLE_APK=/app/android-agent/agent-release-unsigned.apk
 ENV ANDROID_AGENT_BUNDLE_META=/app/android-agent/agent-build.json
-ENV ANDROID_AGENT_SIGNING_ROOT=/signing/android-agent
+ENV ANDROID_AGENT_SIGNING_ROOT=/signing
 ENV HOME=/managed/classroom-hub/data/android-tv
 ENV ANDROID_USER_HOME=/managed/classroom-hub/data/android-tv
 ENV NODE_OPTIONS=--require=/app/extensions.js\ --require=/app/android-tv-extension.js\ --require=/app/android-tv-persistent-adb.js\ --require=/app/android-tv-agent-v2.js\ --require=/app/android-tv-agent-artifact.js
