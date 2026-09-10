@@ -10,6 +10,8 @@ META_TARGET="$STAGE_ROOT/ClassroomHub-Display-Agent.json"
 KEYSTORE="$SIGNING_ROOT/ClassroomHub-Display-Agent.keystore"
 PASSWORD_FILE="$SIGNING_ROOT/password"
 ALIAS=classroom-hub
+export HOME="${ANDROID_AGENT_BUILD_HOME:-/tmp/android-builder-home}"
+mkdir -p "$HOME"
 
 mkdir -p "$STAGE_ROOT" "$SIGNING_ROOT"
 chmod 0700 "$SIGNING_ROOT" || true
