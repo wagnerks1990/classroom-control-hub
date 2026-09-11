@@ -8,7 +8,7 @@ SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"
 BACKUPS="${CLASSROOM_HUB_BACKUP_DIR:-/opt/classroom-hub-backups}"
 STAGE=""
 
-fail(){ echo "Classroom Control Hub bootstrap failed: $*" >&2; exit 1; }
+fail(){ echo "RoomGoblin bootstrap failed: $*" >&2; exit 1; }
 cleanup(){ if [[ -n "$STAGE" && -d "$STAGE" ]]; then rm -rf -- "$STAGE"; fi; }
 trap cleanup EXIT
 
@@ -53,14 +53,14 @@ docker info >/dev/null
 docker compose version >/dev/null
 
 STAGE="$(mktemp -d /tmp/classroom-control-hub-bootstrap.XXXXXX)"
-echo "Downloading Classroom Control Hub ${REPOSITORY_REF} ..."
+echo "Downloading RoomGoblin ${REPOSITORY_REF} ..."
 git clone --filter=blob:none --branch "$REPOSITORY_REF" --single-branch "$REPOSITORY_URL" "$STAGE/source"
 
-echo "Installing the classroom appliance into $TARGET ..."
+echo "Installing the RoomGoblin classroom appliance into $TARGET ..."
 CLASSROOM_HUB_DIR="$TARGET" CLASSROOM_HUB_SERVICES_DIR="$SERVICES" CLASSROOM_HUB_BACKUP_DIR="$BACKUPS" bash "$STAGE/source/install.sh"
 
 echo
-echo "One-command appliance deployment completed."
+echo "RoomGoblin appliance deployment completed."
 echo "Repository: $REPOSITORY_URL"
 echo "Source ref: $REPOSITORY_REF"
 echo "Installation: $TARGET"
