@@ -3,7 +3,7 @@ import os, threading
 from pathlib import Path
 import server as core
 
-core.VERSION='1.0.0-alpha.74'
+core.VERSION='1.0.0-alpha.75'
 
 # Supported first-class add-ons. Existing containers outside this set can still
 # be adopted for inspect/log/start/stop/restart; creation and removal remain
@@ -46,7 +46,7 @@ if __name__=='__main__':
     except FileNotFoundError: pass
     server=core.UnixHTTPServer(core.SOCKET_PATH,core.Handler)
     os.chmod(core.SOCKET_PATH,0o660)
-    print(f'Classroom Control Hub Host Agent {core.VERSION} listening on {core.SOCKET_PATH}',flush=True)
+    print(f'RoomGoblin Host Agent {core.VERSION} listening on {core.SOCKET_PATH}',flush=True)
     if core.APP_UPDATE_REQUEST_FILE.exists():
         def resume_interrupted_update():
             core.run(['systemctl','start','--no-block',core.APP_UPDATE_SERVICE],20,False)
