@@ -102,8 +102,13 @@ The installer:
 5. installs/restarts the native Host Agent;
 6. fixes the shared data-directory ownership model;
 7. removes obsolete TLS environment settings and the legacy Caddy container;
-8. builds and starts maintenance plus the main HTTP application;
+8. pulls the exact commit-matched images already built and validated by GitHub Actions, then starts maintenance plus the main HTTP application;
 9. verifies backend, maintenance, and Host Agent version convergence.
+
+Production installation does not compile application or Android dependencies on
+the appliance. Deliberate developer testing may opt in with `sudo bash install.sh
+--build-local`; this mode requires the appliance network to reach all locked build
+dependencies and must not be used as the normal production update path.
 
 ## Access
 
