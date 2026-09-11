@@ -237,6 +237,6 @@ RoomGoblin is currently alpha software. Production deployments should pin a spec
 
 ## License
 
-RoomGoblin is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). Educational institutions, government institutions, charities, public research organizations, and individuals acting for noncommercial purposes may use and modify it under those terms. Commercial use requires a separate written license from the copyright holder; see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+RoomGoblin is open-source software licensed under the [MIT License](LICENSE). You may use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software subject to the MIT License terms and preservation of the required copyright and license notice.
 
 Copyright © 2026 [Kyle Wagner](https://github.com/wagnerks1990).
