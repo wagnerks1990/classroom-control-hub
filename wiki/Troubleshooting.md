@@ -45,6 +45,10 @@ Current Ant Media detection uses HLS as the authoritative signal when the HLS UR
 
 Two confirmed OFFLINE checks are required before ending an active announcement automatically.
 
+If both HLS candidates time out, verify the gateway variables reached the running
+`classroom-hub` container rather than existing only in the host `.env`. After fixing
+the protected `.env`, force-recreate the Hub container and run **Check Stream Now** again.
+
 ## Morning Announcements end but automation does not return
 
 The current release performs a failsafe scheduler resync. After releasing the announcement priority lock it should re-evaluate the current date/class/time, select the newest currently applicable display automation per target, re-run those winners, and only then reconcile Background Music.

@@ -929,7 +929,9 @@ async function morningAnnouncementsTick(){
     morningAnnouncementsRuntime.lastCheck=new Date().toISOString();morningAnnouncementsRuntime.probe=probe.probe;morningAnnouncementsRuntime.probeStatus=probe.status||null;morningAnnouncementsRuntime.probeDurationMs=probe.durationMs??null;morningAnnouncementsRuntime.lastError=probe.error||null;
     if(probe.live===true){
       morningAnnouncementsRuntime.live=true;morningAnnouncementsRuntime.offlineCount=0;
-      if(!morningAnnouncementsRuntime.active||Date.now()-morningAnnouncementsRuntime.lastAssertAt>30000)await assertMorningAnnouncements({mode:"automatic"});
+      // A successful periodic probe observes the existing session; it must not
+      // clear and rebuild the player. Only the offline -> live transition starts it.
+      if(!morningAnnouncementsRuntime.active)await assertMorningAnnouncements({mode:"automatic"});
     }else if(probe.live===false){
       morningAnnouncementsRuntime.live=false;morningAnnouncementsRuntime.offlineCount++;
       if(morningAnnouncementsRuntime.active&&morningAnnouncementsRuntime.offlineCount>=morningAnnouncements.offlineConfirmations)await releaseMorningAnnouncements("stream-ended");

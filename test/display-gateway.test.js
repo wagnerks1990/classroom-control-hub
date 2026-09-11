@@ -1,12 +1,19 @@
 "use strict";
 const test=require("node:test");
 const assert=require("node:assert/strict");
+const fs=require("node:fs");
 const {parseOverrides,parseAllowedHosts,gatewayPathFor,parseGatewayRequest,upstreamRequestHeaders}=require("../src/display-gateway");
 
 test("display gateway has no school-specific default override",()=>{
   const overrides=parseOverrides();
   assert.equal(overrides.size,0);
   assert.equal(parseAllowedHosts("",overrides).size,0);
+});
+
+test("compose passes protected display gateway configuration into the Hub",()=>{
+  const compose=fs.readFileSync(require("node:path").join(__dirname,"..","docker-compose.yml"),"utf8");
+  assert.match(compose,/DISPLAY_GATEWAY_OVERRIDES:\s*\$\{DISPLAY_GATEWAY_OVERRIDES:-\}/);
+  assert.match(compose,/DISPLAY_GATEWAY_ALLOWED_HOSTS:\s*\$\{DISPLAY_GATEWAY_ALLOWED_HOSTS:-\}/);
 });
 
 test("display gateway preserves target hostname and path in same-origin URLs",()=>{

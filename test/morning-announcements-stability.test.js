@@ -39,3 +39,10 @@ test("Morning Announcements documentation preserves transition-based monitoring 
   assert.match(ai,/must \*\*not\*\* re-send the active announcement takeover/i);
   assert.match(ai,/confirmed live -> confirmed live\s+: observe only/i);
 });
+
+
+test("successful live probes do not rebuild an active announcement player",()=>{
+  const server=read("src/server.js");
+  assert.match(server,/if\(!morningAnnouncementsRuntime\.active\)await assertMorningAnnouncements/);
+  assert.doesNotMatch(server,/lastAssertAt>30000/);
+});

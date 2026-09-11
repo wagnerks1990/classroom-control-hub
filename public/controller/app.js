@@ -1685,7 +1685,8 @@ async function loadMorningWatch(){
   try{
     const x=await api('/api/v1/automations/morning-announcements'),c=x.config||{},r=x.runtime||{};
     morningWatchEnabled.value=c.enabled===false?'0':'1';morningWatchUrl.value=c.streamUrl||'';morningWatchStart.value=c.startTime||'07:00';morningWatchEnd.value=c.endTime||'08:30';morningWatchVolume.value=String(Number.isFinite(Number(c.volumePercent))?Number(c.volumePercent):100);morningWatchVolumeValue.textContent=morningWatchVolume.value+'%';
-    morningWatchState.textContent=r.active?'PLAYING':(r.live?'LIVE':'OFFLINE');
+    const unknown=!r.active&&r.lastCheck&&r.probeStatus==='unavailable';
+    morningWatchState.textContent=r.active?'PLAYING':(r.live?'LIVE':(unknown?'UNKNOWN':'OFFLINE'));
     morningWatchState.className='pill '+(r.active||r.live?'ok':'');
     const extra=r.lastCheck?` • last check ${new Date(r.lastCheck).toLocaleTimeString()}`:'';
     const duration=Number.isFinite(Number(r.probeDurationMs))?` • ${Number(r.probeDurationMs)} ms`:'';
@@ -1710,13 +1711,14 @@ async function checkMorningWatch(){
     // It always performs a real probe and returns the result directly to this click.
     const x=await jpost('/api/v1/automations/morning-announcements/check',{});
     const r=x.runtime||{};
-    morningWatchState.textContent=r.active?'PLAYING':(x.live?'LIVE':'OFFLINE');
+    const state=x.live===true?'LIVE':(x.live===false?'OFFLINE':'UNKNOWN');
+    morningWatchState.textContent=r.active?'PLAYING':state;
     morningWatchState.className='pill '+(r.active||x.live?'ok':'');
     const checked=r.lastCheck?` • checked ${new Date(r.lastCheck).toLocaleTimeString()}`:'';
     const duration=Number.isFinite(Number(x.durationMs))?` • ${Number(x.durationMs)} ms`:'';
     const detail=x.status?` • ${x.status}`:'';
     const attempts=Array.isArray(x.attempts)&&x.attempts.length?` • attempts: ${x.attempts.map(a=>`${a.probe||'?'}=${a.live===true?'live':(a.live===false?'offline':(a.status||a.httpStatus||a.error||'no-result'))}`).join(', ')}`:'';
-    morningWatchMsg.textContent=`Probe: ${x.probe||'none'} • ${x.live?'LIVE':'OFFLINE'}${detail}${checked}${duration}${attempts}`;
+    morningWatchMsg.textContent=`Probe: ${x.probe||'none'} • ${state}${detail}${checked}${duration}${attempts}`;
   }catch(e){
     morningWatchState.textContent='ERROR';morningWatchState.className='pill';
     morningWatchMsg.textContent=`Check failed: ${e.message}`;

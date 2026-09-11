@@ -56,6 +56,11 @@ The same-origin Ant Media player runs HLS.js without a blob Web Worker under the
 
 The gateway solves display routing/DNS reachability but is not the stream-end authority. Temporary gateway/proxy failures should be distinguishable from a confirmed publisher shutdown.
 
+Both gateway variables must reach the `classroom-hub` container. The Compose
+deployment passes `DISPLAY_GATEWAY_OVERRIDES` and `DISPLAY_GATEWAY_ALLOWED_HOSTS`
+from the protected `.env`; force-recreate the Hub container after changing them.
+A value present only on the Docker host does not configure the running Hub.
+
 ## Future monitoring
 
 Ant Media API/webhooks or another authoritative publisher signal can replace HLS manifest probing later. The replacement must preserve transition-based start/end behavior, UNKNOWN versus OFFLINE distinction, receiver telemetry, and server lifecycle logging.

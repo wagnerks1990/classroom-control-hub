@@ -144,6 +144,11 @@ Morning Announcements may reach Ant Media through the Managed Display Gateway. T
 
 For site-specific mappings, continue to use protected runtime `.env` configuration. Do not commit production hostnames or IP addresses to public defaults.
 
+Both gateway variables must reach the `classroom-hub` container. `docker-compose.yml`
+passes `DISPLAY_GATEWAY_OVERRIDES` and `DISPLAY_GATEWAY_ALLOWED_HOSTS` from the
+protected deployment `.env`; after changing either value, force-recreate the Hub
+container. A configured host value that exists only on the Docker host is not enough.
+
 ## Future monitoring replacement
 
 A future implementation may use Ant Media's management API, publisher webhook/events, a dedicated health endpoint, WebRTC signaling, or another authoritative source instead of HLS manifest probing. The replacement should preserve these invariants:
