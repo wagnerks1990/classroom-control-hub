@@ -1,0 +1,20 @@
+{
+  "brand": {
+    "name": "RoomGoblin",
+    "descriptor": "Classroom & Lab Management Hub",
+    "tagline": "Run the room. Manage the lab."
+  },
+  "colors": {
+    "Goblin Teal": "#0F766E",
+    "Electric Green": "#22C55E",
+    "Slate Navy": "#1E293B",
+    "Learning Amber": "#F59E0B",
+    "Cloud Gray": "#E5E7EB",
+    "Mint Glow": "#D1FAE5"
+  },
+  "typography": {
+    "display": "Poppins",
+    "body": "Inter",
+    "fallback": "Arial, sans-serif"
+  }
+}
