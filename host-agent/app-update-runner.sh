@@ -39,6 +39,32 @@ os.replace(p+'.tmp',p)
 PY
 }
 
+set_request_fields(){
+  REQUEST_FILE="$REQUEST_FILE" python3 - "$@" <<'PY'
+import json,os,sys
+p=os.environ['REQUEST_FILE']
+request=json.load(open(p))
+for item in sys.argv[1:]:
+    key,value=item.split('=',1)
+    request[key]=value
+with open(p+'.tmp','w') as f: json.dump(request,f,indent=2)
+os.chmod(p+'.tmp',0o600)
+os.replace(p+'.tmp',p)
+PY
+}
+
+set_image_tag(){
+  local tag="$1"
+  [[ "$tag" =~ ^[A-Za-z0-9._-]{1,180}$ ]] || return 1
+  if grep -q '^CLASSROOM_CONTROL_HUB_TAG=' .env; then
+    sed -i "s/^CLASSROOM_CONTROL_HUB_TAG=.*/CLASSROOM_CONTROL_HUB_TAG=${tag}/" .env
+  else
+    printf 'CLASSROOM_CONTROL_HUB_TAG=%s\n' "$tag" >> .env
+  fi
+  chmod 0600 .env
+  export CLASSROOM_CONTROL_HUB_TAG="$tag"
+}
+
 health_check(){
   local expected="$1"
   for _ in $(seq 1 90); do
@@ -142,7 +168,7 @@ if ! flock -n 9; then write_state failed "Another application update is already 
 eval "$(REQUEST_FILE="$REQUEST_FILE" python3 - <<'PY'
 import json,os,shlex
 j=json.load(open(os.environ['REQUEST_FILE']))
-for key in ('action','targetRef','targetCommit','expectedVersion','rollbackCommit','rollbackVersion','backupName','backupSha256','failureBackupName','failureBackupSha256','previousHubImage','previousMaintenanceImage','githubToken'):
+for key in ('action','targetRef','targetCommit','expectedVersion','rollbackCommit','rollbackVersion','rollbackHubImage','rollbackMaintenanceImage','rollbackImageTag','backupName','backupSha256','failureBackupName','failureBackupSha256','previousHubImage','previousMaintenanceImage','previousImageTag','githubToken'):
     print(key.upper()+'='+shlex.quote(str(j.get(key) or '')))
 PY
 )"
@@ -159,10 +185,19 @@ fi
 cd "$HUB_ROOT"
 CURRENT_COMMIT="${ROLLBACKCOMMIT:-$(git rev-parse HEAD)}"
 CURRENT_VERSION="${ROLLBACKVERSION:-$(tr -d '\r\n' < VERSION 2>/dev/null || true)}"
-CURRENT_HUB_IMAGE="$(capture_recovery_image classroom-control-hub "hub-${CURRENT_COMMIT:0:12}")"
-CURRENT_MAINTENANCE_IMAGE="$(capture_recovery_image classroom-control-hub-maintenance "maintenance-${CURRENT_COMMIT:0:12}")"
+CURRENT_IMAGE_TAG="${ROLLBACKIMAGETAG:-$(sed -n 's/^CLASSROOM_CONTROL_HUB_TAG=//p' .env | tail -n 1)}"
+CURRENT_IMAGE_TAG="${CURRENT_IMAGE_TAG:-alpha}"
+[[ "$CURRENT_IMAGE_TAG" =~ ^[A-Za-z0-9._-]{1,180}$ ]] || CURRENT_IMAGE_TAG="recovery-${CURRENT_COMMIT:0:12}"
+if [[ "$ROLLBACKHUBIMAGE" =~ ^sha256:[0-9a-f]{64}$ && "$ROLLBACKMAINTENANCEIMAGE" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  CURRENT_HUB_IMAGE="$ROLLBACKHUBIMAGE"
+  CURRENT_MAINTENANCE_IMAGE="$ROLLBACKMAINTENANCEIMAGE"
+else
+  CURRENT_HUB_IMAGE="$(capture_recovery_image classroom-control-hub "hub-${CURRENT_COMMIT:0:12}")"
+  CURRENT_MAINTENANCE_IMAGE="$(capture_recovery_image classroom-control-hub-maintenance "maintenance-${CURRENT_COMMIT:0:12}")"
+  set_request_fields "rollbackHubImage=$CURRENT_HUB_IMAGE" "rollbackMaintenanceImage=$CURRENT_MAINTENANCE_IMAGE" "rollbackImageTag=$CURRENT_IMAGE_TAG"
+fi
 if [[ "$ACTION" == update ]]; then
-  set_state_fields "action=$ACTION" "previousCommit=$CURRENT_COMMIT" "previousVersion=$CURRENT_VERSION" "previousHubImage=$CURRENT_HUB_IMAGE" "previousMaintenanceImage=$CURRENT_MAINTENANCE_IMAGE" "targetRef=$TARGETREF" "backupName=$BACKUPNAME" "backupSha256=$BACKUPSHA256"
+  set_state_fields "action=$ACTION" "previousCommit=$CURRENT_COMMIT" "previousVersion=$CURRENT_VERSION" "previousHubImage=$CURRENT_HUB_IMAGE" "previousMaintenanceImage=$CURRENT_MAINTENANCE_IMAGE" "previousImageTag=$CURRENT_IMAGE_TAG" "targetRef=$TARGETREF" "backupName=$BACKUPNAME" "backupSha256=$BACKUPSHA256"
 else
   set_state_fields "action=$ACTION" "targetRef=$TARGETREF"
 fi
@@ -175,6 +210,7 @@ rollback(){
   git checkout --detach "$CURRENT_COMMIT" || rollback_ok=false
   ensure_runtime_layout || rollback_ok=false
   refresh_host_agent || rollback_ok=false
+  set_image_tag "$CURRENT_IMAGE_TAG" || rollback_ok=false
   activate_image_id "$CURRENT_HUB_IMAGE" classroom-hub || rollback_ok=false
   activate_image_id "$CURRENT_MAINTENANCE_IMAGE" maintenance-agent || rollback_ok=false
   docker compose stop classroom-hub || true
@@ -208,7 +244,7 @@ if [[ -n "$TRACKED_CHANGES" ]]; then
 fi
 ORIGIN_URL="$(git remote get-url origin)"
 case "$ORIGIN_URL" in
-  https://github.com/wagnerks1990/RoomGoblin|https://github.com/wagnerks1990/RoomGoblin.git|git@github.com:wagnerks1990/classroom-control-hub.git) ;;
+  https://github.com/wagnerks1990/RoomGoblin|https://github.com/wagnerks1990/RoomGoblin.git|git@github.com:wagnerks1990/RoomGoblin.git|ssh://git@github.com/wagnerks1990/RoomGoblin.git|https://github.com/wagnerks1990/classroom-control-hub|https://github.com/wagnerks1990/classroom-control-hub.git|git@github.com:wagnerks1990/classroom-control-hub.git|ssh://git@github.com/wagnerks1990/classroom-control-hub.git) ;;
   *) echo "Refusing update from unexpected origin: $ORIGIN_URL"; exit 36 ;;
 esac
 git fetch --force --prune --tags origin
@@ -231,6 +267,7 @@ refresh_host_agent
 
 if [[ "$ACTION" == revert && -n "$PREVIOUSHUBIMAGE" && -n "$PREVIOUSMAINTENANCEIMAGE" ]]; then
   write_state building "Activating the immutable images saved for $ACTUAL_VERSION." null
+  set_image_tag "$PREVIOUSIMAGETAG"
   activate_image_id "$PREVIOUSHUBIMAGE" classroom-hub
   activate_image_id "$PREVIOUSMAINTENANCEIMAGE" maintenance-agent
 else
@@ -240,13 +277,7 @@ else
   write_state building "Pulling immutable CI-built images for $ACTUAL_VERSION." null
   docker pull "$HUB_IMAGE"
   docker pull "$MAINTENANCE_IMAGE"
-  if grep -q '^CLASSROOM_CONTROL_HUB_TAG=' .env; then
-    sed -i "s/^CLASSROOM_CONTROL_HUB_TAG=.*/CLASSROOM_CONTROL_HUB_TAG=${IMAGE_TAG}/" .env
-  else
-    printf 'CLASSROOM_CONTROL_HUB_TAG=%s\n' "$IMAGE_TAG" >> .env
-  fi
-  chmod 0600 .env
-  export CLASSROOM_CONTROL_HUB_TAG="$IMAGE_TAG"
+  set_image_tag "$IMAGE_TAG"
 fi
 if [[ "$ACTION" == revert ]]; then
   write_state restoring "Restoring the matching pre-upgrade state before the older application starts." null
@@ -263,7 +294,7 @@ appliance_health_check "$ACTUAL_VERSION"
 
 trap - ERR
 if [[ "$ACTION" == revert ]]; then
-  set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=false" "previousCommit=" "previousVersion=" "previousHubImage=" "previousMaintenanceImage=" "backupName=" "backupSha256="
+  set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=false" "previousCommit=" "previousVersion=" "previousHubImage=" "previousMaintenanceImage=" "previousImageTag=" "backupName=" "backupSha256="
 else
   set_state_fields "activeCommit=$RESOLVED" "activeVersion=$ACTUAL_VERSION" "rollback=false" "revertAvailable=true"
 fi

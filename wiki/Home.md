@@ -4,7 +4,7 @@
 
 *Run the room. Manage the lab.*
 
-> **Status:** `1.0.0-alpha.78` — alpha software; RoomGoblin branding is being introduced while preserving the deployed compatibility contract.
+> **Status:** `1.0.0-alpha.79` — alpha software; production deployment remains limited to reviewed, backed-up `amd64` installations on trusted networks.
 
 ## Start here
 
@@ -12,6 +12,7 @@
 - [Architecture](Architecture)
 - [Installation and Deployment](Installation-and-Deployment)
 - [Configuration](Configuration)
+- [Database-First Recovery Contract](Database-First-Recovery)
 - [Operations](Operations)
 - [Troubleshooting](Troubleshooting)
 - [Development](Development)
@@ -21,7 +22,16 @@
 
 ## Current verified baseline
 
-Alpha.71 includes:
+Alpha.79 retains the recovery invariants established in alpha.71 and adds:
+
+- canonical RoomGoblin source and GHCR publication with dual-published legacy image aliases;
+- full validation-matrix gating before immutable images publish;
+- explicit `amd64`-only production support until `arm64` images and Android/ADB tooling are validated;
+- sensitive-data confirmation for recovery backups and metadata-only support diagnostics;
+- exact image-tag and retained-image rollback preservation;
+- per-display Morning Announcements recovery before Background Music resumes.
+
+The inherited baseline includes:
 
 - direct HTTP appliance mode while TLS/Caddy is intentionally deferred;
 - SQLite-safe migration backups and active-database identity preservation;

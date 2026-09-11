@@ -2,7 +2,7 @@
 
 ## Host-network deployment contract
 
-The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
+The Linux RoomGoblin and maintenance containers, plus reviewed managed add-on templates, use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
 
 ## Standard production path
 
@@ -26,7 +26,7 @@ The native Host Agent listens on:
 
 ## Current transport mode
 
-Classroom Control Hub is temporarily deployed as direct HTTP while HTTPS/TLS is redesigned. The previous Caddy service is not part of the current Compose stack.
+RoomGoblin is temporarily deployed as direct HTTP while HTTPS/TLS is redesigned. The previous Caddy service is not part of the current Compose stack.
 
 Default access:
 
@@ -46,11 +46,14 @@ Restrict TCP/3000 to the trusted classroom/admin network. Do not expose the HTTP
 
 ## Clean-machine one-command installation
 
-The supported appliance target is a clean Ubuntu Server 24.04 LTS machine on `amd64` or `arm64`. Docker does not need to be installed first.
+The supported appliance target is a clean Ubuntu Server 24.04 LTS machine on
+`amd64`. Docker does not need to be installed first. `arm64` is not supported
+until multi-architecture images and the bundled Android/ADB toolchain are
+published and validated end to end.
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/wagnerks1990/classroom-control-hub/main/deploy/bootstrap.sh \
+  https://raw.githubusercontent.com/wagnerks1990/RoomGoblin/main/deploy/bootstrap.sh \
   -o /tmp/classroom-hub-bootstrap.sh
 sudo bash /tmp/classroom-hub-bootstrap.sh
 ```
@@ -80,7 +83,7 @@ The installer:
 7. Establishes the shared data-root ownership required by the app and maintenance service.
 8. Installs/restarts the native Host Agent and verifies `/run/classroom-control-hub/host-agent.sock`.
 9. Removes obsolete `HUB_TLS_HOST`, `HUB_HTTP_PORT`, and `HUB_HTTPS_PORT` values and configures direct HTTP exposure.
-10. Builds and starts the Classroom Control Hub and maintenance-agent containers.
+10. Pulls and starts the matching validated RoomGoblin and maintenance-agent images.
 11. Removes the legacy `classroom-control-hub-tls` container when upgrading from a Caddy-based release.
 12. Validates backend/database/scheduler health plus application, maintenance, and Host Agent version convergence before reporting success.
 

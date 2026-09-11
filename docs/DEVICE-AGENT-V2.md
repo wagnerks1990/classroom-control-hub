@@ -1,4 +1,4 @@
-# Classroom Hub Device Agent v2
+# RoomGoblin Device Agent v2
 
 ## Purpose
 
@@ -135,19 +135,19 @@ This MIT-licensed project is the closest external reference to our Android 14+ A
 - sends `tcpip:<target-port>`,
 - stores ADB authentication keys locally.
 
-Classroom Hub is implementing its own code and management protocol. The project is used as behavioral research, not as a bundled dependency.
+RoomGoblin is implementing its own code and management protocol. The project is used as behavioral research, not as a bundled dependency.
 
 ### `nozza87/Auto_ADB`
 
-Useful architectural reference for local pairing and persistent legacy ADB. The project itself is GPL-3.0, so Classroom Hub does not copy or incorporate its source.
+Useful architectural reference for local pairing and persistent legacy ADB. The project itself is GPL-3.0, so RoomGoblin does not copy or incorporate its source.
 
 ### `MuntashirAkon/libadb-android`
 
-The library exposes local TCP/TLS discovery, pairing and ADB streams and is dual-licensed GPL-3.0-or-later **or Apache-2.0**. Classroom Hub uses the Apache-2.0 licensing option for the dependency. The upstream project notes that it has not received a security audit, so the local ADB code remains an experimental/recovery feature and must not replace the authenticated Agent channel as the normal control plane.
+The library exposes local TCP/TLS discovery, pairing and ADB streams and is dual-licensed GPL-3.0-or-later **or Apache-2.0**. RoomGoblin uses the Apache-2.0 licensing option for the dependency. The upstream project notes that it has not received a security audit, so the local ADB code remains an experimental/recovery feature and must not replace the authenticated Agent channel as the normal control plane.
 
 ### Magisk
 
-Magisk can provide root capabilities but changes the device trust/update/support model. It is GPL-3.0 and is not embedded into Classroom Hub.
+Magisk can provide root capabilities but changes the device trust/update/support model. It is GPL-3.0 and is not embedded into RoomGoblin.
 
 ### Onn rooting guides
 
@@ -157,7 +157,7 @@ The referenced 2023 Gen 2 guide is archived and explicitly states its method no 
 
 ### Fermata Android 14 discussions
 
-Fermata discussions are useful as evidence that Android 14 tightened behavior around non-standard application integration and that workarounds may depend on privileged/root/proxy mechanisms. They are not directly an Android TV management implementation and no Fermata code is used by Classroom Hub.
+Fermata discussions are useful as evidence that Android 14 tightened behavior around non-standard application integration and that workarounds may depend on privileged/root/proxy mechanisms. They are not directly an Android TV management implementation and no Fermata code is used by RoomGoblin.
 
 ## Security invariants
 

@@ -36,7 +36,7 @@ The standard production checkout is `/opt/classroom-hub`. Older references to `/
 
 Recommended baseline:
 
-- Ubuntu Server 24.04 LTS or a comparable modern Linux host
+- Ubuntu Server 24.04 LTS on `amd64`; `arm64` is not supported until its images and Android/ADB toolchain are validated
 - Docker Engine with Docker Compose v2
 - Git
 - persistent storage for application data and backups
@@ -44,11 +44,11 @@ Recommended baseline:
 
 ## Production installation
 
-For a clean Ubuntu Server 24.04 LTS `amd64` or `arm64` host:
+For a clean Ubuntu Server 24.04 LTS `amd64` host:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/wagnerks1990/classroom-control-hub/main/deploy/bootstrap.sh \
+  https://raw.githubusercontent.com/wagnerks1990/RoomGoblin/main/deploy/bootstrap.sh \
   -o /tmp/classroom-hub-bootstrap.sh
 sudo bash /tmp/classroom-hub-bootstrap.sh
 ```
@@ -177,6 +177,15 @@ Preserve at minimum:
 - off-host copies of important backups
 
 Container images and tracked source are replaceable. Runtime state is not.
+
+Recovery backups can contain site configuration, internal addresses,
+device/user/student data, media, and secrets. Treat them as sensitive
+administrative records and confirm that sensitivity explicitly when creating
+them. Full backups require an additional secrets confirmation.
+
+Only the metadata-only **diagnostic** archive is intended for support. It
+excludes databases, runtime data, managed-service state, device/ADB identity,
+student records, `.env`, and keys. Inspect it before sharing.
 
 ## HTTPS later
 

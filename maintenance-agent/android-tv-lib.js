@@ -62,6 +62,19 @@ function normalizeDevice(input={}){
     persistentAdb:normalizePersistentAdb(input.persistentAdb,port),agentV2:normalizeAgentV2(input.agentV2),enabled:input.enabled!==false,createdAt:String(input.createdAt||now()),updatedAt:now(),lastSeenAt:input.lastSeenAt||null,lastStatus:input.lastStatus||null};
 }
 
+// Device Agent v2 credentials are appliance-internal control credentials. Keep
+// them in the persistent inventory for outbound requests, but never serialize
+// the raw token into an HTTP response consumed by the administrator browser.
+function publicDevice(device){
+  if(!device||typeof device!=="object")return device;
+  const out={...device};
+  if(device.agentV2&&typeof device.agentV2==="object"){
+    const {token,...agentV2}=device.agentV2;
+    out.agentV2={...agentV2,tokenConfigured:Boolean(token)};
+  }
+  return out;
+}
+
 class JsonStore{
   constructor(root){this.root=path.resolve(root);this.file=path.join(this.root,"devices.json");}
   load(){
@@ -100,4 +113,4 @@ function adbArgsForAction(device,action,payload={}){
   throw Error(`Unsupported Android action: ${action}`);
 }
 
-module.exports={DEFAULT_PROFILE,KEYEVENTS,JsonStore,normalizeProfile,normalizePersistentAdb,normalizeAgentV2,normalizeDevice,cleanId,cleanHost,cleanPort,cleanSerial,cleanPackage,cleanShell,cleanText,makeId,adbArgsForAction};
+module.exports={DEFAULT_PROFILE,KEYEVENTS,JsonStore,normalizeProfile,normalizePersistentAdb,normalizeAgentV2,normalizeDevice,publicDevice,cleanId,cleanHost,cleanPort,cleanSerial,cleanPackage,cleanShell,cleanText,makeId,adbArgsForAction};

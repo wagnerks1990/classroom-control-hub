@@ -8,7 +8,7 @@ The appliance owns the complete build -> sign -> verify -> stage -> install life
 
 ## Source-of-truth model
 
-The current Android agent source lives under `agents/android-tv/` in the same Classroom Hub checkout as the backend and maintenance layer.
+The current Android agent source lives under `agents/android-tv/` in the same RoomGoblin checkout as the backend and maintenance layer.
 
 The normal `maintenance-agent` image build now has an Android build stage. That stage compiles the current `agents/android-tv/` source into an unsigned release APK and verifies its package identity and Gradle version. The unsigned APK and non-secret build metadata are copied into the final maintenance image.
 
@@ -41,7 +41,7 @@ The maintenance service generates a per-appliance Android signing identity the f
 
 `/etc/classroom-control-hub/android-agent-signing`
 
-The Compose mount exposes this host directory only to the maintenance container at `/signing`. It is not mounted into the main Classroom Hub application container.
+The Compose mount exposes this host directory only to the maintenance container at `/signing`. It is not mounted into the main RoomGoblin application container.
 
 The directory contains the keystore and a randomly generated password. Neither is committed to Git, returned by an API, or printed by normal diagnostics. Preserve this directory in disaster-recovery planning when already-deployed Android agents must continue accepting in-place updates.
 
@@ -68,7 +68,7 @@ The verified Managed Displays install path handles only that specific condition:
 5. install the verified staged APK;
 6. restore `WRITE_SECURE_SETTINGS` through trusted ADB when Persistent ADB is enabled;
 7. restore the saved display URL, Agent v2 token/port and persistent-ADB configuration;
-8. relaunch the Classroom Hub display activity.
+8. relaunch the RoomGoblin display activity.
 
 Other installation failures do not trigger automatic uninstall/reinstall behavior.
 

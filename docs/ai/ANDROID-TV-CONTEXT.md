@@ -8,13 +8,13 @@ Android TV management is a reusable device-provider subsystem. Onn Google TV is 
 
 ## Security invariants
 
-1. The main Classroom Hub application container remains read-only/unprivileged and does not execute ADB.
+1. The main RoomGoblin application container remains read-only/unprivileged and does not execute ADB.
 2. Wireless ADB executes in the existing unprivileged maintenance container and is reachable from the browser only through the authenticated `/api/v1/maintenance/*` proxy.
 3. Never publish the maintenance container port or Android ADB ports to untrusted networks.
 4. Routine actions and scheduled policy actions must continue using fixed argument arrays. Do not convert wake/reboot/app-control operations into interpolated shell strings.
 5. `/android/devices/:id/shell` is intentionally full administrator recovery access. Keep input bounded, require existing maintenance authorization, and never silently expose it to lower-privilege classroom roles.
 6. APK installation paths must remain constrained beneath the managed Android TV data directory.
-7. Device identity is the stable Classroom Hub ID, not the IP address or ADB TCP endpoint.
+7. Device identity is the stable RoomGoblin ID, not the IP address or ADB TCP endpoint.
 8. Enrollment and configuration are separate lifecycle operations. Pairing/ADB enrollment establishes trust and stable identity once. School/building/room/profile/display URL changes MUST use the managed-device update path and MUST NOT trigger re-pairing.
 9. Recovery metadata such as `persistentAdb` is part of the persisted normalized device model. Do not add operational policy fields only to call sites; if `JsonStore.upsertDevice()` must preserve them, `normalizeDevice()` must explicitly normalize them.
 10. Native Sendspin configuration belongs to the managed Android agent and must never expose the stored Music Assistant API token. Sendspin audio transport is separate from Music Assistant API authentication.
@@ -91,7 +91,7 @@ Do not make Device Admin a prerequisite for always-on operation. Device Admin is
 
 ## Accessibility / global navigation
 
-`Home`, `Back` and `Recents` through Agent v2 require `AgentAccessibilityService`. When accessibility is disabled, those actions correctly return `performed:false`; do not misreport them as successful. Managed Displays exposes **Enable Accessibility**, which launches a first-party foreground helper and then Android Accessibility settings. The operator must explicitly enable Classroom Hub control fallback unless a future managed-provisioning workflow grants/configures it.
+`Home`, `Back` and `Recents` through Agent v2 require `AgentAccessibilityService`. When accessibility is disabled, those actions correctly return `performed:false`; do not misreport them as successful. Managed Displays exposes **Enable Accessibility**, which launches a first-party foreground helper and then Android Accessibility settings. The operator must explicitly enable RoomGoblin control fallback unless a future managed-provisioning workflow grants/configures it.
 
 ## Device Admin
 

@@ -1,4 +1,4 @@
-# Migrating an Existing Classroom Control Hub Installation
+# Migrating an Existing RoomGoblin Installation
 
 The public GitHub repository intentionally contains generic defaults. Do not overwrite production `.env`, databases, hardware mappings, media, backups, private keys, or secrets with repository examples.
 
@@ -101,7 +101,7 @@ git status --short
 
 ```bash
 git clone https://github.com/wagnerks1990/RoomGoblin.git
-cd classroom-control-hub
+cd RoomGoblin
 cp .env.example .env
 ```
 

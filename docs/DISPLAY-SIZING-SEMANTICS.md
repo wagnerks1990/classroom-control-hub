@@ -1,6 +1,6 @@
 # Display sizing semantics
 
-Classroom Hub display content uses a fixed 1920x1080 logical canvas on every endpoint. Physical resolution and DPR affect only final stage scaling.
+RoomGoblin display content uses a fixed 1920x1080 logical canvas on every endpoint. Physical resolution and DPR affect only final stage scaling.
 
 ## Four layout components
 

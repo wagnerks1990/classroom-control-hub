@@ -18,7 +18,7 @@ const mqtt = require("mqtt");
 const { WebSocketServer, WebSocket } = require("ws");
 const {rateLimit}=require("express-rate-limit");
 const {sendspinEndpoint, relaySendspin} = require("./music-assistant-sendspin");
-const {parseAllowedHosts:parseDisplayGatewayAllowedHosts}=require("./display-gateway");
+const {parseAllowedHosts:parseDisplayGatewayAllowedHosts,validateAllowedTarget:validateDisplayGatewayTarget}=require("./display-gateway");
 const AdmZip = require("adm-zip");
 const {ClassroomHubStorage,keyForFile} = require("./storage");
 const {applicationVersion}=require("./version");
@@ -635,8 +635,18 @@ if(!storedSchoolScheduleProfile){schoolScheduleProfile.updatedAt=new Date().toIS
 function setSchoolScheduleProfile(value){schoolScheduleProfile=normalizeSchoolScheduleProfile(value,schoolScheduleProfile);schoolScheduleProfile.updatedAt=new Date().toISOString();dbStore.setPreference("school.schedule.profile",schoolScheduleProfile);return schoolScheduleProfile}
 
 const DEFAULT_MORNING_ANNOUNCEMENTS_URL = String(process.env.MORNING_ANNOUNCEMENTS_URL||"").trim();
+const MORNING_ANNOUNCEMENTS_ALLOWED_HOSTS=new Set(DISPLAY_GATEWAY_HOSTS);
+if(DEFAULT_MORNING_ANNOUNCEMENTS_URL){
+  try{MORNING_ANNOUNCEMENTS_ALLOWED_HOSTS.add(new URL(DEFAULT_MORNING_ANNOUNCEMENTS_URL).hostname.toLowerCase())}catch{}
+}
+function validateMorningAnnouncementsUrl(value){
+  const text=String(value||"").trim();
+  if(!text)return "";
+  try{return validateDisplayGatewayTarget(text,MORNING_ANNOUNCEMENTS_ALLOWED_HOSTS).toString()}
+  catch(error){throw Error(`Morning Announcements URL is not approved: ${error.message}`)}
+}
 function normalizeMorningAnnouncements(input={},existing={}){
-  const streamUrl=String(input.streamUrl??existing.streamUrl??DEFAULT_MORNING_ANNOUNCEMENTS_URL).trim()||DEFAULT_MORNING_ANNOUNCEMENTS_URL;
+  const streamUrl=validateMorningAnnouncementsUrl(String(input.streamUrl??existing.streamUrl??DEFAULT_MORNING_ANNOUNCEMENTS_URL).trim()||DEFAULT_MORNING_ANNOUNCEMENTS_URL);
   const startCandidate=String(input.startTime??existing.startTime??"07:00"),endCandidate=String(input.endTime??existing.endTime??"08:30");
   if(!validTime(startCandidate)||!validTime(endCandidate))throw Error("Morning Announcement times must be valid HH:MM values");
   const startTime=startCandidate,endTime=endCandidate;
@@ -651,7 +661,16 @@ function normalizeMorningAnnouncements(input={},existing={}){
     updatedAt:new Date().toISOString()
   };
 }
-let morningAnnouncements=normalizeMorningAnnouncements(readJson(MORNING_ANNOUNCEMENTS_FILE,{}),{});
+const storedMorningAnnouncements=readJson(MORNING_ANNOUNCEMENTS_FILE,{});
+let morningAnnouncements;
+try{morningAnnouncements=normalizeMorningAnnouncements(storedMorningAnnouncements,{})}
+catch(error){
+  // A legacy URL that predates the outbound allowlist must not crash boot or be
+  // contacted implicitly. Start disabled until an administrator approves its
+  // host through DISPLAY_GATEWAY_ALLOWED_HOSTS and saves it again.
+  console.error(`Morning Announcements disabled: ${error.message}`);
+  morningAnnouncements=normalizeMorningAnnouncements({...storedMorningAnnouncements,enabled:false,streamUrl:""},{});
+}
 function persistMorningAnnouncements(){persistJson(MORNING_ANNOUNCEMENTS_FILE,morningAnnouncements)}
 const morningAnnouncementsRuntime={live:false,active:false,mode:null,targets:[],lastCheck:null,lastWatcherTick:null,lastLiveAt:null,lastEndedAt:null,lastError:null,probe:null,probeStatus:null,probeDurationMs:null,offlineCount:0,lastAssertAt:0};
 let morningAnnouncementsTimer=null;
@@ -677,9 +696,8 @@ function announcementsCoordinates(raw=morningAnnouncements.streamUrl){
 function announcementsWebSocketUrls(c){
   const proto=c.protocol==="https:"?"wss:":"ws:";
   const urls=[`${proto}//${c.hostname}${c.port?`:${c.port}`:""}/${c.app}/websocket`];
-  // Ant Media commonly exposes secure WebRTC signaling on 5443 even when play.html
-  // is fronted by a reverse proxy on 443. Try both without duplicating entries.
-  if(proto==="wss:"&&String(c.port||"")!=="5443")urls.push(`wss://${c.hostname}:5443/${c.app}/websocket`);
+  // Keep WebSocket probing on the already validated HTTP(S) origin. Probing a
+  // guessed vendor port would bypass the outbound safe-port policy.
   return [...new Set(urls)];
 }
 async function probeMorningAnnouncementsWebRtc(c,timeoutMs=3500){
@@ -719,7 +737,18 @@ async function probeMorningAnnouncementsWebRtc(c,timeoutMs=3500){
 }
 async function fetchWithDeadline(url,options={},timeoutMs=3500){
   const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),timeoutMs);
-  try{return await fetch(url,{...options,signal:ctrl.signal,headers:{"cache-control":"no-cache",...(options.headers||{})}})}finally{clearTimeout(timer)}
+  try{
+    let current=validateDisplayGatewayTarget(url,MORNING_ANNOUNCEMENTS_ALLOWED_HOSTS);
+    for(let redirects=0;redirects<=3;redirects++){
+      const response=await fetch(current,{...options,redirect:"manual",signal:ctrl.signal,headers:{"cache-control":"no-cache",...(options.headers||{})}});
+      if(![301,302,303,307,308].includes(response.status))return response;
+      const location=response.headers.get("location");
+      if(!location)throw Error("Morning Announcements probe redirect is missing a location");
+      if(redirects===3)throw Error("Morning Announcements probe exceeded the redirect limit");
+      current=validateDisplayGatewayTarget(new URL(location,current),MORNING_ANNOUNCEMENTS_ALLOWED_HOSTS);
+    }
+    throw Error("Morning Announcements probe redirect failed");
+  }finally{clearTimeout(timer)}
 }
 async function probeMorningAnnouncementsLive(){
   const c=announcementsCoordinates();
@@ -775,20 +804,36 @@ function scheduleAnnouncementAudioRetries(targets){
     executeCommand({type:"display.web.audio",target:targets,payload:{unmute:Number(morningAnnouncements.volumePercent??100)>0,volume:Math.max(0,Math.min(1,Number(morningAnnouncements.volumePercent??100)/100)),reload:false,contentKind:"morning-announcements"}},"automation").catch(()=>{});
   },delay);
 }
-function setMorningAnnouncementPriorityTargets(targets,active){
+async function setMorningAnnouncementPriorityTargets(targets,active){
   for(const id of targets||[]){if(active)backgroundMusicPriorityTargets.add(id);else backgroundMusicPriorityTargets.delete(id)}
-  backgroundMusicReconcilePriority().catch(()=>{});
+  // Morning Announcements are non-optional priority audio even when ordinary
+  // automation audio pausing has been disabled in the Background Music policy.
+  await backgroundMusicReconcilePriority({force:true});
 }
 async function assertMorningAnnouncements({mode="automatic",targetsOverride=null,urlOverride=null}={}){
   const targets=Array.isArray(targetsOverride)&&targetsOverride.length?automationDisplayTargets(targetsOverride):announcementTargets();if(!targets.length)return;
   const url=String(urlOverride||announcementsPlaybackUrl());
+  // Acquire both the display and audio priority state before sending any
+  // takeover commands. Otherwise a scheduler tick can overwrite the display,
+  // or Music Assistant can remain audible, while takeover is in flight.
+  morningAnnouncementsRuntime.active=true;morningAnnouncementsRuntime.mode=mode;morningAnnouncementsRuntime.targets=[...targets];morningAnnouncementsRuntime.lastAssertAt=Date.now();morningAnnouncementsRuntime.lastLiveAt=new Date().toISOString();
+  // Start the potentially network-bound Music Assistant pause concurrently so
+  // an unavailable audio service cannot delay urgent announcement video.
+  const priorityTask=setMorningAnnouncementPriorityTargets(targets,true);
+  priorityTask.catch(()=>{});
   // Treat announcements as an exclusive display takeover. Clear only the target
   // display content; do not invoke the master classroom clear because that would
   // pause lesson/session queues beyond the announcement window.
-  await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-takeover"}},"automation");
-  await executeCommand({type:"display.web",target:targets,payload:{url,fit:"cover",opacity:1,localDirect:true,forceAudio:true,autoplay:true,muted:Number(morningAnnouncements.volumePercent??100)<=0,volume:Math.max(0,Math.min(1,Number(morningAnnouncements.volumePercent??100)/100)),contentKind:"morning-announcements"}},"automation");
-  morningAnnouncementsRuntime.active=true;morningAnnouncementsRuntime.mode=mode;morningAnnouncementsRuntime.targets=[...targets];morningAnnouncementsRuntime.lastAssertAt=Date.now();morningAnnouncementsRuntime.lastLiveAt=new Date().toISOString();
-  setMorningAnnouncementPriorityTargets(targets,true);
+  try{
+    await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-takeover"}},"automation");
+    await executeCommand({type:"display.web",target:targets,payload:{url,fit:"cover",opacity:1,localDirect:true,forceAudio:true,autoplay:true,muted:Number(morningAnnouncements.volumePercent??100)<=0,volume:Math.max(0,Math.min(1,Number(morningAnnouncements.volumePercent??100)/100)),contentKind:"morning-announcements"}},"automation");
+    await priorityTask;
+  }catch(error){
+    await priorityTask.catch(()=>{});
+    morningAnnouncementsRuntime.active=false;morningAnnouncementsRuntime.mode=null;morningAnnouncementsRuntime.targets=[];morningAnnouncementsRuntime.lastAssertAt=0;
+    await setMorningAnnouncementPriorityTargets(targets,false);
+    throw error;
+  }
   scheduleAnnouncementAudioRetries(targets);
   audit({kind:"automation.morning-announcements.start",mode,targets,url,clearedFirst:true});
 }
@@ -811,6 +856,7 @@ function automationDeferredDisplayTargets(event){
     const stepDomain=automationTargetDomain(action),eventDomain=automationTargetDomain(event.action);
     let targets;
     if(step?.useEventTargets!==false&&stepDomain===eventDomain)targets=event.targets;
+    else if(stepDomain==="display"&&event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length)targets=event._classDefaultTargets;
     else if(Array.isArray(step?.targets)&&step.targets.length)targets=step.targets;
     else if(stepDomain==="display")targets=["all"];
     else targets=[];
@@ -818,7 +864,9 @@ function automationDeferredDisplayTargets(event){
   }
   const timer=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
   if(timer?.enabled){
-    const targets=timer.useEventTargets!==false?event.targets:(Array.isArray(timer.targets)&&timer.targets.length?timer.targets:event.targets);
+    const targets=(event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length)
+      ? event._classDefaultTargets
+      : (timer.useEventTargets!==false?event.targets:(Array.isArray(timer.targets)&&timer.targets.length?timer.targets:event.targets));
     for(const id of automationDisplayTargets(targets||[]))out.add(id);
   }
   return out;
@@ -860,11 +908,47 @@ function currentAutomationDisplayWinners(now=new Date()){
     }
   }
   const unique=new Map();
-  for(const candidate of winnersByTarget.values()){
+  for(const [target,candidate] of winnersByTarget){
     const key=`${candidate.storedEvent.id}:${candidate.event.classId||"manual"}:${candidate.event.time}`;
-    if(!unique.has(key))unique.set(key,candidate);
+    if(!unique.has(key))unique.set(key,{...candidate,winningTargets:[]});
+    unique.get(key).winningTargets.push(target);
   }
   return [...unique.values()].sort((a,b)=>a.scheduledMinutes-b.scheduledMinutes||String(a.storedEvent.id).localeCompare(String(b.storedEvent.id)));
+}
+
+async function runDisplayAutomationResync(event,winningTargets){
+  event={...event,timerOverlay:normalizeTimerOverlay(event.timerOverlay,event.timerOverlay||null)};
+  const allowed=new Set(winningTargets||[]),eventDomain=automationTargetDomain(event.action);
+  const steps=[{id:"primary",action:event.action,targets:event.targets,useEventTargets:true,payload:event.payload||{},delaySeconds:0},...(Array.isArray(event.actions)?event.actions:[])];
+  const results=[];
+  if(allowed.size)results.push(await executeCommand({type:"display.clear",target:[...allowed],payload:{reason:"morning-announcements-resync"}},"automation"));
+  for(const step of steps){
+    const action=step?.action||event.action,domain=automationTargetDomain(action);
+    if(domain!=="display")continue;
+    if(Number(step.delaySeconds)>0)await new Promise(resolve=>setTimeout(resolve,Math.min(3600,Number(step.delaySeconds))*1000));
+    const explicit=Array.isArray(step.targets)&&step.targets.length?step.targets:[];
+    let rawTargets;
+    if(step.useEventTargets!==false&&domain===eventDomain)rawTargets=event.targets;
+    else if(event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length)rawTargets=event._classDefaultTargets;
+    else if(explicit.length)rawTargets=explicit;
+    else rawTargets=["all"];
+    const targets=automationDisplayTargets(rawTargets).filter(id=>allowed.has(id));
+    if(!targets.length)continue;
+    const output=await runSingleAutomationAction({...event,action,targets,payload:step.payload||{},timerOverlay:null},{manual:false,skipOverlay:true,skipAudit:true});
+    results.push(...(output.results||[]));
+  }
+  const timer=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
+  if(timer?.enabled){
+    const rawTargets=(event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length)
+      ? event._classDefaultTargets
+      : (timer.useEventTargets!==false?event.targets:(Array.isArray(timer.targets)&&timer.targets.length?timer.targets:event.targets));
+    const targets=automationDisplayTargets(rawTargets).filter(id=>allowed.has(id));
+    if(targets.length){
+      const timerResult=await runAutomationTimerOverlay({...event,useClassTargets:false,targets,timerOverlay:{...timer,useEventTargets:true}},{manual:false});
+      if(timerResult?.result)results.push(timerResult.result);
+    }
+  }
+  return {ok:true,results};
 }
 function consumeDeferredAnnouncementAutomations(){
   const queued=[...deferredAnnouncementAutomations.values()];
@@ -886,15 +970,15 @@ async function resyncCurrentDisplayAutomationsAfterAnnouncements(reason="stream-
     const occurrenceKey=candidate.event.classId||"manual";
     const scheduledMinuteKey=`${localDateKey(now)} ${candidate.event.time}`;
     try{
-      const result=await runClassroomAutomation(candidate.event,{manual:false,bypassAnnouncementPriority:true});
+      const result=await runDisplayAutomationResync(candidate.event,candidate.winningTargets);
       candidate.storedEvent.lastExecByClass=candidate.storedEvent.lastExecByClass||{};
       candidate.storedEvent.lastExecByClass[occurrenceKey]=scheduledMinuteKey;
       candidate.storedEvent.lastExec=scheduledMinuteKey;
       candidate.storedEvent.lastRun={at:new Date().toISOString(),scheduledFor:scheduledMinuteKey,resolvedClassId:candidate.event.classId||null,ok:result.ok!==false,resync:true,message:"Re-applied after Morning Announcements ended"};
       candidate.storedEvent.updatedAt=new Date().toISOString();
-      results.push({automationId:candidate.storedEvent.id,name:candidate.storedEvent.name,classId:candidate.event.classId||null,time:candidate.event.time,targets:candidate.targets,ok:result.ok!==false});
+      results.push({automationId:candidate.storedEvent.id,name:candidate.storedEvent.name,classId:candidate.event.classId||null,time:candidate.event.time,targets:candidate.winningTargets,ok:result.ok!==false});
     }catch(err){
-      results.push({automationId:candidate.storedEvent.id,name:candidate.storedEvent.name,classId:candidate.event.classId||null,time:candidate.event.time,targets:candidate.targets,ok:false,error:err.message});
+      results.push({automationId:candidate.storedEvent.id,name:candidate.storedEvent.name,classId:candidate.event.classId||null,time:candidate.event.time,targets:candidate.winningTargets,ok:false,error:err.message});
       diagnosticError(err,{component:"automation",operation:"announcement-post-resync",data:{automationId:candidate.storedEvent.id,reason}});
     }
   }
@@ -905,13 +989,22 @@ async function resyncCurrentDisplayAutomationsAfterAnnouncements(reason="stream-
 async function releaseMorningAnnouncements(reason="stream-ended"){
   if(!morningAnnouncementsRuntime.active)return;
   const targets=morningAnnouncementsRuntime.targets?.length?[...morningAnnouncementsRuntime.targets]:announcementTargets();
-  if(targets.length)await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-release"}},"automation");
-  setMorningAnnouncementPriorityTargets(targets,false);
-  morningAnnouncementsRuntime.active=false;morningAnnouncementsRuntime.mode=null;morningAnnouncementsRuntime.targets=[];morningAnnouncementsRuntime.lastEndedAt=new Date().toISOString();morningAnnouncementsRuntime.lastAssertAt=0;
-  const deferredConsumed=consumeDeferredAnnouncementAutomations();
-  const resync=await resyncCurrentDisplayAutomationsAfterAnnouncements(reason);
-  backgroundMusicTick().catch(()=>{});
+  let deferredConsumed=0,resync={winnerCount:0,results:[]},releaseError=null;
+  try{
+    if(targets.length)await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-release"}},"automation");
+    deferredConsumed=consumeDeferredAnnouncementAutomations();
+    resync=await resyncCurrentDisplayAutomationsAfterAnnouncements(reason);
+  }catch(error){releaseError=error;diagnosticError(error,{component:"automation",operation:"morning-announcements-release",data:{reason}})}
+  finally{
+    // Hold the announcement lock through display reconciliation. Display commands
+    // emitted by the resync must not release audio priority early, but a failed
+    // persistence/audit step must never leave the lock stuck forever.
+    morningAnnouncementsRuntime.active=false;morningAnnouncementsRuntime.mode=null;morningAnnouncementsRuntime.targets=[];morningAnnouncementsRuntime.lastEndedAt=new Date().toISOString();morningAnnouncementsRuntime.lastAssertAt=0;
+    await setMorningAnnouncementPriorityTargets(targets,false);
+    await backgroundMusicTick();
+  }
   audit({kind:"automation.morning-announcements.stop",reason,targets,deferredConsumed,resyncWinnerCount:resync.winnerCount,resyncResults:resync.results});
+  if(releaseError)throw releaseError;
 }
 let morningAnnouncementsTickBusy=false;
 async function morningAnnouncementsTick(){
@@ -1064,6 +1157,37 @@ const AUTOMATION_ACTIONS=new Set([
   "tv.power","display.clear","display.text","display.url","display.media","display.timer.class-end",
   "govee.power","govee.color","govee.brightness","govee.temp","govee.scene"
 ]);
+function finiteTimerOverlayNumber(value,{name,fallback,min,max}){
+  const candidate=value===undefined||value===null||value===""?fallback:Number(value);
+  if(!Number.isFinite(candidate))throw new Error(`Timer overlay ${name} must be a finite number`);
+  return Math.max(min,Math.min(max,candidate));
+}
+function normalizeTimerOverlay(input,existing=null){
+  if(input===null)return null;
+  const value=input===undefined?existing:input;
+  if(value===null||value===undefined)return null;
+  if(typeof value!=="object"||Array.isArray(value))throw new Error("Timer overlay must be an object or null");
+  const prior=existing&&typeof existing==="object"&&!Array.isArray(existing)?existing:{};
+  const merged={...prior,...value};
+  return {
+    enabled:merged.enabled!==false,
+    source:String(merged.source||"duration")==="class-end"?"class-end":"duration",
+    classId:cleanId(merged.classId||""),
+    durationSeconds:finiteTimerOverlayNumber(merged.durationSeconds,{name:"duration",fallback:600,min:0,max:86400}),
+    position:["top","center","bottom"].includes(String(merged.position||"bottom"))?String(merged.position||"bottom"):"bottom",
+    fontSize:finiteTimerOverlayNumber(merged.fontSize,{name:"font size",fallback:64,min:12,max:220}),
+    textColor:String(merged.textColor||"#ffffff").slice(0,80),
+    borderColor:String(merged.borderColor||"#ffffff").slice(0,80),
+    borderWidth:finiteTimerOverlayNumber(merged.borderWidth,{name:"border width",fallback:4,min:0,max:50}),
+    borderRadius:finiteTimerOverlayNumber(merged.borderRadius,{name:"border radius",fallback:18,min:0,max:200}),
+    label:String(merged.label||"Time Remaining").slice(0,200),
+    background:String(merged.background||"rgba(0,0,0,.35)").slice(0,120),
+    useEventTargets:merged.useEventTargets!==false,
+    targets:Array.isArray(merged.targets)?[...new Set(merged.targets.map(cleanId).filter(Boolean))]:[],
+    followLinkedClasses:merged.followLinkedClasses!==false,
+    followGapMinutes:finiteTimerOverlayNumber(merged.followGapMinutes,{name:"continuation gap",fallback:15,min:0,max:120})
+  };
+}
 function normalizeAutomation(input={},existing={}){
   const id=cleanId(input.id||existing.id||`auto-${crypto.randomUUID()}`);
   if(!id)throw new Error("A valid automation ID is required");
@@ -1123,7 +1247,7 @@ function normalizeAutomation(input={},existing={}){
           continueOnError:item?.continueOnError!==false
         }})
       : (Array.isArray(existing.actions)?existing.actions:[]),
-    timerOverlay:input.timerOverlay===null?null:((input.timerOverlay&&typeof input.timerOverlay==="object")?input.timerOverlay:(existing.timerOverlay||null)),
+    timerOverlay:normalizeTimerOverlay(input.timerOverlay,existing.timerOverlay||null),
     lastRun:existing.lastRun||null,
     lastExec:existing.lastExec||null,
     lastExecByClass:(existing.lastExecByClass&&typeof existing.lastExecByClass==="object")?existing.lastExecByClass:{},
@@ -1498,6 +1622,8 @@ function automationRunFailures(result={}){
 }
 
 async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPriority=false}={}){
+  // Validate legacy/imported records again before the pre-clear or any delivery.
+  event={...event,timerOverlay:normalizeTimerOverlay(event.timerOverlay,event.timerOverlay||null)};
   if(morningAnnouncementsRuntime.active&&!bypassAnnouncementPriority){const err=new Error("Morning Announcements have priority; automation is blocked until announcements end");err.code="ANNOUNCEMENTS_PRIORITY_ACTIVE";throw err}
   const additional=Array.isArray(event.actions)?event.actions:[];
   const steps=[{id:"primary",action:event.action,targets:event.targets,useEventTargets:true,payload:event.payload||{},delaySeconds:0,continueOnError:true},...additional];
@@ -3190,6 +3316,8 @@ const runtime = {
 };
 
 const recentEvents = [];
+const pendingAuditWrites=[];
+let auditPersistenceLastError=null;
 
 function telemetryKey(entry){
   const kind=String(entry?.kind||"telemetry");
@@ -3210,13 +3338,30 @@ function isTelemetryEvent(entry){
 function audit(event) {
   const entry = {
     at: new Date().toISOString(),
-    ...event
+    ...event,
+    auditId: crypto.randomUUID()
   };
   recentEvents.push(entry);
   if (recentEvents.length > 2000) recentEvents.shift();
 
-  if(isTelemetryEvent(entry))dbStore.recordTelemetry(entry,telemetryKey(entry));
-  else dbStore.appendAudit(entry);
+  // Delivery has often already completed here. Do not report that command as
+  // failed (and invite a duplicate retry) solely because SQLite auditing is
+  // temporarily unavailable; retain writes and retry them on later events.
+  pendingAuditWrites.push(entry);
+  while(pendingAuditWrites.length){
+    const queued=pendingAuditWrites[0];
+    try{
+      if(isTelemetryEvent(queued))dbStore.recordTelemetry(queued,telemetryKey(queued));
+      else dbStore.appendAudit(queued);
+      pendingAuditWrites.shift();
+      auditPersistenceLastError=null;
+    }catch(error){
+      auditPersistenceLastError={at:new Date().toISOString(),message:error.message};
+      console.error(`Audit persistence deferred: ${error.message}`);
+      break;
+    }
+  }
+  if(pendingAuditWrites.length>2000)pendingAuditWrites.splice(0,pendingAuditWrites.length-2000);
   return entry;
 }
 
@@ -3303,7 +3448,8 @@ function publicRuntime() {
     mqtt: runtime.mqtt,
     hardware: runtime.hardware,
     websocketClients: runtime.websocketClients,
-    displays: displayStatus
+    displays: displayStatus,
+    auditPersistence:{pendingWrites:pendingAuditWrites.length,lastError:auditPersistenceLastError}
   };
 }
 
@@ -4289,10 +4435,13 @@ function managedIntegrationsView({resolved=false}={}){
   return value;
 }
 app.get("/api/v1/internal/maintenance/status",requireMaintenanceAgent,(_req,res)=>{
-  const total=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;
-  const first=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at ASC LIMIT 1").get()?.at||null;
-  const last=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at DESC LIMIT 1").get()?.at||null;
-  res.json({ok:true,database:dbStore.databaseInfo(),audit:{total,first,last}});
+  try{
+    const total=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;
+    const first=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at ASC LIMIT 1").get()?.at||null;
+    const last=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at DESC LIMIT 1").get()?.at||null;
+    const secrets=dbStore.listSecrets();for(const secret of secrets)dbStore.getSecret(secret.name,{asBuffer:true});
+    res.json({ok:true,database:dbStore.databaseInfo(),audit:{total,first,last},secretDecryption:{ok:true,checked:secrets.length}});
+  }catch(error){res.status(503).json({ok:false,error:`Database recovery validation failed: ${error.message}`,secretDecryption:{ok:false}})}
 });
 app.post("/api/v1/internal/maintenance/audit/prune",requireMaintenanceAgent,(req,res)=>{
   if(req.body?.confirm!==true)return res.status(400).json({ok:false,error:"Confirmation required"});
@@ -4323,12 +4472,13 @@ app.put("/api/v1/internal/maintenance/integrations/:id",requireMaintenanceAgent,
   }catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 
-const TRUSTED_UPDATE_REPOSITORY="wagnerks1990/classroom-control-hub";
+const TRUSTED_UPDATE_REPOSITORY="wagnerks1990/RoomGoblin";
+const LEGACY_TRUSTED_UPDATE_REPOSITORIES=new Set(["wagnerks1990/classroom-control-hub"]);
 function updatePolicy(){
   const saved=dbStore.getPreference("updates.policy",{})||{};
   return {repository:TRUSTED_UPDATE_REPOSITORY,channel:["alpha","beta","stable"].includes(saved.channel)?saved.channel:"alpha",automatic:!!saved.automatic,checkIntervalHours:Math.max(1,Math.min(168,Number(saved.checkIntervalHours)||24)),maintenanceStart:validTime(saved.maintenanceStart)?saved.maintenanceStart:"02:00",maintenanceEnd:validTime(saved.maintenanceEnd)?saved.maintenanceEnd:"04:00",lastCheckedAt:saved.lastCheckedAt||null,lastAvailable:saved.lastAvailable||null};
 }
-function validUpdateRepository(value){return String(value||"")===TRUSTED_UPDATE_REPOSITORY}
+function validUpdateRepository(value){const repository=String(value||"");return repository===TRUSTED_UPDATE_REPOSITORY||LEGACY_TRUSTED_UPDATE_REPOSITORIES.has(repository)}
 function releaseVersion(tag){return String(tag||"").replace(/^v/,"")}
 function semverParts(value){const m=releaseVersion(value).match(/^(\d+)\.(\d+)\.(\d+)(?:[-.]([0-9A-Za-z.-]+))?$/);return m?{core:m.slice(1,4).map(Number),pre:m[4]?m[4].split("."):[]}:null}
 function compareVersions(a,b){const x=semverParts(a),y=semverParts(b);if(!x||!y)return 0;for(let i=0;i<3;i++)if(x.core[i]!==y.core[i])return x.core[i]-y.core[i];if(!x.pre.length||!y.pre.length)return x.pre.length?-1:y.pre.length?1:0;for(let i=0;i<Math.max(x.pre.length,y.pre.length);i++){if(x.pre[i]===undefined)return -1;if(y.pre[i]===undefined)return 1;const xn=Number(x.pre[i]),yn=Number(y.pre[i]),numeric=Number.isFinite(xn)&&Number.isFinite(yn);if(x.pre[i]!==y.pre[i])return numeric?xn-yn:String(x.pre[i]).localeCompare(String(y.pre[i]))}return 0}
@@ -4470,7 +4620,10 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   const database=dbStore.healthCheck();
   const invalidClasses=classScheduleStore.classes.filter(item=>!validTime(item.startTime)||!validTime(item.endTime)||timeToMinutes(item.startTime)>=timeToMinutes(item.endTime)).map(item=>item.id);
-  const invalidAutomations=classroomAutomations.events.filter(item=>!validTime(item.time)||!AUTOMATION_ACTIONS.has(item.action)||(item.actions||[]).some(step=>!AUTOMATION_ACTIONS.has(step.action))).map(item=>item.id);
+  const invalidAutomations=classroomAutomations.events.filter(item=>{
+    if(!validTime(item.time)||!AUTOMATION_ACTIONS.has(item.action)||(item.actions||[]).some(step=>!AUTOMATION_ACTIONS.has(step.action)))return true;
+    try{normalizeTimerOverlay(item.timerOverlay,item.timerOverlay||null);return false}catch{return true}
+  }).map(item=>item.id);
   const scheduler={ok:invalidClasses.length===0&&invalidAutomations.length===0,timezone:SCHEDULER_TIMEZONE,invalidClasses,invalidAutomations};
   const ready=!shuttingDown&&database.ok&&scheduler.ok;
   res.status(ready?200:503).json({
@@ -4686,8 +4839,11 @@ app.put("/api/v1/automations/calendar",requireCapability("schedule.manage"),(req
     const nextCalendar=normalizeSchedulerCalendar(req.body||{},schedulerCalendar);
     const nextProfile=req.body?.scheduleProfile?normalizeSchoolScheduleProfile({...req.body.scheduleProfile,anchorDate:req.body.scheduleProfile.anchorDate||nextCalendar.anchorDate},schoolScheduleProfile):schoolScheduleProfile;
     // Validate the complete request before changing either live object or durable state.
-    if(req.body?.scheduleProfile){nextProfile.updatedAt=new Date().toISOString();dbStore.setPreference("school.schedule.profile",nextProfile)}
-    persistJson(SCHEDULER_CALENDAR_FILE,nextCalendar);
+    if(req.body?.scheduleProfile)nextProfile.updatedAt=new Date().toISOString();
+    dbStore.tx(()=>{
+      if(req.body?.scheduleProfile)dbStore.setPreference("school.schedule.profile",nextProfile);
+      persistJson(SCHEDULER_CALENDAR_FILE,nextCalendar);
+    });
     schedulerCalendar=nextCalendar;schoolScheduleProfile=nextProfile;
     audit({kind:"automation.calendar.update",noSchoolDates:schedulerCalendar.noSchoolDates,halfDayDates:schedulerCalendar.halfDayDates,oneHourDelayDates:schedulerCalendar.oneHourDelayDates,twoHourDelayDates:schedulerCalendar.twoHourDelayDates,remoteDates:schedulerCalendar.remoteDates,cycleAnchor:schoolCycleAnchor(),profileId:schoolScheduleProfile.id});
     res.json({ok:true,calendar:schedulerCalendar,scheduleProfile:schoolScheduleProfile,cycleAnchor:{date:schoolCycleAnchor(),cycleDay:schoolCycleLetters()[0]||null,dayColor:alternateGroupLabel('A')}});
@@ -5253,13 +5409,17 @@ async function backgroundMusicStart({favoriteId=null,playerId=null,reason="manua
   backgroundMusicRuntime.playing=true;backgroundMusicRuntime.paused=false;backgroundMusicRuntime.pausedForPriority=false;backgroundMusicRuntime.manualStopped=false;backgroundMusicRuntime.lastAction=`start:${reason}`;backgroundMusicRuntime.lastActionAt=new Date().toISOString();backgroundMusicRuntime.lastError=null;
   return {playerId:pid,favorite:fav};
 }
-async function backgroundMusicReconcilePriority(){
+async function backgroundMusicReconcilePriority({force=false}={}){
   const cfg=backgroundMusicSchedule();
-  if(!cfg.pauseForPriorityAudio)return;
+  if(!force&&!cfg.pauseForPriorityAudio)return;
   const priority=backgroundMusicPriorityTargets.size>0;
-  if(priority&&backgroundMusicRuntime.scheduleActive&&backgroundMusicRuntime.playing){
+  if(priority&&!backgroundMusicRuntime.playing){
+    const actual=await backgroundMusicActualPlayerState(cfg,true);
+    if(actual?.playing){backgroundMusicRuntime.playing=true;backgroundMusicRuntime.paused=false}
+  }
+  if(priority&&backgroundMusicRuntime.playing){
     try{await backgroundMusicPause("priority-audio");backgroundMusicRuntime.pausedForPriority=true}catch(e){backgroundMusicRuntime.lastError=e.message}
-  }else if(!priority&&backgroundMusicRuntime.scheduleActive&&backgroundMusicRuntime.pausedForPriority&&!backgroundMusicRuntime.manualStopped){
+  }else if(!priority&&backgroundMusicRuntime.pausedForPriority&&!backgroundMusicRuntime.manualStopped){
     try{await backgroundMusicResume("priority-ended")}catch(e){backgroundMusicRuntime.lastError=e.message}
   }
 }
@@ -5295,7 +5455,7 @@ async function backgroundMusicTick(){
     if(backgroundMusicRuntime.startedKey!==key){backgroundMusicRuntime.startedKey=key;backgroundMusicRuntime.manualStopped=false}
     if(backgroundMusicRuntime.manualStopped)return;
     if(cfg.pauseForPriorityAudio&&backgroundMusicPriorityTargets.size){
-      if(backgroundMusicRuntime.playing){await backgroundMusicPause("priority-audio");backgroundMusicRuntime.pausedForPriority=true}
+      await backgroundMusicReconcilePriority();
       return;
     }
 

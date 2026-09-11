@@ -122,6 +122,27 @@ test("authentication cannot be disabled and privileged maintenance is off by def
   assert.equal(result.response.status,503);
 });
 
+test("automation persistence rejects non-finite timer overlay fields",async()=>{
+  const id="invalid-nonfinite-timer";
+  let result=await request("/api/v1/automations",{method:"POST",authenticated:true,body:{
+    id,name:"Invalid timer",time:"08:00",days:[1],action:"display.text",targets:["tv1"],
+    payload:{text:"must not run"},timerOverlay:{enabled:true,source:"duration",durationSeconds:"Infinity"}
+  }});
+  assert.equal(result.response.status,400,JSON.stringify(result.json));
+  assert.match(result.json.error,/finite number/);
+  result=await request("/api/v1/automations",{authenticated:true});
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.events.some(event=>event.id===id),false);
+  result=await request("/health");
+  assert.equal(result.response.status,200,JSON.stringify(result.json));
+});
+
+test("Morning Announcements rejects unapproved probe destinations",async()=>{
+  const result=await request("/api/v1/automations/morning-announcements",{method:"PUT",authenticated:true,body:{streamUrl:"http://127.0.0.1/admin"}});
+  assert.equal(result.response.status,400,JSON.stringify(result.json));
+  assert.match(result.json.error,/not approved|not allowed/);
+});
+
 test("sensitive diagnostics and participation endpoints reject anonymous access",async()=>{
   let result=await request("/api/v1/diagnostics/export");
   assert.ok([401,403].includes(result.response.status));
@@ -294,7 +315,8 @@ test("Kyle Wagner attribution is installed on every current site surface",()=>{
   const surfaces=[
     "public/controller/index.html","public/controller/display.html","public/controller/lab.html",
     "public/controller/veyon.html","public/display/index.html","public/setup/index.html",
-    "public/schoology/index.html","public/document-viewer/index.html","public/antmedia-player/index.html"
+    "public/schoology/index.html","public/document-viewer/index.html","public/antmedia-player/index.html",
+    "public/managed-displays/index.html"
   ];
   for(const file of surfaces){
     const html=fs.readFileSync(path.join(projectRoot,file),"utf8");
@@ -308,6 +330,54 @@ test("Kyle Wagner attribution is installed on every current site surface",()=>{
   for(const file of surfaces){
     const html=fs.readFileSync(path.join(projectRoot,file),"utf8");
     assert.ok(html.includes("/shared/branding.js")||html.includes("/shared/attribution.js"),`${file} cannot load shared branding`);
+  }
+});
+
+test("managed displays uses generic presentation and accessible standalone controls",()=>{
+  const html=fs.readFileSync(path.join(projectRoot,"public/managed-displays/index.html"),"utf8");
+  const css=fs.readFileSync(path.join(projectRoot,"public/managed-displays/styles.css"),"utf8");
+  const privateNames=new RegExp([["Car","lisle"].join(""),["L","127"].join("")].join("|"),"i");
+  assert.doesNotMatch(html,privateNames);
+  assert.match(html,/id="shellDevice" aria-label="Managed display"/);
+  assert.match(html,/id="editDialog" aria-labelledby="editDialogTitle"/);
+  assert.match(css,/:focus-visible/);
+  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
+});
+
+test("public display-test cards use current RoomGoblin branding",()=>{
+  for(let display=1;display<=8;display++){
+    const source=fs.readFileSync(path.join(projectRoot,`public/test-images/tv${display}.svg`),"utf8");
+    assert.match(source,/>ROOMGOBLIN<\/text>/);
+    assert.doesNotMatch(source,/>CLASSROOM HUB<\/text>/);
+  }
+  const controller=fs.readFileSync(path.join(projectRoot,"public/controller/index.html"),"utf8");
+  assert.match(controller,/id="brandProductName">Room<span class="green">Goblin<\/span>/);
+});
+
+test("standalone administration surfaces preserve keyboard focus and reduced motion",()=>{
+  for(const file of ["public/controller/lab.html","public/controller/veyon.html","public/setup/index.html"]){
+    const source=fs.readFileSync(path.join(projectRoot,file),"utf8");
+    assert.match(source,/:focus-visible/,`${file} needs a visible keyboard-focus treatment`);
+    assert.match(source,/@media\(prefers-reduced-motion:reduce\)/,`${file} needs a reduced-motion treatment`);
+  }
+  const veyon=fs.readFileSync(path.join(projectRoot,"public/controller/veyon.html"),"utf8");
+  assert.match(veyon,/class="check"[^>]+aria-label="Select /);
+});
+
+test("public surfaces and fixtures contain no deployment-specific identity",()=>{
+  const {execFileSync}=require("node:child_process");
+  const files=execFileSync("git",["ls-files","public","test"],{cwd:projectRoot,encoding:"utf8"})
+    .trim().split("\n").filter(file=>/\.(?:css|html|js|mjs|py)$/.test(file));
+  const forbidden=[
+    ["Car","lisle"].join(""),
+    ["L","127"].join(""),
+    ["car","lisle","schools.org"].join(""),
+    ["172","16","127"].join("."),
+    ["Mr",String.fromCharCode(46)," Wagner"].join("")
+  ];
+  for(const file of files){
+    const source=fs.readFileSync(path.join(projectRoot,file),"utf8");
+    for(const value of forbidden)assert.equal(source.toLowerCase().includes(value.toLowerCase()),false,`${file} contains deployment-specific value ${value}`);
   }
 });
 
@@ -421,7 +491,7 @@ test("maintenance agent does not own SQLite and restore includes verified rollba
 test("application update policy and GitHub token are stored in the database",async()=>{
   let result=await request("/api/v1/admin/app-updates/settings",{authenticated:true});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
-  assert.equal(result.json.settings.repository,"wagnerks1990/classroom-control-hub");
+  assert.equal(result.json.settings.repository,"wagnerks1990/RoomGoblin");
   assert.equal(result.json.settings.automatic,false);
 
   result=await request("/api/v1/admin/app-updates/settings",{method:"PUT",authenticated:true,body:{repository:"example/untrusted-fork",channel:"stable"}});
@@ -429,6 +499,7 @@ test("application update policy and GitHub token are stored in the database",asy
 
   result=await request("/api/v1/admin/app-updates/settings",{method:"PUT",authenticated:true,body:{repository:"wagnerks1990/classroom-control-hub",channel:"stable",automatic:true,checkIntervalHours:12,maintenanceStart:"01:30",maintenanceEnd:"03:00",token:"github-test-token"}});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
+  assert.equal(result.json.settings.repository,"wagnerks1990/RoomGoblin");
   assert.equal(result.json.tokenConfigured,true);
   assert.equal(result.json.settings.channel,"stable");
   assert.equal(result.json.settings.automatic,true);

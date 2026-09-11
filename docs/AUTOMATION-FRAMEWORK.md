@@ -1,6 +1,6 @@
 # Automation Framework
 
-Classroom Control Hub automations are stored in SQLite and execute through a shared framework regardless of whether the primary action controls displays, TV power, lighting, media, or a class-end timer. This document defines the behavior that must remain consistent across all automation types.
+RoomGoblin automations are stored in SQLite and execute through a shared framework regardless of whether the primary action controls displays, TV power, lighting, media, or a class-end timer. This document defines the behavior that must remain consistent across all automation types.
 
 ## Persistence
 

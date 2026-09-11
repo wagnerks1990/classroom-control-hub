@@ -1,4 +1,4 @@
-# Classroom Control Hub Controller
+# RoomGoblin Controller
 
 ## Host-network deployment contract
 
@@ -35,6 +35,6 @@ Turning the requirement off immediately restores stable URL access. The legacy s
 
 ## Cross-domain scheduled actions (alpha.17)
 
-Every scheduled event begins with an automatic **Clear Screen** against all enabled Classroom Control Hub display clients before Action 1. The reset also applies to manual **Run Now/Test Now** executions. Timer overlays are added only after the event actions finish.
+Every scheduled event begins with an automatic **Clear Screen** against all enabled RoomGoblin display clients before Action 1. The reset also applies to manual **Run Now/Test Now** executions. Timer overlays are added only after the event actions finish.
 
 Each scheduled action owns a target domain. Display actions select display clients, TV power selects TV targets, and Govee actions select lighting groups/devices. Additional actions may reuse the main event targets only when both actions use a compatible target domain. Cross-domain actions require explicit targets in the editor. Legacy cross-domain actions without explicit targets receive safe defaults at execution time so existing schedules continue to work after upgrade.

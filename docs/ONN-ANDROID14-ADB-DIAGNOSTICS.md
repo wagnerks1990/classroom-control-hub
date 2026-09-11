@@ -1,6 +1,6 @@
 # Onn Android 14 ADB diagnostics
 
-This note applies to the validated Onn 4K Streaming Device running Android 14 (`wayne`) used with Classroom Control Hub.
+This note applies to the validated Onn 4K Streaming Device running Android 14 (`wayne`) used with RoomGoblin.
 
 ## Do not use `dumpsys package` for routine checks
 

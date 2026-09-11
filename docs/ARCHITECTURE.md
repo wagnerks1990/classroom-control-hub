@@ -6,13 +6,13 @@ The Linux Hub and maintenance containers, plus reviewed managed add-on templates
 
 ## Overview
 
-Classroom Control Hub is a centralized classroom/lab automation platform. The architecture separates the classroom application, maintenance functions, host-level administration, browser-based display clients, persistent state, and external integrations.
+RoomGoblin is a centralized classroom/lab automation platform. The architecture separates the classroom application, maintenance functions, host-level administration, browser-based display clients, persistent state, and external integrations.
 
 ```text
 Operator Browser
       |
       v
-Classroom Control Hub API / Controller
+RoomGoblin API / Controller
       |
       +---- Display WebSocket / browser clients
       +---- Scheduler / automation engine
@@ -97,7 +97,7 @@ Manual and automatically detected announcements use the same runtime priority st
 
 ### Post-announcement failsafe resync
 
-When Morning Announcements end, Classroom Control Hub does not restore a stale display snapshot. The release path:
+When Morning Announcements end, RoomGoblin does not restore a stale display snapshot. The release path:
 
 1. clears announcement content;
 2. releases the announcement priority lock;

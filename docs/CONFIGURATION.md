@@ -6,7 +6,7 @@ The Linux Hub and maintenance containers, plus reviewed managed add-on templates
 
 ## Configuration strategy
 
-Classroom Control Hub separates reusable application code from site-specific runtime configuration. Public source should remain deployable without embedding a real district name, classroom topology, internal address, credential, or stream endpoint.
+RoomGoblin separates reusable application code from site-specific runtime configuration. Public source should remain deployable without embedding a real district name, classroom topology, internal address, credential, or stream endpoint.
 
 Configuration comes from:
 

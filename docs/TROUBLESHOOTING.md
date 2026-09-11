@@ -171,7 +171,7 @@ The public repository leaves `PLUTO_URL` generic/empty. Production must restore 
 
 ## `/api/v1/pluto/status` says Authentication required
 
-The Classroom Control Hub API endpoint itself requires an authenticated controller session. An unauthenticated command-line `curl` can therefore return:
+The RoomGoblin API endpoint itself requires an authenticated controller session. An unauthenticated command-line `curl` can therefore return:
 
 ```json
 {"ok":false,"error":"Authentication required","authRequired":true}

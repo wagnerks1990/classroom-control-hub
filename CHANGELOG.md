@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.0.0-alpha.79 - 2026-09-11
+
+### Production readiness
+
+- Aligned the canonical `wagnerks1990/RoomGoblin` repository and
+  `ghcr.io/wagnerks1990/roomgoblin*` image names across installers, the web
+  updater, release workflows, and operator documentation.
+- Continued publishing the legacy `classroom-control-hub*` GHCR aliases during
+  the compatibility transition so existing automation is not abandoned.
+- Required every release-publishing path to wait for the complete validation
+  matrix before publishing immutable images.
+- Restricted the production bootstrap to validated `amd64` hosts; `arm64`
+  remains unsupported until its application images and bundled Android/ADB
+  toolchain are built and tested end to end.
+- Consolidated command-line production updates through `install.sh` so backup,
+  permissions, immutable-image selection, recreation, and component-version
+  convergence use one audited path.
+- Preserved the exact image tag and retained image IDs across failed updates and
+  explicit rollback instead of allowing Compose to resolve a moving tag.
+
+### Security, privacy, and recovery
+
+- Made support diagnostic archives metadata-only and excluded databases,
+  runtime data, managed-service state, device inventory, ADB identity, student
+  records, environment files, and keys.
+- Marked recovery backups containing site or student data as sensitive and
+  required explicit confirmation before creating them.
+- Repaired Morning Announcements release arbitration so each display receives
+  only its newest currently applicable automation, failures cannot strand the
+  announcement lock, and Background Music resumes only after display
+  reconciliation completes.
+- Removed school-specific names, addresses, endpoints, and classroom text from
+  public examples and regression fixtures.
+- Completed current-surface RoomGoblin naming while retaining documented
+  compatibility identifiers required by installed appliances and endpoints.
+- Added a database-first, single-export recovery acceptance contract with an
+  explicit alpha.79 boundary; clean-host full import and Android-inventory
+  migration remain future work and are not presented as implemented.
+
 ## 1.0.0-alpha.78 - 2026-09-11
 
 - Fixed multiline title and body clipping when a managed TV loaded the current
@@ -10,6 +49,28 @@
   fixture and verified it remains contained when the layout stylesheet is withheld.
 - Bumped the display renderer/cache revision to `single-fit-20260911-5`.
 
+## 1.0.0-alpha.77 - 2026-09-11
+
+### Changed
+
+- Adopted `org.roomgoblin.display` as the Android/Google TV application ID and
+  `RoomGoblin-Display-Agent` as the staged APK identity.
+- Updated the canonical source repository and primary GHCR image identities to
+  RoomGoblin while retaining legacy deployment identifiers and transitional
+  image aliases where upgrades depend on them.
+- Renamed the root npm package for RoomGoblin. The maintenance package retained
+  its legacy-compatible internal name until the production-readiness follow-up.
+
+### Migration
+
+- The old `org.classroomhub.display` Android app cannot be updated in place.
+  Managed installation removes only that old package, installs RoomGoblin,
+  preserves the server-side device record and ADB trust, and reapplies saved
+  configuration and supported grants.
+- Rollback across the package-ID boundary requires uninstalling the current app
+  and installing the matching legacy APK; Android cannot cross-update between
+  the two identities.
+
 ## 1.0.0-alpha.76 - 2026-09-11
 
 - Fixed Morning Announcements live detection by passing protected Managed Display Gateway configuration into the Hub container.
@@ -18,6 +79,15 @@
 - Changed production installation to pull the exact validated `sha-<commit>` images published by GitHub Actions instead of compiling on the appliance.
 - Changed web-managed semantic releases to pull their matching immutable GHCR tags while preserving exact retained-image rollback.
 - Kept local Docker/Gradle compilation behind the explicit `install.sh --build-local` development option.
+
+## 1.0.0-alpha.75 - 2026-09-11
+
+- Changed the project license from PolyForm Noncommercial to the MIT License;
+  commercial and noncommercial use no longer requires a separate license.
+- Converged package and Host Agent version metadata and repaired release
+  validation after the initial RoomGoblin rebrand.
+- Prepared production deployment to consume validated CI-built images instead
+  of compiling the application and Android toolchain on the appliance.
 
 ## 1.0.0-alpha.74 - 2026-09-10
 
@@ -184,9 +254,6 @@
 
 ## Unreleased
 
-### Licensing
-- Made Classroom Control Hub source-available under PolyForm Noncommercial 1.0.0 with copyright held by Kyle Wagner, required attribution, and separate commercial licensing.
-
 ### Individually enrolled classroom displays
 - Replaced the normal shared display-token workflow with one-time, expiring enrollment links and a unique revocable credential for each display browser.
 - Added controller coverage reporting, enrollment-link creation/cancellation, credential rotation/revocation, and a guarded switch for disabling legacy shared-token access.
@@ -260,16 +327,3 @@ Initial public GitHub/Docker migration of Classroom Control Hub.
 - Added public `.gitignore`, `.dockerignore`, and `.env.example` files.
 - Added GitHub Actions workflows for validation and GHCR container publishing.
 - Preserved the existing modular display, automation, announcement-priority, background-music, AV, lighting, lab, maintenance, and host-agent architecture.
-# 1.0.0-alpha.77 - 2026-09-11
-
-### Changed
-
-- Adopted `org.roomgoblin.display` as the Android/Google TV application ID and `RoomGoblin-Display-Agent` as the staged APK identity.
-- Updated canonical repository and GHCR references from the former repository name to RoomGoblin.
-- Renamed the root and maintenance npm packages to RoomGoblin identities.
-
-### Migration
-
-- The old `org.classroomhub.display` Android app cannot be updated in place because RoomGoblin uses a new package identity. If the old app exists, uninstall it and install the new RoomGoblin Display Agent instead of selecting an in-place update.
-- Managed Displays detects the old package during installation, removes only that package, installs RoomGoblin, updates the stored package identity, and restores the saved display configuration and supported grants.
-- Existing appliance data, database files, enrollment inventory, ADB trust material, host paths, and rollback snapshots remain preserved.

@@ -31,8 +31,8 @@ Persistent ADB is an optional recovery feature for Android/Google TV firmware th
 
 ## Physical validation note
 
-The first Onn Android 14 test demonstrated the expected timing race: immediately after reboot the ADB endpoint was unavailable, then the Display Agent restored Wireless Debugging and the fixed `:5555` endpoint returned. Classroom Hub reconnected without re-pairing. Treat that temporary boot gap as normal recovery behavior, not as proof of failure.
+The first Onn Android 14 test demonstrated the expected timing race: immediately after reboot the ADB endpoint was unavailable, then the Display Agent restored Wireless Debugging and the fixed `:5555` endpoint returned. RoomGoblin reconnected without re-pairing. Treat that temporary boot gap as normal recovery behavior, not as proof of failure.
 
 ## Reference implementation note
 
-The strategy was informed by the MIT-licensed `mouldybread/adb-auto-enable` project. Classroom Hub does not depend on that APK at runtime; preserve attribution in the canonical documentation if this design remains in use.
+The strategy was informed by the MIT-licensed `mouldybread/adb-auto-enable` project. RoomGoblin does not depend on that APK at runtime; preserve attribution in the canonical documentation if this design remains in use.

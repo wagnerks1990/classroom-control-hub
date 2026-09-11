@@ -1,4 +1,4 @@
-# Classroom Control Hub Native Host Agent
+# RoomGoblin Native Host Agent
 
 The native Host Agent exists so the Docker maintenance container does not require host PID namespaces, privileged mode, or the Docker socket.
 
@@ -26,7 +26,7 @@ The socket is bind-mounted into the maintenance container. No Host Agent TCP por
 
 ## Responsibilities
 
-The Host Agent provides allowlisted host inventory and lifecycle functions for systemd services, journal logs, Docker inventory and managed-container operations, host health, update/recovery helpers, and cleanup discovery. Docker requests are limited to known Classroom Control Hub containers, pinned integration images, safe inventory/log actions, and the Hub Compose project. Protected services such as Docker, containerd, SSH, networking, DNS, time synchronization, and the Host Agent itself cannot be stopped or disabled through Classroom Control Hub.
+The Host Agent provides allowlisted host inventory and lifecycle functions for systemd services, journal logs, Docker inventory and managed-container operations, host health, update/recovery helpers, and cleanup discovery. Docker requests are limited to known RoomGoblin containers, pinned integration images, safe inventory/log actions, and the Hub Compose project. Protected services such as Docker, containerd, SSH, networking, DNS, time synchronization, and the Host Agent itself cannot be stopped or disabled through RoomGoblin.
 
 Application releases run as the separate oneshot unit
 `classroom-hub-app-update.service`. The Host Agent validates and writes a
@@ -36,7 +36,7 @@ Compose services, and performs version-aware health verification. A private
 repository token is sourced from the encrypted application database and exists
 on the host only for the duration of `git fetch`.
 
-All browser requests still pass through the authenticated Classroom Control Hub backend and Maintenance Agent before reaching the Host Agent.
+All browser requests still pass through the authenticated RoomGoblin backend and Maintenance Agent before reaching the Host Agent.
 
 ## Migration verification
 

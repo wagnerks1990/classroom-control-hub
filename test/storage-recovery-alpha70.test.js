@@ -13,8 +13,8 @@ function withStore(fn){
   try{return fn(store,dir)}finally{store.db.close();fs.rmSync(dir,{recursive:true,force:true})}
 }
 
-test("database storage is private and migration history is ordered",()=>withStore((store,dir)=>{
-  assert.equal(fs.statSync(dir).mode&0o777,0o700);
+test("database storage is group-shared, database files are private, and migration history is ordered",()=>withStore((store,dir)=>{
+  assert.equal(fs.statSync(dir).mode&0o777,0o770);
   assert.equal(fs.statSync(store.dbFile).mode&0o777,0o600);
   assert.deepEqual(store.validateSchemaMigrations(),{ok:true,version:10,count:10});
   store.db.prepare("UPDATE schema_migrations SET name='tampered' WHERE version=3").run();
@@ -53,6 +53,7 @@ test("maintenance backups and restores enforce private files and reject link tra
   assert.match(source,/fs\.chmodSync\(dest,0o600\)/);
   assert.match(source,/restoreModes/);
   assert.match(source,/restore-journal\.json/);
-  assert.match(source,/fs\.lchownSync/);
+  assert.match(source,/Symbolic links are not permitted in recovery targets/);
+  assert.match(source,/\/recovery\/normalize-data/);
   assert.doesNotMatch(source,/zip\.writeZip\(dest\)/);
 });

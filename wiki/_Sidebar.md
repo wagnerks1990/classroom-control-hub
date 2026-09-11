@@ -1,9 +1,11 @@
-## Classroom Control Hub
+## RoomGoblin
 
 - [Home](Home)
+- [Brand and Compatibility](RoomGoblin-Brand-and-Compatibility)
 - [Architecture](Architecture)
 - [Installation and Deployment](Installation-and-Deployment)
 - [Configuration](Configuration)
+- [Database-First Recovery Contract](Database-First-Recovery)
 - [Host Networking](Host-Networking)
 - [Display Access](Display-Access)
 - [Display Layout Contract](Display-Layout-Contract)

@@ -2,7 +2,7 @@
 
 ## Daily operating model
 
-Classroom Control Hub continuously reconciles configured classroom state with schedules, connected displays, integrations, and priority content. Operators should normally allow the scheduler to maintain the current classroom state and use manual controls for testing, exceptions, or immediate intervention.
+RoomGoblin continuously reconciles configured classroom state with schedules, connected displays, integrations, and priority content. Operators should normally allow the scheduler to maintain the current classroom state and use manual controls for testing, exceptions, or immediate intervention.
 
 The standard production checkout is `/opt/classroom-hub`.
 
@@ -104,7 +104,12 @@ Re-run winning current automations
 Reconcile/resume Background Music if schedule requires it
 ```
 
-This is a failsafe scheduler resync. Do not restore a stale pre-announcement display snapshot and do not blindly replay every historical automation from earlier in the day.
+This is a failsafe scheduler resync. Each display receives only its own newest
+currently applicable winner. A failed re-run must be recorded for diagnostics
+but must not strand the announcement priority lock or prevent Background Music
+reconciliation from running. Do not restore a stale pre-announcement display
+snapshot and do not blindly replay every historical automation from earlier in
+the day.
 
 ## Announcement volume
 
@@ -190,9 +195,13 @@ curl -fsS http://127.0.0.1:3000/health
 
 `--remove-orphans` cleans up the legacy TLS gateway when upgrading from a Caddy-based release.
 
-Take a backup before upgrading and preserve runtime `.env`, databases, data, uploads, backups, and secret/key material.
+Take a backup before upgrading and preserve runtime `.env`, databases, data, uploads, backups, and secret/key material. Recovery backups contain private appliance data and require explicit sensitive-data confirmation. Store them with administrative access controls; do not attach them to support cases.
 
-Web-managed updates retain and pin the backup used by **Revert Last Upgrade**. The backup digest is verified and matching data is restored while the application is stopped, before the older release starts. The exact prior hub and maintenance image IDs are retained locally and reused for rollback rather than being rebuilt. An interrupted request remains in the root-only host journal and resumes after restart. Do not prune `classroom-control-hub-recovery:*` images while **Revert Last Upgrade** is available.
+Use the metadata-only **diagnostic** archive for support. It excludes databases,
+runtime data, managed services, device/ADB identity, student records,
+environment files, and keys. Inspect even diagnostic archives before sharing.
+
+Web-managed updates retain and pin the backup used by **Revert Last Upgrade**. The backup digest is verified and matching data is restored while the application is stopped, before the older release starts. The exact prior image tag plus Hub and maintenance image IDs are retained locally and reused for rollback rather than resolving a moving tag or rebuilding. An interrupted request remains in the root-only host journal and resumes after restart. Do not prune `classroom-control-hub-recovery:*` images while **Revert Last Upgrade** is available.
 
 An update is successful only after backend HTTP health, maintenance, Host Agent, database/scheduler health, and version convergence checks pass. TLS/Caddy is intentionally not part of the current release gate. Watch capacity before a large update with `df -h /opt/classroom-hub` and `docker system df`.
 

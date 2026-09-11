@@ -24,6 +24,7 @@ This directory is the canonical technical documentation set for RoomGoblin. `wik
 - [Development](DEVELOPMENT.md) — source layout, local validation, release workflow, version convergence, and contribution practices.
 - [Controller](CONTROLLER.md) — controller-specific information.
 - [Database](DATABASE.md) — SQLite storage and migration notes.
+- [Database-First Recovery](DATABASE-FIRST-RECOVERY.md) — future persistence and one-export recovery acceptance contract, including an explicit alpha.79 implemented/not-implemented boundary.
 - [Host Agent](HOST-AGENT.md) — host-level service responsibilities, migration verification, and security boundary.
 - [Windows Lab Agent](LAB-AGENT.md) — one-time enrollment, per-computer credentials, signing, removal, and privacy controls.
 - [Android TV Displays](ANDROID-TV-DISPLAYS.md) — pairing, assignment, Display Agent lifecycle, and device recovery.

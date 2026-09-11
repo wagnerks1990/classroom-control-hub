@@ -1,6 +1,6 @@
 # Device Agent v2
 
-Device Agent v2 is the next-generation Android / Google TV management layer for Classroom Hub.
+Device Agent v2 is the next-generation Android / Google TV management layer for RoomGoblin.
 
 It keeps the existing `org.roomgoblin.display` package identity and existing Managed Displays enrollment records, but changes management from **ADB-only** to a dual-channel design:
 
@@ -32,7 +32,7 @@ The Hub maintenance agent proxies those endpoints for administrators.
 - health/heartbeat without ADB,
 - network/IP state,
 - assigned URL and Agent version,
-- launch/reload Classroom Hub kiosk,
+- launch/reload RoomGoblin kiosk,
 - media volume,
 - wake request,
 - application launch where Android exposes a launcher activity,
@@ -63,7 +63,7 @@ This is intended to address Android 14+ randomized ADB endpoints and reboot/slee
 
 ## Root / Magisk
 
-Root is optional laboratory testing only. Production Classroom Hub does not require Magisk and does not automate bootloader unlock or rooting.
+Root is optional laboratory testing only. Production RoomGoblin does not require Magisk and does not automate bootloader unlock or rooting.
 
 `root-probe` is explicit. Arbitrary root commands are disabled unless the Hub provisions `allow_root_tools=true` for a lab device.
 

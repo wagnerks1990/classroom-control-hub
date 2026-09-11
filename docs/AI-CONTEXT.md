@@ -4,11 +4,11 @@
 
 The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
 
-This document gives AI assistants a compact operational model of Classroom Control Hub. `AGENTS.md` is the primary contributor contract; this document expands the technical context.
+This document gives AI assistants a compact operational model of RoomGoblin. `AGENTS.md` is the primary contributor contract; this document expands the technical context.
 
 ## Purpose
 
-Classroom Control Hub is a centralized classroom/lab control platform. It coordinates browser displays, scheduled automations, AV routing, lighting, Morning Announcements, Background Music, class schedules, school-cycle rules, Veyon lab management, diagnostics, backup/recovery, Docker integrations, Android/Google TV managed displays, and host-management functions.
+RoomGoblin is a centralized classroom/lab control platform. It coordinates browser displays, scheduled automations, AV routing, lighting, Morning Announcements, Background Music, class schedules, school-cycle rules, Veyon lab management, diagnostics, backup/recovery, Docker integrations, Android/Google TV managed displays, and host-management functions.
 
 Production installers and semantic-release updates pull exact CI-built GHCR
 images. Do not reintroduce appliance-local builds as the default. Local compilation
@@ -73,7 +73,11 @@ The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades
 
 ## Current known-good baseline
 
-`1.0.0-alpha.74` is the current display-access and clean-worktree installer baseline.
+`1.0.0-alpha.79` is the current production-readiness review baseline.
+
+Production deployment is currently validated only on `amd64` Ubuntu Server
+24.04 LTS. Treat `arm64` as unsupported until both container images and the
+Android/ADB build/runtime path are published and validated for that architecture.
 
 Alpha.71 recovery invariants:
 

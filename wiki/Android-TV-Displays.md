@@ -1,10 +1,10 @@
 # Android TV / Google TV Displays
 
-Classroom Control Hub manages Android / Google TV endpoints through wireless ADB and the Classroom Hub Display Agent. The first physically validated endpoint is the Onn 4K Streaming Device on Android 14 (`wayne`, build `UKRB.260113.075.A1`).
+RoomGoblin manages Android / Google TV endpoints through wireless ADB and the RoomGoblin Display Agent. The first physically validated endpoint is the Onn 4K Streaming Device on Android 14 (`wayne`, build `UKRB.260113.075.A1`).
 
 ## Current architecture
 
-The appliance uses Docker host networking. Classroom Hub is reachable on port 3000; the maintenance agent is loopback-only on `127.0.0.1:3010`. The browser never connects directly to ADB or the maintenance listener. Classroom Hub proxies authenticated management operations to maintenance, which owns ADB.
+The appliance uses Docker host networking. RoomGoblin is reachable on port 3000; the maintenance agent is loopback-only on `127.0.0.1:3010`. The browser never connects directly to ADB or the maintenance listener. RoomGoblin proxies authenticated management operations to maintenance, which owns ADB.
 
 Persisted Android inventory and ADB state live under `data/android-tv/` and survive container recreation.
 
@@ -18,7 +18,7 @@ If a device card disappears after a software deployment, first inspect `data/and
 
 Package: `org.roomgoblin.display`.
 
-Managed Displays reports package/running state and supports installation, configuration, launch, screenshots and administrator remote shell. The tested Onn successfully installs the APK, loads the assigned Classroom Hub display URL fullscreen, and automatically restores the agent/content after reboot.
+Managed Displays reports package/running state and supports installation, configuration, launch, screenshots and administrator remote shell. The tested Onn successfully installs the APK, loads the assigned RoomGoblin display URL fullscreen, and automatically restores the agent/content after reboot.
 
 The UI can show **Starting…** after ADB returns because Android may make the debug transport available slightly before it allows the kiosk activity to run.
 
@@ -45,7 +45,7 @@ Do not use Android deep sleep as the standard scheduled shutdown method on this 
 For dedicated signage devices:
 
 - **Audit Apps** lists third-party packages;
-- **Minimal Mode** reversibly disables third-party packages for user 0 except the Classroom Hub Display Agent;
+- **Minimal Mode** reversibly disables third-party packages for user 0 except the RoomGoblin Display Agent;
 - **Restore Apps** re-enables them.
 
 This does not uninstall firmware or remove Android/Google TV core packages. Audit each new hardware family before applying it. See `docs/MANAGED-ANDROID-MINIMAL-MODE.md`.
@@ -55,11 +55,11 @@ This does not uninstall firmware or remove Android/Google TV core packages. Audi
 Expected listeners:
 
 ```text
-0.0.0.0:3000   Classroom Hub
+0.0.0.0:3000   RoomGoblin
 127.0.0.1:3010 maintenance-agent
 ```
 
-Both containers use host networking. Classroom Hub's maintenance URL is `http://127.0.0.1:3010`. An unauthenticated direct request to maintenance returning `401 Unauthorized` is correct. `ECONNREFUSED 127.0.0.1:3010` from Classroom Hub indicates maintenance is not reachable in the shared host network and should be fixed before touching Android enrollment.
+Both containers use host networking. RoomGoblin's maintenance URL is `http://127.0.0.1:3010`. An unauthenticated direct request to maintenance returning `401 Unauthorized` is correct. `ECONNREFUSED 127.0.0.1:3010` from RoomGoblin indicates maintenance is not reachable in the shared host network and should be fixed before touching Android enrollment.
 
 ## Validation status
 

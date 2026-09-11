@@ -49,9 +49,32 @@ if [[ -d "$TARGET" ]] && find "$TARGET" -mindepth 1 -maxdepth 1 -print -quit | g
 fi
 
 if [[ $EUID -ne 0 ]]; then echo "Run this installer as root (sudo)." >&2; exit 1; fi
+INSTALL_ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+case "$INSTALL_ARCH" in amd64|x86_64) ;; *) fail "unsupported CPU architecture: $INSTALL_ARCH (current validated images require amd64)" ;; esac
 
 command -v docker >/dev/null 2>&1 || { echo "Docker is required. Install Docker Engine + Compose plugin first." >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose plugin is required." >&2; exit 1; }
+
+# Confirm the exact validated image pair exists before backups, configuration,
+# database cutover, service changes, or any other appliance mutation.
+if [[ "$INSTALL_MODE" == pull ]]; then
+  [[ -d "$SOURCE/.git" ]] || fail "default image installation requires a Git checkout; use --build-local only for deliberate development builds"
+  [[ -z "$(git -C "$SOURCE" status --porcelain --untracked-files=no)" ]] || fail "tracked source has local changes; refusing to pair it with a CI image"
+  SOURCE_COMMIT="$(git -C "$SOURCE" rev-parse HEAD)"
+  [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "unable to resolve the source commit"
+  IMAGE_TAG="sha-${SOURCE_COMMIT}"
+  HUB_IMAGE="ghcr.io/wagnerks1990/roomgoblin:${IMAGE_TAG}"
+  MAINT_IMAGE="ghcr.io/wagnerks1990/roomgoblin-maintenance:${IMAGE_TAG}"
+  IMAGE_WAIT_ATTEMPTS="${CLASSROOM_HUB_IMAGE_WAIT_ATTEMPTS:-60}"
+  [[ "$IMAGE_WAIT_ATTEMPTS" =~ ^[1-9][0-9]*$ && "$IMAGE_WAIT_ATTEMPTS" -le 180 ]] || fail "CLASSROOM_HUB_IMAGE_WAIT_ATTEMPTS must be between 1 and 180"
+  echo "Waiting for validated CI image pair for ${SOURCE_COMMIT} ..."
+  image_pair_ready=false
+  for attempt in $(seq 1 "$IMAGE_WAIT_ATTEMPTS"); do
+    if docker pull "$HUB_IMAGE" && docker pull "$MAINT_IMAGE"; then image_pair_ready=true; break; fi
+    (( attempt < IMAGE_WAIT_ATTEMPTS )) && sleep 10
+  done
+  [[ "$image_pair_ready" == true ]] || fail "validated image pair is unavailable; wait for Publish Main Images to finish or use --build-local for development"
+fi
 command -v openssl >/dev/null 2>&1 || { apt-get update && apt-get install -y openssl; }
 command -v rsync >/dev/null 2>&1 || { apt-get update && apt-get install -y rsync; }
 command -v zip >/dev/null 2>&1 || { apt-get update && apt-get install -y zip unzip; }
@@ -168,7 +191,11 @@ CANONICAL_DB_HOST="$TARGET/data/classroom-control-hub.db"
 if [[ "$CURRENT_DATABASE" != "$CANONICAL_DATABASE" ]]; then
   [[ -f "$CURRENT_DB_HOST" ]] || fail "Configured database $CURRENT_DATABASE does not exist"
   echo "Migrating active SQLite database $(basename "$CURRENT_DB_HOST") to canonical classroom-control-hub.db ..."
-  (cd "$TARGET" && docker compose stop classroom-hub >/dev/null 2>&1) || true
+  EXISTING_CONTAINERS="$(docker ps -a --format '{{.Names}}')" || fail "Cannot inspect Docker before database migration"
+  if grep -qx 'classroom-control-hub' <<<"$EXISTING_CONTAINERS"; then
+    (cd "$TARGET" && docker compose stop classroom-hub) || fail "Cannot stop the running RoomGoblin application for database migration"
+    [[ "$(docker inspect --format '{{.State.Running}}' classroom-control-hub)" == "false" ]] || fail "RoomGoblin is still running; refusing database cutover"
+  fi
   DB_STAGE="$TARGET/data/.classroom-control-hub.db.migrate-$STAMP"
   rm -f "$DB_STAGE"
   sqlite3 "$CURRENT_DB_HOST" ".backup '$DB_STAGE'"
@@ -280,16 +307,7 @@ if [[ "$INSTALL_MODE" == build-local ]]; then
   echo "Development mode: building appliance images locally ..."
   docker compose build classroom-hub maintenance-agent
 else
-  [[ -d "$TARGET/.git" ]] || fail "default image installation requires a Git checkout; use --build-local only for deliberate development builds"
-  [[ -z "$(git -C "$TARGET" status --porcelain --untracked-files=no)" ]] || fail "tracked source has local changes; refusing to pair it with a CI image"
-  SOURCE_COMMIT="$(git -C "$TARGET" rev-parse HEAD)"
-  [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "unable to resolve the source commit"
-  IMAGE_TAG="sha-${SOURCE_COMMIT}"
-  HUB_IMAGE="ghcr.io/wagnerks1990/roomgoblin:${IMAGE_TAG}"
-  MAINT_IMAGE="ghcr.io/wagnerks1990/roomgoblin-maintenance:${IMAGE_TAG}"
-  echo "Pulling validated CI images for ${SOURCE_COMMIT} ..."
-  docker pull "$HUB_IMAGE" || fail "main image is unavailable; wait for Publish Main Images to finish or use --build-local for development"
-  docker pull "$MAINT_IMAGE" || fail "maintenance image is unavailable; wait for Publish Main Images to finish or use --build-local for development"
+  echo "Using preflighted validated CI images for ${SOURCE_COMMIT} ..."
   set_env_path CLASSROOM_CONTROL_HUB_TAG "$IMAGE_TAG"
   export CLASSROOM_CONTROL_HUB_TAG="$IMAGE_TAG"
 fi

@@ -33,7 +33,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Validate application and browser syntax
         run: npm run check
       - name: Install locked maintenance dependencies
@@ -41,7 +41,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Audit maintenance production dependencies
         working-directory: maintenance-agent
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Validate maintenance syntax
         run: |
           node --check maintenance-agent/server.js
@@ -51,6 +51,8 @@ jobs:
         run: node tools/validate-controller.js
       - name: Run stabilization regression tests
         run: npm test
+      - name: Verify executable Full Recovery Export contract
+        run: node --test test/full-recovery-export.test.js
       - name: Validate host agent Python
         run: python -m py_compile host-agent/server.py host-agent/start.py
       - name: Validate installer shell syntax

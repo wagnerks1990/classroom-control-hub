@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, timezone
 
-VERSION = "1.0.0-alpha.74"
+VERSION = "1.0.0-alpha.79"
 SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-control-hub/host-agent.sock")
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
 
@@ -135,6 +135,28 @@ DOCKER_NAME_RE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
 MANAGED_CONTAINERS={'classroom-control-hub','classroom-control-hub-maintenance','classroom-control-hub-tls','mosquitto','govee2mqtt','music-assistant-server','nodered','portainer'}
 MANAGED_IMAGES={'eclipse-mosquitto:2.0.22','ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72','nodered/node-red:4.1.14-22','ghcr.io/music-assistant/server:2.9.13'}
 
+def normalize_restored_data(body):
+    if str(body.get('confirm') or '')!='NORMALIZE_RESTORED_DATA': raise RuntimeError('Explicit NORMALIZE_RESTORED_DATA confirmation required')
+    state=run(['docker','inspect','--format','{{.State.Running}}','classroom-control-hub'],10,False)
+    if state.returncode!=0: raise RuntimeError('RoomGoblin container state could not be verified before recovery ownership repair')
+    if state.stdout.strip()!='false': raise RuntimeError('RoomGoblin must be stopped before recovery ownership repair')
+    data_root=HUB_ROOT/'data'
+    if not data_root.is_dir() or data_root.is_symlink(): raise RuntimeError('RoomGoblin data root is missing or unsafe')
+    targets=[]
+    def inspect_tree(target):
+        if target==data_root/'android-tv'/'.android': return
+        if target.is_symlink(): raise RuntimeError(f'Symbolic links are not permitted in restored data: {target}')
+        targets.append(target)
+        if target.is_dir():
+            for child in target.iterdir(): inspect_tree(child)
+    for child in data_root.iterdir():
+        if child.name!='backups': inspect_tree(child)
+    for target in reversed(targets):
+        os.chown(target,10001,10001); os.chmod(target,0o770 if target.is_dir() else 0o660)
+    os.chown(data_root,0,10001); os.chmod(data_root,0o770)
+    backups=data_root/'backups'; backups.mkdir(exist_ok=True); os.chown(backups,0,10001); os.chmod(backups,0o700)
+    return {'ok':True,'normalized':len(targets)}
+
 def allowed_managed_path(value):
     source=str(value).split(':',1)[0]
     try: resolved=Path(source).resolve(strict=False)
@@ -239,7 +261,7 @@ def start_app_update_job(body):
     commit=run(['git','-C',str(HUB_ROOT),'rev-parse','HEAD'],20).stdout.strip()
     try: version=(HUB_ROOT/'VERSION').read_text().strip()
     except Exception: version=''
-    request={"action":action,"targetRef":"","targetCommit":"","expectedVersion":"","rollbackCommit":commit,"rollbackVersion":version,"backupName":str(body.get('backupName') or ''),"backupSha256":str(body.get('backupSha256') or ''),"failureBackupName":str(body.get('failureBackupName') or body.get('backupName') or ''),"failureBackupSha256":str(body.get('failureBackupSha256') or body.get('backupSha256') or ''),"previousHubImage":"","previousMaintenanceImage":"","githubToken":str(body.get('githubToken') or '')}
+    request={"action":action,"targetRef":"","targetCommit":"","expectedVersion":"","rollbackCommit":commit,"rollbackVersion":version,"rollbackHubImage":"","rollbackMaintenanceImage":"","rollbackImageTag":"","backupName":str(body.get('backupName') or ''),"backupSha256":str(body.get('backupSha256') or ''),"failureBackupName":str(body.get('failureBackupName') or body.get('backupName') or ''),"failureBackupSha256":str(body.get('failureBackupSha256') or body.get('backupSha256') or ''),"previousHubImage":"","previousMaintenanceImage":"","previousImageTag":"","githubToken":str(body.get('githubToken') or '')}
     if len(request['githubToken'])>1000: raise RuntimeError('GitHub token is too long')
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',request['backupName']): raise RuntimeError('A valid pre-update backup is required')
     if not re.fullmatch(r'[0-9a-f]{64}',request['backupSha256']): raise RuntimeError('A valid pre-update backup checksum is required')
@@ -262,8 +284,10 @@ def start_app_update_job(body):
         if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',failure_backup): raise RuntimeError('A valid pre-revert backup is required')
         if not re.fullmatch(r'[0-9a-f]{64}',failure_backup_sha): raise RuntimeError('A valid pre-revert backup checksum is required')
         hub_image=str(current.get('previousHubImage') or ''); maintenance_image=str(current.get('previousMaintenanceImage') or '')
+        image_tag=str(current.get('previousImageTag') or f"recovery-{commit[:12]}")
         if not re.fullmatch(r'sha256:[0-9a-f]{64}',hub_image) or not re.fullmatch(r'sha256:[0-9a-f]{64}',maintenance_image): raise RuntimeError('The immutable rollback images are no longer available')
-        request.update({"targetCommit":commit,"expectedVersion":version,"backupName":backup,"backupSha256":backup_sha,"failureBackupName":failure_backup,"failureBackupSha256":failure_backup_sha,"previousHubImage":hub_image,"previousMaintenanceImage":maintenance_image})
+        if not re.fullmatch(r'[A-Za-z0-9._-]{1,180}',image_tag): raise RuntimeError('The previous image tag is unavailable')
+        request.update({"targetCommit":commit,"expectedVersion":version,"backupName":backup,"backupSha256":backup_sha,"failureBackupName":failure_backup,"failureBackupSha256":failure_backup_sha,"previousHubImage":hub_image,"previousMaintenanceImage":maintenance_image,"previousImageTag":image_tag})
     APP_UPDATE_REQUEST_FILE.parent.mkdir(parents=True,exist_ok=True)
     temp=APP_UPDATE_REQUEST_FILE.with_suffix('.tmp'); temp.write_text(json.dumps(request,indent=2)); os.chmod(temp,0o600); temp.replace(APP_UPDATE_REQUEST_FILE)
     p=run(['systemctl','start','--no-block',APP_UPDATE_SERVICE],20,False)
@@ -405,6 +429,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(202,start_app_update_job({**body,"action":"revert"}))
             if path=='/docker/exec':
                 body=self.body(); return self.send_json(200,managed_docker(body.get('args'),str(body.get('cwd') or '')))
+            if path=='/recovery/normalize-data':
+                return self.send_json(200,normalize_restored_data(self.body()))
             if path=='/cleanup/migration-retention':
                 body=self.body()
                 if str(body.get('confirm') or '')!='PRUNE_MIGRATIONS': return self.send_json(400,{"ok":False,"error":"Explicit PRUNE_MIGRATIONS confirmation required"})

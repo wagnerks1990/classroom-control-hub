@@ -7,9 +7,9 @@ This file is maintainer/AI context for Android managed-display work.
 - Managed-display inventory is durable even when ADB is offline.
 - Routine lifecycle operations must never require direct edits to `data/android-tv/devices.json`.
 - `Disable enrollment` preserves the record and prevents automated policy application because the policy loop filters `enabled !== false`.
-- `Remove from Hub` deletes only the selected enrollment record. It must not uninstall `org.roomgoblin.display`, factory-reset Android, delete the shared Android data directory, or affect other Classroom Hub data.
+- `Remove from Hub` deletes only the selected enrollment record. It must not uninstall `org.roomgoblin.display`, factory-reset Android, delete the shared Android data directory, or affect other RoomGoblin data.
 - Device Agent v2 credentials are part of the enrollment record and disappear when that record is removed.
-- A factory-reset/re-enrolled physical TV may legitimately have a new Classroom Hub record; stale records should be explicitly removed.
+- A factory-reset/re-enrolled physical TV may legitimately have a new RoomGoblin record; stale records should be explicitly removed.
 
 ## Onn Android 14 validation findings
 

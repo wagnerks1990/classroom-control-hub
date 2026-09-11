@@ -11,6 +11,7 @@ header{position:sticky;top:0;z-index:10;background:#0b1015ee;border-bottom:1px s
 h1{margin:0;font-size:22px}.muted{color:var(--muted)}.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 button,input,select{font:inherit;color:var(--text);background:#18232d;border:1px solid #3a4a56;border-radius:9px;padding:9px 11px}
 button{cursor:pointer}button:hover{border-color:#698075}.primary{background:#1c6038;border-color:#2b8952}.danger{background:#622727;border-color:#8f3a3a}.warn{background:#594716;border-color:#7d6722}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--green);outline-offset:2px}
 main{padding:14px}.status{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.pill{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .thumb{aspect-ratio:16/9;background:#06090c;display:flex;align-items:center;justify-content:center;position:relative}.thumb img{width:100%;height:100%;object-fit:contain}.badge{position:absolute;top:8px;left:8px;padding:4px 7px;border-radius:999px;background:#000b;font-size:12px}.online{color:var(--green)}.offline{color:var(--red)}.roleTeacher{color:#8ec5ff}.roleStudent{color:#a6e3b4}
@@ -58,6 +59,7 @@ main{padding:14px}.status{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12p
 }
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.grow{flex:1;min-width:180px}
 @media(max-width:600px){.grid{grid-template-columns:1fr}header{position:static}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 
 .featureOn{color:var(--green);font-weight:700}.featureOff{color:var(--muted)}
 .notice{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#101820;margin-top:8px}
@@ -148,7 +150,7 @@ function render(){
   $('grid').innerHTML=visibleComputers().map(c=>`
     <article class="card">
       <div class="thumb">
-        <input class="check" type="checkbox" data-select="${esc(c.id)}" ${selected.has(c.id)?'checked':''}>
+        <input class="check" type="checkbox" data-select="${esc(c.id)}" aria-label="Select ${esc(c.name||c.hostname||c.ip)}" ${selected.has(c.id)?'checked':''}>
         <span class="badge ${c.online?'online':'offline'}">${c.online?'ONLINE':'OFFLINE'}</span>
         ${c.online&&c.authenticated
           ?`<img data-thumb="${esc(c.id)}" alt="Live thumbnail" style="opacity:.35"><span class="muted thumbStatus" data-thumb-status="${esc(c.id)}">Loading screen…</span>`

@@ -48,7 +48,7 @@
       </div>
       <h4 style="margin:14px 0 4px">Computer Discovery & Connection Pool</h4>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-        ${field({key:"scanSubnet",label:"Scan subnet prefix",value:cfg.scanSubnet||"",placeholder:"172.16.127",help:"Optional. Existing database computers do not require a fresh scan.",scope})}
+        ${field({key:"scanSubnet",label:"Scan subnet prefix",value:cfg.scanSubnet||"",placeholder:"192.0.2",help:"Optional. Existing database computers do not require a fresh scan.",scope})}
         ${field({key:"scanStart",label:"Scan start",type:"number",value:cfg.scanStart??1,scope})}
         ${field({key:"scanEnd",label:"Scan end",type:"number",value:cfg.scanEnd??254,scope})}
         ${field({key:"poolMax",label:"Connection pool maximum",type:"number",value:cfg.poolMax??24,scope})}

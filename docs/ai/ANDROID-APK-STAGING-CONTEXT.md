@@ -4,7 +4,7 @@ Treat the Android display APK permission model as a security invariant.
 
 ## Known physical failure
 
-On the validated Classroom Hub appliance, `RoomGoblin-Display-Agent.apk` could exist at `/managed/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.apk` with host ownership `10001:10001` and mode `0660`, yet `adb install` from the hardened maintenance container failed with `Permission denied` because container root has `cap_drop: ALL` and did not belong to shared GID `10001`.
+On the validated RoomGoblin appliance, `RoomGoblin-Display-Agent.apk` could exist at `/managed/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.apk` with host ownership `10001:10001` and mode `0660`, yet `adb install` from the hardened maintenance container failed with `Permission denied` because container root has `cap_drop: ALL` and did not belong to shared GID `10001`.
 
 ## Required design
 

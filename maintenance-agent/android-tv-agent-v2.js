@@ -6,7 +6,7 @@ const {execFile}=require("child_process");
 const {promisify}=require("util");
 const execFileAsync=promisify(execFile);
 const {STORE}=require("./android-tv-extension");
-const {cleanPackage,cleanPort}=require("./android-tv-lib");
+const {cleanPackage,cleanPort,publicDevice}=require("./android-tv-lib");
 
 const ROOT=process.env.ANDROID_TV_DATA_ROOT||"/managed/classroom-hub/data/android-tv";
 const ADB=String(process.env.ADB_BIN||"adb");
@@ -14,7 +14,14 @@ const originalListen=express.application.listen;
 let installed=false;
 
 function env(){return {...process.env,HOME:ROOT,ANDROID_USER_HOME:ROOT}}
-async function adb(args,timeout=30000){try{return await execFileAsync(ADB,args,{timeout,maxBuffer:8*1024*1024,env:env()})}catch(error){const e=Error(String(error.stderr||error.stdout||error.message||"ADB command failed").trim());e.code=error.code;throw e}}
+function safeAdbError(error,sensitiveValues=[]){
+  // child_process error.message can contain the complete argv. Never use it in
+  // an HTTP-facing error, and scrub credentials if adb itself echoed them.
+  let message=String(error?.stderr||error?.stdout||"").trim()||"ADB command failed";
+  for(const value of sensitiveValues){const secret=String(value||"");if(secret)message=message.split(secret).join("[REDACTED]")}
+  const e=Error(message);e.code=error?.code;return e;
+}
+async function adb(args,timeout=30000,sensitiveValues=[]){try{return await execFileAsync(ADB,args,{timeout,maxBuffer:8*1024*1024,env:env()})}catch(error){throw safeAdbError(error,sensitiveValues)}}
 function route(fn){return (req,res)=>Promise.resolve(fn(req,res)).catch(error=>res.status(error.status||500).json({ok:false,error:error.message}))}
 function device(id){const d=STORE.getDevice(id);if(!d){const e=Error("Managed Android display not found");e.status=404;throw e}return d}
 function token(){return crypto.randomBytes(32).toString("hex")}
@@ -35,7 +42,7 @@ async function configure(d,body={}){
   const url=String(body.displayUrl||d.displayUrl||"").trim();if(!/^https?:\/\//i.test(url)){const e=Error("A valid HTTP(S) display URL is required");e.status=400;throw e}
   const persistentAdb=d.persistentAdb?.enabled===true;
   const targetAdbPort=cleanPort(d.persistentAdb?.targetPort||5555);
-  await adb(["-s",d.serial,"shell","am","broadcast","-a","org.roomgoblin.display.CONFIGURE","-p",pkg,"--es","display_url",url,"--ez","agent_enabled","true","--ei","agent_port",String(port),"--es","agent_token",agentToken,"--ez","persistent_adb",String(persistentAdb),"--ei","target_adb_port",String(targetAdbPort)],20000);
+  await adb(["-s",d.serial,"shell","am","broadcast","-a","org.roomgoblin.display.CONFIGURE","-p",pkg,"--es","display_url",url,"--ez","agent_enabled","true","--ei","agent_port",String(port),"--es","agent_token",agentToken,"--ez","persistent_adb",String(persistentAdb),"--ei","target_adb_port",String(targetAdbPort)],20000,[agentToken]);
   const updated=STORE.upsertDevice({...d,displayUrl:url,agentPackage:pkg,agentV2:{enabled:true,port,token:agentToken,configuredAt:new Date().toISOString()}});
   return updated;
 }
@@ -58,14 +65,14 @@ function lifecycle(d,action){
 }
 
 function installRoutes(app){if(installed)return;installed=true;
-  app.post("/android/devices/:id/agent/v2/configure",route(async(req,res)=>{const updated=await configure(device(req.params.id),req.body||{});res.json({ok:true,device:{...updated,agentV2:{...updated.agentV2,token:"configured"}},message:"Device Agent v2 configured. The token remains server-side."})}));
+  app.post("/android/devices/:id/agent/v2/configure",route(async(req,res)=>{const updated=await configure(device(req.params.id),req.body||{});res.json({ok:true,device:publicDevice(updated),message:"Device Agent v2 configured. The token remains server-side."})}));
   app.get("/android/devices/:id/agent/v2/status",route(async(req,res)=>{const d=device(req.params.id);const status=await agentFetch(d,"/v1/status",{timeout:8000});res.json({ok:true,transport:"agent-http",deviceId:d.id,status})}));
   app.get("/android/devices/:id/agent/v2/capabilities",route(async(req,res)=>{const d=device(req.params.id);const capabilities=await agentFetch(d,"/v1/capabilities",{timeout:8000});res.json({ok:true,transport:"agent-http",deviceId:d.id,capabilities})}));
   app.post("/android/devices/:id/agent/v2/action",route(async(req,res)=>{const d=device(req.params.id);const result=await agentFetch(d,"/v1/action",{method:"POST",body:req.body||{},timeout:Number(req.body?.timeoutMs||10000)});res.json({ok:true,transport:"agent-http",deviceId:d.id,result})}));
   app.get("/android/devices/:id/agent/v2/health",route(async(req,res)=>{const d=device(req.params.id);try{const status=await agentFetch(d,"/v1/status",{timeout:3000});res.json({ok:true,reachable:true,transport:"agent-http",status})}catch(error){res.status(503).json({ok:false,reachable:false,error:error.message})}}));
   app.post("/android/devices/:id/agent/v2/device-admin/activate",route(async(req,res)=>{const d=device(req.params.id);const result=await activateDeviceAdmin(d);res.json({ok:true,deviceId:d.id,requiresUserConfirmation:true,...result})}));
-  app.post("/android/devices/:id/lifecycle",route(async(req,res)=>{const d=device(req.params.id);const result=lifecycle(d,String(req.body?.action||"").trim().toLowerCase());res.json({ok:true,...result})}));
+  app.post("/android/devices/:id/lifecycle",route(async(req,res)=>{const d=device(req.params.id);const result=lifecycle(d,String(req.body?.action||"").trim().toLowerCase());res.json({ok:true,...result,device:publicDevice(result.device)})}));
 }
 
 express.application.listen=function(...args){installRoutes(this);return originalListen.apply(this,args)};
-module.exports={installRoutes,configure,agentFetch,activateDeviceAdmin,lifecycle};
+module.exports={installRoutes,configure,agentFetch,activateDeviceAdmin,lifecycle,safeAdbError};

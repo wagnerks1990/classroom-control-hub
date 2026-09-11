@@ -2,7 +2,7 @@
 
 ## Current renderer policy
 
-Renderer revision `single-fit-20260909-3` corrects the September 9 display-size regression.
+Renderer revision `single-fit-20260911-5` includes the September 11 stale-stylesheet containment fix.
 
 The TV renderer still uses one fixed 1920x1080 logical canvas. TV resolution and DPR only scale the finished canvas; they do not choose independent font sizes.
 
@@ -19,12 +19,12 @@ The timer continues to reserve its own logical band so timer updates cannot shif
 
 ## After updating
 
-Rebuild/recreate the Classroom Control Hub service and reload open receiver pages. In the receiver console run:
+Rebuild/recreate the RoomGoblin service and reload open receiver pages. In the receiver console run:
 
 ```js
 JSON.stringify(window.ClassroomDisplayDiagnostics(), null, 2)
 ```
 
-Confirm `revision` is `single-fit-20260909-3`, text regions do not overlap, and the timer border wraps only the timer content.
+Confirm `revision` is `single-fit-20260911-5`, text regions do not overlap, and the timer border wraps only the timer content.
 
 See `docs/DISPLAY-SIZING-RECOVERY.md` and `docs/DISPLAY-LAYOUT-CONTRACT.md` in the repository for the engineering contract and verification details.

@@ -1,6 +1,6 @@
 # Android Agent Artifact Pipeline
 
-Classroom Hub builds the Android/Google TV Display Agent from the same source revision as the appliance instead of trusting an old manually copied APK.
+RoomGoblin builds the Android/Google TV Display Agent from the same source revision as the appliance instead of trusting an old manually copied APK.
 
 ## What happens during an update
 
@@ -21,13 +21,13 @@ Each appliance keeps its persistent Android signing identity under:
 
 Do not delete this directory on a deployed appliance. Android requires future in-place APK updates to use the same signing identity.
 
-The signing material is not stored in Git and is not mounted into the main Classroom Hub application container. Only the maintenance service gets the signing mount required to stage the APK.
+The signing material is not stored in Git and is not mounted into the main RoomGoblin application container. Only the maintenance service gets the signing mount required to stage the APK.
 
 ## First upgrade from older agents
 
 An older device may have a Display Agent signed by a temporary debug/CI key. Android can reject the first update to the appliance-managed signing identity.
 
-When Classroom Hub detects that exact signature mismatch, Managed Displays asks for explicit confirmation before replacing only `org.roomgoblin.display`. After replacement it restores the saved display URL, Agent v2 configuration and, when Persistent ADB is enabled, the trusted `WRITE_SECURE_SETTINGS` grant.
+When RoomGoblin detects that exact signature mismatch, Managed Displays asks for explicit confirmation before replacing only `org.roomgoblin.display`. After replacement it restores the saved display URL, Agent v2 configuration and, when Persistent ADB is enabled, the trusted `WRITE_SECURE_SETTINGS` grant.
 
 This should be a one-time transition. Later APKs staged by the same appliance use the persistent signing identity and should upgrade normally.
 
