@@ -4435,10 +4435,13 @@ function managedIntegrationsView({resolved=false}={}){
   return value;
 }
 app.get("/api/v1/internal/maintenance/status",requireMaintenanceAgent,(_req,res)=>{
-  const total=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;
-  const first=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at ASC LIMIT 1").get()?.at||null;
-  const last=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at DESC LIMIT 1").get()?.at||null;
-  res.json({ok:true,database:dbStore.databaseInfo(),audit:{total,first,last}});
+  try{
+    const total=dbStore.db.prepare("SELECT COUNT(*) c FROM audit_events").get().c;
+    const first=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at ASC LIMIT 1").get()?.at||null;
+    const last=dbStore.db.prepare("SELECT at FROM audit_events ORDER BY at DESC LIMIT 1").get()?.at||null;
+    const secrets=dbStore.listSecrets();for(const secret of secrets)dbStore.getSecret(secret.name,{asBuffer:true});
+    res.json({ok:true,database:dbStore.databaseInfo(),audit:{total,first,last},secretDecryption:{ok:true,checked:secrets.length}});
+  }catch(error){res.status(503).json({ok:false,error:`Database recovery validation failed: ${error.message}`,secretDecryption:{ok:false}})}
 });
 app.post("/api/v1/internal/maintenance/audit/prune",requireMaintenanceAgent,(req,res)=>{
   if(req.body?.confirm!==true)return res.status(400).json({ok:false,error:"Confirmation required"});

@@ -135,6 +135,28 @@ DOCKER_NAME_RE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
 MANAGED_CONTAINERS={'classroom-control-hub','classroom-control-hub-maintenance','classroom-control-hub-tls','mosquitto','govee2mqtt','music-assistant-server','nodered','portainer'}
 MANAGED_IMAGES={'eclipse-mosquitto:2.0.22','ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72','nodered/node-red:4.1.14-22','ghcr.io/music-assistant/server:2.9.13'}
 
+def normalize_restored_data(body):
+    if str(body.get('confirm') or '')!='NORMALIZE_RESTORED_DATA': raise RuntimeError('Explicit NORMALIZE_RESTORED_DATA confirmation required')
+    state=run(['docker','inspect','--format','{{.State.Running}}','classroom-control-hub'],10,False)
+    if state.returncode!=0: raise RuntimeError('RoomGoblin container state could not be verified before recovery ownership repair')
+    if state.stdout.strip()!='false': raise RuntimeError('RoomGoblin must be stopped before recovery ownership repair')
+    data_root=HUB_ROOT/'data'
+    if not data_root.is_dir() or data_root.is_symlink(): raise RuntimeError('RoomGoblin data root is missing or unsafe')
+    targets=[]
+    def inspect_tree(target):
+        if target==data_root/'android-tv'/'.android': return
+        if target.is_symlink(): raise RuntimeError(f'Symbolic links are not permitted in restored data: {target}')
+        targets.append(target)
+        if target.is_dir():
+            for child in target.iterdir(): inspect_tree(child)
+    for child in data_root.iterdir():
+        if child.name!='backups': inspect_tree(child)
+    for target in reversed(targets):
+        os.chown(target,10001,10001); os.chmod(target,0o770 if target.is_dir() else 0o660)
+    os.chown(data_root,0,10001); os.chmod(data_root,0o770)
+    backups=data_root/'backups'; backups.mkdir(exist_ok=True); os.chown(backups,0,10001); os.chmod(backups,0o700)
+    return {'ok':True,'normalized':len(targets)}
+
 def allowed_managed_path(value):
     source=str(value).split(':',1)[0]
     try: resolved=Path(source).resolve(strict=False)
@@ -407,6 +429,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(202,start_app_update_job({**body,"action":"revert"}))
             if path=='/docker/exec':
                 body=self.body(); return self.send_json(200,managed_docker(body.get('args'),str(body.get('cwd') or '')))
+            if path=='/recovery/normalize-data':
+                return self.send_json(200,normalize_restored_data(self.body()))
             if path=='/cleanup/migration-retention':
                 body=self.body()
                 if str(body.get('confirm') or '')!='PRUNE_MIGRATIONS': return self.send_json(400,{"ok":False,"error":"Explicit PRUNE_MIGRATIONS confirmation required"})

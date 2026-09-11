@@ -35,6 +35,9 @@
   public examples and regression fixtures.
 - Completed current-surface RoomGoblin naming while retaining documented
   compatibility identifiers required by installed appliances and endpoints.
+- Added a database-first, single-export recovery acceptance contract with an
+  explicit alpha.79 boundary; clean-host full import and Android-inventory
+  migration remain future work and are not presented as implemented.
 
 ## 1.0.0-alpha.78 - 2026-09-11
 

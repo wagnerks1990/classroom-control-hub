@@ -53,6 +53,7 @@ test("maintenance backups and restores enforce private files and reject link tra
   assert.match(source,/fs\.chmodSync\(dest,0o600\)/);
   assert.match(source,/restoreModes/);
   assert.match(source,/restore-journal\.json/);
-  assert.match(source,/fs\.lchownSync/);
+  assert.match(source,/Symbolic links are not permitted in recovery targets/);
+  assert.match(source,/\/recovery\/normalize-data/);
   assert.doesNotMatch(source,/zip\.writeZip\(dest\)/);
 });

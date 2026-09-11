@@ -6,7 +6,7 @@ const fs=require("node:fs");
 const os=require("node:os");
 const path=require("node:path");
 const AdmZip=require("adm-zip");
-const {diagnosticBackupEntryAllowed,backupContainsSensitiveData,diagnosticSupportDocuments}=require("../maintenance-agent/backup-policy");
+const {diagnosticBackupEntryAllowed,backupContainsSensitiveData,diagnosticSupportDocuments,fullRecoveryEntryAllowed,archiveInventory,verifyArchiveInventory,parseMasterKey}=require("../maintenance-agent/backup-policy");
 const {publicDevice}=require("../maintenance-agent/android-tv-lib");
 
 function filesUnder(root,prefix){
@@ -65,6 +65,65 @@ test("only the explicit diagnostic scope is classified support-safe",()=>{
   }
 });
 
+test("portable full recovery uses an exact runtime-state allowlist",()=>{
+  for(const name of [
+    "classroom-hub/data/classroom-control-hub.db",
+    "classroom-hub/data/media/lesson.mp4",
+    "classroom-hub/data/android-tv/.android/adbkey",
+    "classroom-hub/data/android-tv/devices.json",
+    "services/music-assistant/state.db",
+    "recovery-secrets/classroom-hub-master.key",
+    "recovery-secrets/android-agent-signing/android-agent/RoomGoblin-Display-Agent.keystore",
+    "recovery-secrets/android-agent-signing/android-agent/password"
+  ])assert.equal(fullRecoveryEntryAllowed(name,false),true,name);
+  for(const name of [
+    "classroom-hub/.env","classroom-hub/package.json","classroom-hub/src/server.js",
+    "classroom-hub/data/state.json","classroom-hub/data/sessions.json",
+    "classroom-hub/data/backups/nested.zip","classroom-hub/data/legacy/stale.json",
+    "services/unmanaged/state.db","services/mosquitto/log/private.log",
+    "recovery-secrets/android-agent-signing/unreviewed.txt","../escape"
+  ])assert.equal(fullRecoveryEntryAllowed(name,false),false,name);
+});
+
+test("portable recovery inventory rejects changed, extra, and colliding payloads",()=>{
+  const zip=new AdmZip();
+  zip.addFile("classroom-hub/data/classroom-control-hub.db",Buffer.from("consistent snapshot"));
+  zip.addFile("recovery-secrets/classroom-hub-master.key",Buffer.alloc(32,7));
+  const files=archiveInventory(zip.getEntries()),manifest={version:5,scope:"full",integrityAlgorithm:"sha256",files};
+  zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify(manifest)));
+  assert.deepEqual(verifyArchiveInventory(zip.getEntries(),manifest),files);
+
+  const changed=new AdmZip();
+  changed.addFile("classroom-hub/data/classroom-control-hub.db",Buffer.from("tampered snapshot"));
+  changed.addFile("recovery-secrets/classroom-hub-master.key",Buffer.alloc(32,7));
+  changed.addFile("backup-manifest.json",Buffer.from(JSON.stringify(manifest)));
+  assert.throws(()=>verifyArchiveInventory(changed.getEntries(),manifest),/integrity check failed/);
+
+  const extra=new AdmZip();
+  extra.addFile("classroom-hub/data/classroom-control-hub.db",Buffer.from("consistent snapshot"));
+  extra.addFile("recovery-secrets/classroom-hub-master.key",Buffer.alloc(32,7));
+  extra.addFile("classroom-hub/package.json",Buffer.from("unreviewed"));
+  extra.addFile("backup-manifest.json",Buffer.from(JSON.stringify(manifest)));
+  assert.throws(()=>verifyArchiveInventory(extra.getEntries(),manifest),/Unexpected portable recovery entry/);
+
+  const fake=data=>({entryName:"classroom-hub/data/media/ROOM.txt",isDirectory:false,getData:()=>Buffer.from(data)});
+  assert.throws(()=>verifyArchiveInventory([fake("one"),{...fake("two"),entryName:"classroom-hub/data/media/room.txt"}],{...manifest,files:[]}),/duplicate or case-colliding/);
+
+  const missingKey=new AdmZip();
+  missingKey.addFile("classroom-hub/data/classroom-control-hub.db",Buffer.from("consistent snapshot"));
+  const incomplete={version:5,scope:"full",integrityAlgorithm:"sha256",files:archiveInventory(missingKey.getEntries())};
+  missingKey.addFile("backup-manifest.json",Buffer.from(JSON.stringify(incomplete)));
+  assert.throws(()=>verifyArchiveInventory(missingKey.getEntries(),incomplete),/missing indispensable entry: recovery-secrets\/classroom-hub-master\.key/);
+});
+
+test("portable recovery master keys are canonicalized and invalid keys fail closed",()=>{
+  const key=Buffer.alloc(32,0xab);
+  assert.deepEqual(parseMasterKey(key),key);
+  assert.deepEqual(parseMasterKey(Buffer.from(`${key.toString("hex")}\n`)),key);
+  assert.deepEqual(parseMasterKey(Buffer.from(`${key.toString("base64")}\n`)),key);
+  assert.throws(()=>parseMasterKey(Buffer.from("MASTER_KEY_SENTINEL")),/exactly 32 bytes/);
+});
+
 test("public Android device serialization never exposes the Device Agent token",()=>{
   const token="a".repeat(64);
   const stored={id:"display-1",name:"Room 101",agentV2:{enabled:true,port:8765,token,configuredAt:"2026-01-01T00:00:00.000Z"}};
@@ -116,4 +175,14 @@ test("maintenance image and UI use the centralized backup and response policies"
   assert.doesNotMatch(server,/zip\.addFile\(`logs\//);
   assert.match(ui,/Sensitive recovery data/);
   assert.match(ui,/downloadManagedBackup/);
+});
+
+test("restore ownership repair is host-bounded and cannot mutate the recovery master key",()=>{
+  const root=path.join(__dirname,".."),host=fs.readFileSync(path.join(root,"host-agent/server.py"),"utf8"),compose=fs.readFileSync(path.join(root,"docker-compose.yml"),"utf8");
+  assert.match(host,/\/recovery\/normalize-data/);
+  assert.match(host,/NORMALIZE_RESTORED_DATA/);
+  assert.match(host,/RoomGoblin must be stopped before recovery ownership repair/);
+  assert.match(host,/for child in data_root\.iterdir\(\)/);
+  assert.doesNotMatch(host,/\/recovery\/(?:master-key|apply-host-state)/);
+  assert.doesNotMatch(compose,/cap_add:\s*\n\s*- CHOWN/);
 });

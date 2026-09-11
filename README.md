@@ -218,6 +218,7 @@ Start with:
 - [`GITHUB-MIGRATION.md`](GITHUB-MIGRATION.md) — Git migration and update workflow
 - [`docs/README.md`](docs/README.md) — documentation index
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — current HTTP-only deployment model
+- [`docs/DATABASE-FIRST-RECOVERY.md`](docs/DATABASE-FIRST-RECOVERY.md) — future one-export recovery acceptance contract and current implementation boundary
 - [`docs/ROOMGOBLIN-REBRAND.md`](docs/ROOMGOBLIN-REBRAND.md) — rebrand scope and compatibility contract
 - [`docs/brand/BRAND-GUIDE.md`](docs/brand/BRAND-GUIDE.md) — authoritative visual and verbal identity
 - [`docs/brand/AI-BRAND-CONTEXT.md`](docs/brand/AI-BRAND-CONTEXT.md) — machine/assistant branding rules
