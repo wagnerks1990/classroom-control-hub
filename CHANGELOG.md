@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-alpha.76 - 2026-09-11
+
+- Fixed Morning Announcements live detection by passing protected Managed Display Gateway configuration into the Hub container.
+- Report unreachable HLS probes as UNKNOWN instead of incorrectly presenting them as OFFLINE.
+- Prevent successful periodic probes from rebuilding an already-playing announcement every 30 seconds.
+- Changed production installation to pull the exact validated `sha-<commit>` images published by GitHub Actions instead of compiling on the appliance.
+- Changed web-managed semantic releases to pull their matching immutable GHCR tags while preserving exact retained-image rollback.
+- Kept local Docker/Gradle compilation behind the explicit `install.sh --build-local` development option.
+
 ## 1.0.0-alpha.74 - 2026-09-10
 
 - Stopped the installer and application updater from changing executable bits on tracked scripts inside the production Git checkout.
