@@ -28,7 +28,8 @@
         </intent>
     </queries>
 
-    <application android:allowBackup="false" android:usesCleartextTraffic="true" android:label="Classroom Hub Display" android:theme="@android:style/Theme.Material.NoActionBar">
+    <!-- Package namespace remains org.classroomhub.display for upgrade compatibility. -->
+    <application android:allowBackup="false" android:usesCleartextTraffic="true" android:label="RoomGoblin Display" android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -47,19 +48,19 @@
             android:foregroundServiceType="specialUse|mediaPlayback">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Persistent classroom display management, kiosk recovery, native Sendspin audio playback, and local administrator control on managed Android TV devices." />
+                android:value="Persistent RoomGoblin display management, kiosk recovery, native Sendspin audio playback, and local administrator control on managed Android TV devices." />
         </service>
 
         <service
             android:name=".AgentAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true"
-            android:label="Classroom Hub control fallback">
+            android:label="RoomGoblin control fallback">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/agent_accessibility_service" />
         </service>
 
-        <receiver android:name=".AgentDeviceAdminReceiver" android:permission="android.permission.BIND_DEVICE_ADMIN" android:exported="true" android:label="Classroom Hub device administration">
+        <receiver android:name=".AgentDeviceAdminReceiver" android:permission="android.permission.BIND_DEVICE_ADMIN" android:exported="true" android:label="RoomGoblin device administration">
             <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
             <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
         </receiver>
