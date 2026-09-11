@@ -69,6 +69,11 @@ cat VERSION
 sudo bash install.sh
 ```
 
+The production installer resolves the checked-out commit and pulls both matching
+`sha-<commit>` images. It fails without replacing running containers if those
+validated artifacts are not available. Local compilation is development-only and
+requires the explicit `sudo bash install.sh --build-local` option.
+
 Development rebuild after a valid installation:
 
 ```bash
