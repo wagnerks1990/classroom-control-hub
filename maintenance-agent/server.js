@@ -74,19 +74,19 @@ app.get("/system",async(_req,res)=>{
 });
 
 const APPLIANCE_CONTAINER_POLICY={
-  "classroom-hub":{owner:"core",recommendation:"keep",purpose:"Classroom Control Hub application"},
-  "classroom-control-hub-maintenance":{owner:"core",recommendation:"keep",purpose:"Classroom Control Hub privileged maintenance agent"},
-  "mosquitto":{owner:"integration",recommendation:"adopt",purpose:"MQTT broker used by Classroom Control Hub"},
+  "classroom-hub":{owner:"core",recommendation:"keep",purpose:"RoomGoblin application"},
+  "classroom-control-hub-maintenance":{owner:"core",recommendation:"keep",purpose:"RoomGoblin privileged maintenance agent"},
+  "mosquitto":{owner:"integration",recommendation:"adopt",purpose:"MQTT broker used by RoomGoblin"},
   "govee2mqtt":{owner:"integration",recommendation:"adopt",purpose:"Govee lighting integration"},
   "music-assistant-server":{owner:"integration",recommendation:"integrate",purpose:"Classroom audio/media service"},
-  "portainer":{owner:"legacy-admin",recommendation:"optional-remove",purpose:"Docker UI now duplicated by Classroom Control Hub"},
+  "portainer":{owner:"legacy-admin",recommendation:"optional-remove",purpose:"Docker UI now duplicated by RoomGoblin"},
   "nodered":{owner:"optional",recommendation:"optional-remove",purpose:"Optional external automation engine"}
 };
 app.get("/appliance/inventory",async(_req,res)=>{
   try{
     const containers=await dockerContainers();
-    const items=containers.map(c=>{const name=c.Names||c.Name||"";const policy=APPLIANCE_CONTAINER_POLICY[name]||{owner:"unmanaged",recommendation:"review",purpose:"Not currently owned by Classroom Control Hub"};return {name,image:c.Image||"",status:c.Status||c.State||"",networks:c.Networks||"",...policy}});
-    res.json({ok:true,mode:"dedicated-appliance",policy:"Classroom Control Hub owns application services and integrations; removal is always explicit",items,summary:{total:items.length,core:items.filter(x=>x.owner==="core").length,integrated:items.filter(x=>x.owner==="integration").length,review:items.filter(x=>["unmanaged","legacy-admin","optional"].includes(x.owner)).length}});
+    const items=containers.map(c=>{const name=c.Names||c.Name||"";const policy=APPLIANCE_CONTAINER_POLICY[name]||{owner:"unmanaged",recommendation:"review",purpose:"Not currently owned by RoomGoblin"};return {name,image:c.Image||"",status:c.Status||c.State||"",networks:c.Networks||"",...policy}});
+    res.json({ok:true,mode:"dedicated-appliance",policy:"RoomGoblin owns application services and integrations; removal is always explicit",items,summary:{total:items.length,core:items.filter(x=>x.owner==="core").length,integrated:items.filter(x=>x.owner==="integration").length,review:items.filter(x=>["unmanaged","legacy-admin","optional"].includes(x.owner)).length}});
   }catch(e){res.status(500).json({ok:false,error:e.message})}
 });
 
@@ -131,7 +131,7 @@ app.post("/host/updates/apply",async(req,res)=>{try{
   if(String(req.body?.confirm||"")!=="INSTALL_UPDATES")return res.status(400).json({ok:false,error:"Explicit INSTALL_UPDATES confirmation required"});
   const safety=await createOperationalBackupNamed("pre-host-update");
   const result=await hostAgentRequest("POST","/updates/start",req.body||{},30000);
-  res.status(202).json({ok:true,safetyBackup:safety.name,...result,message:"Native host update job started. Classroom Control Hub will continue monitoring it."});
+  res.status(202).json({ok:true,safetyBackup:safety.name,...result,message:"Native host update job started. RoomGoblin will continue monitoring it."});
 }catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
 app.get("/host/migration-snapshots",async(_req,res)=>{try{res.json(await hostAgentRequest("GET","/cleanup/migration-snapshots"))}catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
 app.post("/host/migration-retention",async(req,res)=>{try{res.json(await hostAgentRequest("POST","/cleanup/migration-retention",req.body||{}))}catch(e){res.status(e.status||502).json(e.payload||{ok:false,error:e.message})}});
@@ -180,7 +180,7 @@ app.post("/host/cleanup/container",async(req,res)=>{
     if(!["portainer","nodered"].includes(name))return res.status(400).json({ok:false,error:"Container is not an approved redundant/optional cleanup candidate"});
     if(action!=="remove"||confirm!=="REMOVE")return res.status(400).json({ok:false,error:"Explicit REMOVE confirmation required"});
     let composeServices=[];try{const r=await run("docker",["compose","config","--services"],{cwd:HUB_ROOT,timeout:10000});composeServices=r.stdout.split(/\r?\n/).filter(Boolean)}catch{}
-    if(composeServices.includes(name))return res.status(409).json({ok:false,error:`${name} is part of the current Classroom Control Hub Compose project and cannot be removed through cleanup`});
+    if(composeServices.includes(name))return res.status(409).json({ok:false,error:`${name} is part of the current RoomGoblin Compose project and cannot be removed through cleanup`});
     const inspect=await run("docker",["inspect",name],{timeout:10000}).catch(()=>null);
     if(!inspect)return res.status(404).json({ok:false,error:"Container not found"});
     // Confirm Hub Docker management is operational before removing an alternate Docker UI.
@@ -196,7 +196,7 @@ app.get("/docker/stats",async(_req,res)=>{try{const r=await run("docker",["stats
 app.get("/checks/run",async(_req,res)=>{
   const checks=[];async function check(name,fn){const started=Date.now();try{const value=await fn();checks.push({name,ok:true,ms:Date.now()-started,value})}catch(e){checks.push({name,ok:false,ms:Date.now()-started,error:e.message})}}
   await check("Docker Engine",async()=>String((await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:7000})).stdout||"").trim());
-  await check("Classroom Control Hub Root",async()=>{if(!fs.existsSync(HUB_ROOT))throw Error("Missing managed Classroom Control Hub root");return HUB_ROOT});
+  await check("RoomGoblin Root",async()=>{if(!fs.existsSync(HUB_ROOT))throw Error("Missing managed RoomGoblin root");return HUB_ROOT});
   await check("Services Stack Root",async()=>{if(!fs.existsSync(Classroom_ROOT))throw Error("Missing managed services-stack root");return Classroom_ROOT});
   await check("SQLite Database",async()=>{const i=(await mainAppStatus()).database;if(!i?.file)throw Error("Database status unavailable");return {schemaVersion:i.schemaVersion,size:i.size,journalMode:i.journalMode}});
   await check("Disk Capacity",async()=>String((await run("df",["-h","/managed/classroom-hub"])).stdout||"").trim());
@@ -275,7 +275,7 @@ async function createOperationalBackupNamed(prefix="pre-restore") {
       await run("sqlite3",[dbPath,`.backup '${dbSnapshot.replace(/'/g,"''")}'`],{timeout:60000});
       hasDbSnapshot=fs.existsSync(dbSnapshot);
     }
-    if(!hasDbSnapshot)throw Error("Operational backup requires a consistent Classroom Control Hub database snapshot");
+    if(!hasDbSnapshot)throw Error("Operational backup requires a consistent RoomGoblin database snapshot");
     const zip=new AdmZip();
     const filter=(full,rel,ent)=>{if(/classroom-hub\.db(?:-wal|-shm)?$/.test(rel))return false;return backupFilter("operational")(full,rel,ent)};
     copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);
@@ -337,7 +337,7 @@ function replaceRestoreContent(srcRoot,{database=false,data=false,journalFile=pa
 async function waitForMainApplication(){
   const deadline=Date.now()+RESTORE_HEALTH_TIMEOUT_MS;let last="not ready";
   while(Date.now()<deadline){try{const status=await mainAppStatus();if(status.ok&&status.database)return status}catch(e){last=e.message}await new Promise(resolve=>setTimeout(resolve,1000))}
-  throw Error(`Classroom Control Hub did not become healthy after restore: ${last}`);
+  throw Error(`RoomGoblin did not become healthy after restore: ${last}`);
 }
 async function extractRestore(name,target){const plan=backupRestorePlan(name),root=path.resolve(target);fs.mkdirSync(root,{recursive:true,mode:0o700});const zip=new AdmZip(plan.path);for(const entry of zip.getEntries()){const normalized=entry.entryName.replace(/\\/g,"/"),dest=path.resolve(root,normalized);if(dest!==root&&!dest.startsWith(root+path.sep))throw Error(`Unsafe archive path: ${normalized}`);if(entry.isDirectory){fs.mkdirSync(dest,{recursive:true,mode:0o700});continue}fs.mkdirSync(path.dirname(dest),{recursive:true,mode:0o700});fs.writeFileSync(dest,entry.getData(),{mode:0o600,flag:"wx"})}return {plan,srcRoot:path.join(root,"classroom-hub")}}
 app.post("/backup/:name/restore",async(req,res)=>{
@@ -402,7 +402,7 @@ async function readManagedIntegrations({resolved=false}={}){
   return value;
 }
 const MODULES={
-  mosquitto:{name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:2.0.22",description:"MQTT broker used by Classroom Control Hub integrations.",expectedProject:"services",ownership:"integration"},
+  mosquitto:{name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:2.0.22",description:"MQTT broker used by RoomGoblin integrations.",expectedProject:"services",ownership:"integration"},
   govee2mqtt:{name:"Govee Lighting",container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72",description:"Govee discovery and LAN/cloud control through MQTT.",expectedProject:"services",ownership:"integration"},
   musicassistant:{name:"Music Assistant",container:"music-assistant-server",image:"ghcr.io/music-assistant/server:2.9.13",description:"Classroom audio and media service discovered as an externally managed Compose integration.",expectedProject:"music-assistant",ownership:"integration",externalOnly:true},
   nodered:{name:"Node-RED",container:"nodered",image:"nodered/node-red:4.1.14-22",description:"Optional visual automation environment.",ownership:"optional"}
@@ -438,11 +438,11 @@ app.post("/modules/:id/deploy",async(req,res)=>{const id=String(req.params.id||"
     const data=path.join(Classroom_ROOT,"nodered");fs.mkdirSync(data,{recursive:true});args.push("-e",`PORT=${validPort(resolved.port,1880)}`,"-v",`${data}:/data`,`-e`,`TZ=${resolved.timezone||process.env.TZ||"UTC"}`);if(resolved.credentialSecret)args.push("-e",`NODE_RED_CREDENTIAL_SECRET=${resolved.credentialSecret}`);
   }
   args.push(m.image);if(exists)await run("docker",["rm","-f",m.container],{timeout:30000});const r=await run("docker",args,{timeout:120000,maxBuffer:16*1024*1024});res.json({ok:true,id,container:m.container,output:r.stdout.trim()})}catch(e){res.status(500).json({ok:false,error:e.message,output:(e.stdout||"")+(e.stderr||"")})}});
-app.post("/modules/:id/remove",async(req,res)=>{const id=String(req.params.id||""),m=MODULES[id];if(!m)return res.status(404).json({ok:false,error:"Unknown integration"});if(m.externalOnly)return res.status(409).json({ok:false,error:"Externally managed integrations are not removed from Classroom Control Hub."});try{if(await containerExists(m.container))await run("docker",["rm","-f",m.container],{timeout:30000});res.json({ok:true,id})}catch(e){res.status(500).json({ok:false,error:e.message})}});
+app.post("/modules/:id/remove",async(req,res)=>{const id=String(req.params.id||""),m=MODULES[id];if(!m)return res.status(404).json({ok:false,error:"Unknown integration"});if(m.externalOnly)return res.status(409).json({ok:false,error:"Externally managed integrations are not removed from RoomGoblin."});try{if(await containerExists(m.container))await run("docker",["rm","-f",m.container],{timeout:30000});res.json({ok:true,id})}catch(e){res.status(500).json({ok:false,error:e.message})}});
 const safeCommands={
   "docker-ps":["docker",["ps","-a"]],"docker-stats":["docker",["stats","--no-stream"]],"disk-usage":["df",["-h"]],"memory":["free",["-h"]],"network":["ip",["addr"]],"routes":["ip",["route"]],"dns":["cat",["/etc/resolv.conf"]],"compose-status":["docker",["compose","ps"]]
 };
 app.post("/command",async(req,res)=>{try{const preset=String(req.body?.preset||"");if(!preset||!safeCommands[preset])return res.status(403).json({ok:false,error:"Only fixed diagnostic presets are supported"});const [cmd,args]=safeCommands[preset],r=await run(cmd,args,{timeout:30000,maxBuffer:16*1024*1024,cwd:preset==="compose-status"?HUB_ROOT:undefined});return res.json({ok:true,preset,output:(r.stdout||"")+(r.stderr||"")})}catch(e){res.status(500).json({ok:false,error:e.message,output:(e.stdout||"")+(e.stderr||"")})}});
-const server=app.listen(PORT,BIND_ADDRESS,()=>console.log(`Classroom Control Hub Maintenance Agent listening on ${PORT}`));
+const server=app.listen(PORT,BIND_ADDRESS,()=>console.log(`RoomGoblin Maintenance Agent listening on ${PORT}`));
 let stopping=false;function stop(signal){if(stopping)return;stopping=true;console.log(`${signal} received; draining maintenance agent`);const force=setTimeout(()=>process.exit(1),10000);force.unref();server.close(()=>{clearTimeout(force);process.exit(0)})}
 process.once("SIGTERM",()=>stop("SIGTERM"));process.once("SIGINT",()=>stop("SIGINT"));

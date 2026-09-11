@@ -9,11 +9,11 @@ SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
 
 SERVICE_POLICY = {
-    "docker.service":{"owner":"core","recommendation":"keep","purpose":"Container runtime for Classroom Control Hub and managed integrations","protected":True},
+    "docker.service":{"owner":"core","recommendation":"keep","purpose":"Container runtime for RoomGoblin and managed integrations","protected":True},
     "containerd.service":{"owner":"core","recommendation":"keep","purpose":"Docker container runtime dependency","protected":True},
     "cloudflared.service":{"owner":"integration","recommendation":"integrate","purpose":"Remote access / Cloudflare Tunnel"},
     "veyon.service":{"owner":"integration","recommendation":"integrate","purpose":"Classroom workstation management"},
-    "veyon-webapi.service":{"owner":"integration","recommendation":"integrate","purpose":"Veyon control API used by Classroom Control Hub"},
+    "veyon-webapi.service":{"owner":"integration","recommendation":"integrate","purpose":"Veyon control API used by RoomGoblin"},
     "ollama.service":{"owner":"integration","recommendation":"integrate","purpose":"Local AI runtime"},
     "tailscaled.service":{"owner":"optional","recommendation":"optional-keep","purpose":"Optional remote/VPN management"},
     "ssh.service":{"owner":"host","recommendation":"keep","purpose":"Emergency administrative access","protected":True},
@@ -22,7 +22,7 @@ SERVICE_POLICY = {
     "chrony.service":{"owner":"host","recommendation":"keep","purpose":"Time synchronization","protected":True},
     "smartmontools.service":{"owner":"host","recommendation":"keep","purpose":"Disk health monitoring"},
     "unattended-upgrades.service":{"owner":"host","recommendation":"keep","purpose":"Ubuntu security updates"},
-    "classroom-control-hub-host-agent.service":{"owner":"core","recommendation":"keep","purpose":"Native host-management bridge for Classroom Control Hub","protected":True},
+    "classroom-control-hub-host-agent.service":{"owner":"core","recommendation":"keep","purpose":"Native host-management bridge for RoomGoblin","protected":True},
     "classroom-hub-update.service":{"owner":"core","recommendation":"keep","purpose":"Native package update runner (idle except during explicit updates)","protected":True},
     "classroom-hub-app-update.service":{"owner":"core","recommendation":"keep","purpose":"Verified application release and rollback runner","protected":True},
 }
@@ -326,9 +326,9 @@ def validated_legacy_backup(value):
     try: resolved=p.resolve(strict=True)
     except FileNotFoundError: raise RuntimeError("Legacy backup path not found")
     if not resolved.is_dir() or not str(resolved).startswith(LEGACY_BACKUP_PREFIX):
-        raise RuntimeError("Path is not an eligible legacy Classroom Control Hub backup")
+        raise RuntimeError("Path is not an eligible legacy RoomGoblin backup")
     if resolved == Path('/opt/classroom-control-hub'):
-        raise RuntimeError("Current Classroom Control Hub root is protected")
+        raise RuntimeError("Current RoomGoblin root is protected")
     return resolved
 
 def cleanup_legacy_backup(path_value, action):
@@ -426,7 +426,7 @@ class Handler(BaseHTTPRequestHandler):
             policy=SERVICE_POLICY.get(name,{})
             if not policy: return self.send_json(403,{"ok":False,"error":"Systemd unit is outside the managed allowlist"})
             if policy.get('protected') and action in ('stop','disable'):
-                return self.send_json(409,{"ok":False,"error":f"{name} is protected because Classroom Control Hub or host recovery depends on it"})
+                return self.send_json(409,{"ok":False,"error":f"{name} is protected because RoomGoblin or host recovery depends on it"})
             if action in ('stop','disable') and body.get('confirm') is not True:
                 return self.send_json(400,{"ok":False,"error":"Explicit confirmation required"})
             args=['systemctl',action]
@@ -450,7 +450,7 @@ if __name__=='__main__':
     except FileNotFoundError: pass
     server=UnixHTTPServer(SOCKET_PATH,Handler)
     os.chmod(SOCKET_PATH,0o660)
-    print(f"Classroom Control Hub Host Agent {VERSION} listening on {SOCKET_PATH}",flush=True)
+    print(f"RoomGoblin Host Agent {VERSION} listening on {SOCKET_PATH}",flush=True)
     if APP_UPDATE_REQUEST_FILE.exists():
         def resume_interrupted_update():
             run(['systemctl','start','--no-block',APP_UPDATE_SERVICE],20,False)

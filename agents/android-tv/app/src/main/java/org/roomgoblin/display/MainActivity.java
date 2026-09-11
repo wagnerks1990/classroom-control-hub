@@ -1,4 +1,4 @@
-package org.classroomhub.display;
+package org.roomgoblin.display;
 
 import android.app.Activity;
 import android.content.Context;
@@ -17,7 +17,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
-    private static final String TAG="ClassroomHubDisplay";
+    private static final String TAG="RoomGoblinDisplay";
     private static final long POLICY_INTERVAL_MS=30000L;
     private static final String EXTRA_RELOAD="agent_reload";
     private WebView webView;

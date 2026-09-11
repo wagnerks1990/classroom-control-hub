@@ -58,7 +58,7 @@ function normalizeAgentV2(input){
 function normalizeDevice(input={}){
   const id=cleanId(input.id||makeId());const host=cleanHost(input.host);const port=cleanPort(input.port,5555);const serial=cleanSerial(input.serial||`${host}:${port}`);
   return {id,name:cleanText(input.name||id,120),host,port,serial,organization:cleanText(input.organization,120),school:cleanText(input.school,120),building:cleanText(input.building,120),room:cleanText(input.room,80),
-    profileId:cleanId(input.profileId||DEFAULT_PROFILE.id),platform:"android-tv",provider:cleanText(input.provider||"android-adb",60),model:cleanText(input.model,160),manufacturer:cleanText(input.manufacturer,120),androidVersion:cleanText(input.androidVersion,60),sdk:cleanText(input.sdk,20),build:cleanText(input.build,160),agentPackage:cleanPackage(input.agentPackage||"org.classroomhub.display"),agentVersion:cleanText(input.agentVersion,40),displayUrl:cleanText(input.displayUrl,500),
+    profileId:cleanId(input.profileId||DEFAULT_PROFILE.id),platform:"android-tv",provider:cleanText(input.provider||"android-adb",60),model:cleanText(input.model,160),manufacturer:cleanText(input.manufacturer,120),androidVersion:cleanText(input.androidVersion,60),sdk:cleanText(input.sdk,20),build:cleanText(input.build,160),agentPackage:cleanPackage(input.agentPackage||"org.roomgoblin.display"),agentVersion:cleanText(input.agentVersion,40),displayUrl:cleanText(input.displayUrl,500),
     persistentAdb:normalizePersistentAdb(input.persistentAdb,port),agentV2:normalizeAgentV2(input.agentV2),enabled:input.enabled!==false,createdAt:String(input.createdAt||now()),updatedAt:now(),lastSeenAt:input.lastSeenAt||null,lastStatus:input.lastStatus||null};
 }
 

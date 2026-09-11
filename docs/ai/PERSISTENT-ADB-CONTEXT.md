@@ -23,8 +23,8 @@ Persistent ADB is an optional recovery feature for Android/Google TV firmware th
 ## Source map
 
 - `agents/android-tv/app/src/main/AndroidManifest.xml`: declares the secure-settings permission requested for bootstrap.
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/BootReceiver.java`: restores wireless debugging at boot when policy is enabled.
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/ConfigReceiver.java`: persists policy state and applies it immediately when possible.
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/BootReceiver.java`: restores wireless debugging at boot when policy is enabled.
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/ConfigReceiver.java`: persists policy state and applies it immediately when possible.
 - `maintenance-agent/android-tv-persistent-adb.js`: grants the permission, applies settings, switches the current transport to a fixed port, and updates inventory.
 - `public/managed-displays/app.js`: administrator bootstrap control, agent-state rendering and bounded reboot/status recovery polling.
 - `docs/PERSISTENT-ANDROID-ADB.md`: canonical operator/architecture documentation.

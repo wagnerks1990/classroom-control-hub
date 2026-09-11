@@ -22,7 +22,7 @@ Read this file before generating RoomGoblin UI, documentation, marketing copy, c
 Devices; Students; Announcements; Schedules; Digital Signage; Room Controls; Reports; Classes; Safety; Integrations; Settings.
 
 ## Compatibility rule
-The RoomGoblin rebrand must not casually rename persistent storage, environment variables, Android package IDs, service/socket names, container identities, database fields, enrollment identifiers, API contracts, or deployment paths. Legacy internal identifiers such as `classroom-hub`, `CLASSROOM_HUB_*`, `/opt/classroom-hub`, and `org.classroomhub.display` remain compatibility identifiers until an explicit migration is designed, tested, documented, and reversible.
+The RoomGoblin rebrand must not casually rename persistent storage, environment variables, Android package IDs, service/socket names, container identities, database fields, enrollment identifiers, API contracts, or deployment paths. Legacy internal identifiers such as `classroom-hub`, `CLASSROOM_HUB_*`, `/opt/classroom-hub`, and `org.roomgoblin.display` remain compatibility identifiers until an explicit migration is designed, tested, documented, and reversible.
 
 ## Prompt seed
 Design for RoomGoblin, a Classroom & Lab Management Hub. Use the canonical RoomGoblin assets and tokens. Make it clean, modern, accessible, teacher-first, technically credible, and fast to scan during class. Use the friendly goblin identity without generic childish ed-tech styling or visual clutter.

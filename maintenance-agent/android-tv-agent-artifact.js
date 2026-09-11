@@ -12,14 +12,16 @@ const {configure}=require("./android-tv-agent-v2");
 const {cleanPackage}=require("./android-tv-lib");
 
 const ROOT=path.resolve(process.env.ANDROID_TV_DATA_ROOT||"/managed/classroom-hub/data/android-tv");
-const APK=path.join(ROOT,"ClassroomHub-Display-Agent.apk");
-const META=path.join(ROOT,"ClassroomHub-Display-Agent.json");
+const APK=path.join(ROOT,"RoomGoblin-Display-Agent.apk");
+const META=path.join(ROOT,"RoomGoblin-Display-Agent.json");
 const BUNDLE_APK=path.resolve(process.env.ANDROID_AGENT_BUNDLE_APK||"/app/android-agent/agent-release-unsigned.apk");
 const BUNDLE_META=path.resolve(process.env.ANDROID_AGENT_BUNDLE_META||"/app/android-agent/agent-build.json");
 const SIGNING_ROOT=path.resolve(process.env.ANDROID_AGENT_SIGNING_ROOT||"/signing/android-agent");
-const KEYSTORE=path.join(SIGNING_ROOT,"ClassroomHub-Display-Agent.keystore");
+const KEYSTORE=path.join(SIGNING_ROOT,"RoomGoblin-Display-Agent.keystore");
 const PASSWORD_FILE=path.join(SIGNING_ROOT,"password");
 const KEY_ALIAS="classroom-hub";
+const CURRENT_PACKAGE="org.roomgoblin.display";
+const LEGACY_PACKAGE="org.classroomhub.display";
 const ADB=String(process.env.ADB_BIN||"adb");
 const originalListen=express.application.listen;
 let installed=false;
@@ -47,7 +49,7 @@ function ensureSigningIdentity(){
     const password=crypto.randomBytes(24).toString("hex");
     safeWriteSecret(PASSWORD_FILE,`${password}\n`);
     try{
-      command("keytool",["-genkeypair","-keystore",KEYSTORE,"-storepass",password,"-keypass",password,"-alias",KEY_ALIAS,"-keyalg","RSA","-keysize","3072","-validity","10000","-dname","CN=Classroom Control Hub Android Agent,O=Classroom Control Hub"]);
+      command("keytool",["-genkeypair","-keystore",KEYSTORE,"-storepass",password,"-keypass",password,"-alias",KEY_ALIAS,"-keyalg","RSA","-keysize","3072","-validity","10000","-dname","CN=RoomGoblin Android Agent,O=RoomGoblin"]);
       fs.chmodSync(KEYSTORE,0o600);
     }catch(error){try{fs.rmSync(PASSWORD_FILE,{force:true})}catch{};try{fs.rmSync(KEYSTORE,{force:true})}catch{};throw error}
     console.warn("Created persistent appliance Android agent signing identity.");
@@ -69,7 +71,7 @@ function ensureCurrentArtifact(){
   if(!fs.existsSync(BUNDLE_APK)||!fs.existsSync(BUNDLE_META))throw Error("Maintenance image does not contain the current Android agent build artifact");
   const bundle=json(BUNDLE_META,"Bundled Android agent");
   const bundleSha=sha256(BUNDLE_APK);
-  if(bundle.package!=="org.classroomhub.display"||!bundle.versionName||!Number.isInteger(Number(bundle.versionCode))||bundle.unsignedSha256!==bundleSha)throw Error("Bundled Android agent metadata does not match the current maintenance-image APK");
+  if(bundle.package!=="org.roomgoblin.display"||!bundle.versionName||!Number.isInteger(Number(bundle.versionCode))||bundle.unsignedSha256!==bundleSha)throw Error("Bundled Android agent metadata does not match the current maintenance-image APK");
   fs.mkdirSync(ROOT,{recursive:true,mode:0o770});
   const password=ensureSigningIdentity();
 
@@ -85,8 +87,8 @@ function ensureCurrentArtifact(){
     }catch(error){console.warn(`Restaging Android agent artifact: ${error.message}`)}
   }
 
-  const unsignedCopy=path.join(ROOT,`.ClassroomHub-Display-Agent.unsigned.${process.pid}.apk`);
-  const signedTemp=path.join(ROOT,`.ClassroomHub-Display-Agent.signed.${process.pid}.apk`);
+  const unsignedCopy=path.join(ROOT,`.RoomGoblin-Display-Agent.unsigned.${process.pid}.apk`);
+  const signedTemp=path.join(ROOT,`.RoomGoblin-Display-Agent.signed.${process.pid}.apk`);
   try{
     fs.copyFileSync(BUNDLE_APK,unsignedCopy);fs.chmodSync(unsignedCopy,0o600);
     signApk(unsignedCopy,signedTemp,password);
@@ -115,7 +117,7 @@ function artifact(){
     const actualSha=sha256(APK);
     const bundle=fs.existsSync(BUNDLE_META)?json(BUNDLE_META,"Bundled Android agent"):null;
     const bundleSha=fs.existsSync(BUNDLE_APK)?sha256(BUNDLE_APK):null;
-    const valid=meta.package==="org.classroomhub.display"&&typeof meta.versionName==="string"&&meta.versionName&&Number.isInteger(Number(meta.versionCode))&&meta.sha256===actualSha&&/^[0-9a-f]{64}$/i.test(String(meta.signerSha256||""))&&!!bundle&&meta.versionName===bundle.versionName&&Number(meta.versionCode)===Number(bundle.versionCode)&&meta.bundleSha256===bundleSha;
+    const valid=meta.package==="org.roomgoblin.display"&&typeof meta.versionName==="string"&&meta.versionName&&Number.isInteger(Number(meta.versionCode))&&meta.sha256===actualSha&&/^[0-9a-f]{64}$/i.test(String(meta.signerSha256||""))&&!!bundle&&meta.versionName===bundle.versionName&&Number(meta.versionCode)===Number(bundle.versionCode)&&meta.bundleSha256===bundleSha;
     return {available:valid,readable:true,package:meta.package||null,versionName:meta.versionName||null,versionCode:Number(meta.versionCode)||null,sha256:actualSha,signerSha256:meta.signerSha256||null,signingMode:meta.signingMode||null,bundleSha256:meta.bundleSha256||null,source:meta.source||null,stagedAt:meta.stagedAt||null,verified:valid,error:valid?null:"Staged Android agent does not match the current maintenance-image build"};
   }catch(error){return {available:false,readable:false,verified:false,error:error.message}}
 }
@@ -129,24 +131,36 @@ async function restoreTrustedGrants(d,pkg){
   return result;
 }
 async function restoreAgentConfiguration(d){
-  const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
+  const pkg=CURRENT_PACKAGE;
   const grants=await restoreTrustedGrants(d,pkg);
   if(d.agentV2?.token)await configure(d,{});
-  else if(/^https?:\/\//i.test(String(d.displayUrl||"")))await adb(["-s",d.serial,"shell","am","broadcast","-a","org.classroomhub.display.CONFIGURE","-p",pkg,"--es","display_url",String(d.displayUrl)],20000);
+  else if(/^https?:\/\//i.test(String(d.displayUrl||"")))await adb(["-s",d.serial,"shell","am","broadcast","-a","org.roomgoblin.display.CONFIGURE","-p",pkg,"--es","display_url",String(d.displayUrl)],20000);
   try{await adb(["-s",d.serial,"shell","am","start","-W","-n",`${pkg}/.MainActivity`],20000)}catch{}
   return grants;
 }
+async function packageInstalled(d,pkg){
+  try{
+    const result=await adb(["-s",d.serial,"shell","pm","path",pkg],15000);
+    return /^package:/m.test(String(result.stdout||""));
+  }catch{return false}
+}
 async function installCurrent(d,{replaceExisting=false}={}){
   const info=artifact();if(!info.available){const e=Error(info.error||"Current Android agent artifact is unavailable");e.status=503;throw e}
-  const pkg=cleanPackage(d.agentPackage||info.package||"org.classroomhub.display");let replacedExisting=false;
+  const pkg=CURRENT_PACKAGE;let replacedExisting=false;
+  if(await packageInstalled(d,LEGACY_PACKAGE)){
+    if(!replaceExisting){const e=Error("The old RoomGoblin Android app must be uninstalled before installing RoomGoblin. In-place update is not supported for the new package identity.");e.status=409;e.code="legacy_package_reinstall_required";throw e}
+    await adb(["-s",d.serial,"uninstall",LEGACY_PACKAGE],60000);
+    replacedExisting=true;
+  }
   try{await adb(["-s",d.serial,"install","-r","-g",APK])}
   catch(error){
     if(!signatureMismatch(error))throw error;
-    if(!replaceExisting){const e=Error("The installed Classroom Hub agent uses a different signing identity. One-time replacement is required to adopt the appliance-managed signing key.");e.status=409;e.code="signature_transition_required";throw e}
+    if(!replaceExisting){const e=Error("The installed RoomGoblin agent uses a different signing identity. One-time replacement is required to adopt the appliance-managed signing key.");e.status=409;e.code="signature_transition_required";throw e}
     await adb(["-s",d.serial,"uninstall",pkg],60000);await adb(["-s",d.serial,"install","-g",APK]);replacedExisting=true;
   }
-  const grants=await restoreAgentConfiguration(d);
-  return {installed:true,replacedExisting,grants,artifact:info,message:`Installed Classroom Hub Display Agent ${info.versionName}${replacedExisting?" using the new persistent appliance signing identity":""}.`};
+  const migrated=STORE.upsertDevice({...d,agentPackage:CURRENT_PACKAGE});
+  const grants=await restoreAgentConfiguration(migrated);
+  return {installed:true,replacedExisting,grants,artifact:info,message:`Installed RoomGoblin Display Agent ${info.versionName}${replacedExisting?" after removing the old Android app":""}.`};
 }
 function route(fn){return (req,res)=>Promise.resolve(fn(req,res)).catch(error=>res.status(error.status||500).json({ok:false,code:error.code||undefined,error:error.message}))}
 

@@ -1,4 +1,4 @@
-package org.classroomhub.display
+package org.roomgoblin.display
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -24,7 +24,7 @@ class AndroidPcmSendspinPlayer(
     private val buffer: AudioBuffer,
     @Suppress("UNUSED_PARAMETER") private val clockSync: ClockSync,
 ) : AudioPlayer {
-    companion object { private const val TAG = "ClassroomHubSendspin" }
+    companion object { private const val TAG = "RoomGoblinSendspin" }
 
     private val running = AtomicBoolean(false)
     @Volatile private var configured: StreamFormat? = null
@@ -79,7 +79,7 @@ class AndroidPcmSendspinPlayer(
         val audio = track ?: return
         running.set(true)
         audio.play()
-        worker = Thread({ playbackLoop() }, "ClassroomHub-Sendspin-Audio").apply {
+        worker = Thread({ playbackLoop() }, "RoomGoblin-Sendspin-Audio").apply {
             priority = Thread.MAX_PRIORITY
             start()
         }

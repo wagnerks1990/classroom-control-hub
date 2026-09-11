@@ -16,7 +16,7 @@ If a device card disappears after a software deployment, first inspect `data/and
 
 ## Display Agent
 
-Package: `org.classroomhub.display`.
+Package: `org.roomgoblin.display`.
 
 Managed Displays reports package/running state and supports installation, configuration, launch, screenshots and administrator remote shell. The tested Onn successfully installs the APK, loads the assigned Classroom Hub display URL fullscreen, and automatically restores the agent/content after reboot.
 

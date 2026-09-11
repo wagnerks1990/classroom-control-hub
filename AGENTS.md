@@ -4,7 +4,7 @@
 
 The current product is **RoomGoblin — Classroom & Lab Management Hub**. The canonical tagline is **Run the room. Manage the lab.** Read `docs/brand/AI-BRAND-CONTEXT.md` and `docs/ROOMGOBLIN-REBRAND.md` before changing product naming, logos, colors, setup copy, installer copy, managed-device presentation, or documentation.
 
-New user-facing copy must say **RoomGoblin**. Do **not** perform blind source-wide renames of legacy compatibility identifiers. Existing deployments depend on names such as `/opt/classroom-hub`, `CLASSROOM_HUB_*`, `org.classroomhub.display`, `classroom-control-hub*` service/container/image/socket identifiers, persisted storage keys, API contracts, device IDs, enrollment credentials, and ADB trust material. Change one of those only with a separately reviewed migration, rollback path, data-preservation checks, and managed-device compatibility tests.
+New user-facing copy must say **RoomGoblin**. Do **not** perform blind source-wide renames of legacy compatibility identifiers. Alpha.77 deliberately migrates Android from `org.classroomhub.display` to `org.roomgoblin.display`; this requires uninstalling the old app and installing the new app rather than an in-place update. Appliance paths, environment variables, service/socket/container names, persisted storage keys, API contracts, device IDs, enrollment credentials, and ADB trust material remain protected compatibility identifiers unless a separately reviewed migration supplies rollback and data-preservation tests.
 
 ## Host-network deployment contract
 
@@ -28,7 +28,7 @@ Do not infer production configuration from public defaults. Site-specific config
 
 ## Current baseline
 
-The current review baseline is `1.0.0-alpha.76`.
+The current review baseline is `1.0.0-alpha.77`.
 
 Verified live-test/recovery behaviors inherited by this baseline include:
 

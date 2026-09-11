@@ -44,7 +44,7 @@ test("hardened host-network smoke mirrors the production Android signing boundar
 test("maintenance startup signs, verifies and stages the image-matched APK",()=>{
   const extension=read("maintenance-agent/android-tv-agent-artifact.js");
   assert.match(extension,/ensureCurrentArtifact\(\);/);
-  assert.match(extension,/ClassroomHub-Display-Agent\.keystore/);
+  assert.match(extension,/RoomGoblin-Display-Agent\.keystore/);
   assert.match(extension,/crypto\.randomBytes\(24\)/);
   assert.match(extension,/keytool/);
   assert.match(extension,/apksigner/);
@@ -66,12 +66,15 @@ test("apksigner receives independent environment-backed store and key passwords"
   assert.doesNotMatch(extension,/"--key-pass",`file:\$\{PASSWORD_FILE\}`/);
 });
 
-test("artifact API and install flow reject stale artifacts and handle one-time signature transition",()=>{
+test("artifact API handles signing transitions and the legacy package reinstall",()=>{
   const extension=read("maintenance-agent/android-tv-agent-artifact.js");
   assert.match(extension,/\/android\/agent\/artifact/);
   assert.match(extension,/\/agent\/artifact\/install/);
   assert.match(extension,/meta\.bundleSha256===bundleSha/);
   assert.match(extension,/signature_transition_required/);
+  assert.match(extension,/legacy_package_reinstall_required/);
+  assert.match(extension,/LEGACY_PACKAGE="org\.classroomhub\.display"/);
+  assert.match(extension,/CURRENT_PACKAGE="org\.roomgoblin\.display"/);
   assert.match(extension,/replaceExisting/);
   assert.match(extension,/restoreTrustedGrants/);
   assert.match(extension,/WRITE_SECURE_SETTINGS/);
@@ -85,6 +88,8 @@ test("managed-display UI compares installed and staged agent versions",()=>{
   assert.match(ui,/update available/);
   assert.match(ui,/Update Agent →/);
   assert.match(ui,/signature_transition_required/);
+  assert.match(ui,/legacy_package_reinstall_required/);
+  assert.match(ui,/reinstall, not an in-place update/);
   assert.match(ui,/persistent signing identity/);
   const syntax=spawnSync(process.execPath,["--check",path.join(__dirname,"..","public/managed-displays/agent-v2-ui.js")],{encoding:"utf8"});
   assert.equal(syntax.status,0,syntax.stderr||syntax.stdout);

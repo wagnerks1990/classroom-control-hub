@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 
 const root=path.resolve(__dirname,'..');
-const source=fs.readFileSync(path.join(root,'agents/android-tv/app/src/main/java/org/classroomhub/display/MainActivity.java'),'utf8');
+const source=fs.readFileSync(path.join(root,'agents/android-tv/app/src/main/java/org/roomgoblin/display/MainActivity.java'),'utf8');
 
 test('Android agent continuously enforces persistent management policy',()=>{
   assert.match(source,/POLICY_INTERVAL_MS=30000L/);

@@ -27,10 +27,10 @@ Android TV management is a reusable device-provider subsystem. Onn Google TV is 
 - `maintenance-agent/android-tv-agent-v2.js`: Agent v2 authenticated HTTP bridge and lifecycle/configuration routes.
 - `maintenance-agent/Dockerfile`: retains Debian `adb` as a fallback, but on amd64 installs Google's current Linux Platform Tools and verifies that `adb help` exposes `pair HOST`; this is required for Android 11+ wireless-debugging pairing.
 - `public/managed-displays/`: administrator enrollment/control UI. The enrollment form contains only trust/connectivity fields; the per-device Edit dialog owns school/building/room/profile/display URL configuration. Agent v2 UI also exposes guided Accessibility/Device Admin activation and native Sendspin controls.
-- `agents/android-tv/`: leanback-compatible kiosk/boot APK project (`org.classroomhub.display`).
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/KioskWatchdog.java`: process-level always-on/self-heal loop; this must remain independent from `MainActivity`.
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/NativeSendspinManager.kt`: persistent native Music Assistant Sendspin client owned by the agent process.
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/AndroidPcmSendspinPlayer.kt`: Android `AudioTrack` sink for the initial PCM baseline.
+- `agents/android-tv/`: leanback-compatible kiosk/boot APK project (`org.roomgoblin.display`).
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/KioskWatchdog.java`: process-level always-on/self-heal loop; this must remain independent from `MainActivity`.
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/NativeSendspinManager.kt`: persistent native Music Assistant Sendspin client owned by the agent process.
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/AndroidPcmSendspinPlayer.kt`: Android `AudioTrack` sink for the initial PCM baseline.
 - `test/android-tv-management.test.js` and `test/device-agent-v2.test.js`: managed-device, recovery and Agent v2 regression coverage.
 - `docs/ANDROID-TV-DISPLAYS.md`: canonical administrator/architecture documentation.
 - `docs/ANDROID-TV-NATIVE-SENDSPIN.md`: native Android Sendspin design and physical test plan.
@@ -46,8 +46,8 @@ The validated Onn 4K Streaming Device running Android 14 (`wayne`) has repeatedl
 
 Preferred bounded/direct commands are:
 
-- package installed/path: `adb -s <serial> shell pm path org.classroomhub.display`
-- process running: `adb -s <serial> shell pidof org.classroomhub.display`
+- package installed/path: `adb -s <serial> shell pm path org.roomgoblin.display`
+- process running: `adb -s <serial> shell pidof org.roomgoblin.display`
 - platform/device identity: targeted `getprop` calls
 - package receiver discovery: `cmd package query-receivers ...`
 - Device Owner/Profile Owner state: `dpm list-owners` or `cmd device_policy list-owners`
@@ -119,7 +119,7 @@ This controls the Android endpoint. It does not guarantee physical television/pr
 
 ## Agent contract
 
-The Android package is `org.classroomhub.display`. Configuration uses package-scoped broadcast action `org.classroomhub.display.CONFIGURE` with string extra `display_url`. The app renders that URL in an immersive WebView. Agent v2 provides the durable foreground process, authenticated LAN control API, always-on kiosk watchdog, persistent ADB policy and native Sendspin subsystem.
+The Android package is `org.roomgoblin.display`. Configuration uses package-scoped broadcast action `org.roomgoblin.display.CONFIGURE` with string extra `display_url`. The app renders that URL in an immersive WebView. Agent v2 provides the durable foreground process, authenticated LAN control API, always-on kiosk watchdog, persistent ADB policy and native Sendspin subsystem.
 
 OEM/Android background-launch restrictions still apply. Keep ADB recovery and Hub-side policy/launch assistance; do not assume a normal third-party Android application can achieve Device Owner/lock-task behavior without managed provisioning.
 

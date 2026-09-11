@@ -8,8 +8,8 @@ The normal `maintenance-agent` Docker build contains an Android build stage. It 
 
 When the maintenance container starts, it signs that exact bundled APK using this appliance's persistent Android signing identity, verifies it, and stages:
 
-- `/opt/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.apk`
-- `/opt/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.json`
+- `/opt/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.apk`
+- `/opt/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.json`
 
 The maintenance service does not become healthy with a missing/unreadable staged artifact. Managed Displays shows both the installed Agent version and the verified staged version. A mismatch is shown as an Agent update.
 
@@ -27,7 +27,7 @@ The signing material is not stored in Git and is not mounted into the main Class
 
 An older device may have a Display Agent signed by a temporary debug/CI key. Android can reject the first update to the appliance-managed signing identity.
 
-When Classroom Hub detects that exact signature mismatch, Managed Displays asks for explicit confirmation before replacing only `org.classroomhub.display`. After replacement it restores the saved display URL, Agent v2 configuration and, when Persistent ADB is enabled, the trusted `WRITE_SECURE_SETTINGS` grant.
+When Classroom Hub detects that exact signature mismatch, Managed Displays asks for explicit confirmation before replacing only `org.roomgoblin.display`. After replacement it restores the saved display URL, Agent v2 configuration and, when Persistent ADB is enabled, the trusted `WRITE_SECURE_SETTINGS` grant.
 
 This should be a one-time transition. Later APKs staged by the same appliance use the persistent signing identity and should upgrade normally.
 

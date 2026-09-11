@@ -1,4 +1,4 @@
-package org.classroomhub.display;
+package org.roomgoblin.display;
 
 import android.Manifest;
 import android.app.admin.DevicePolicyManager;

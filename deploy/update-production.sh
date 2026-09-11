@@ -23,8 +23,8 @@ git pull --ff-only origin main
 COMMIT="$(git rev-parse HEAD)"
 VERSION="$(tr -d '\r\n' < VERSION)"
 TAG="sha-${COMMIT}"
-HUB_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub:${TAG}"
-MAINT_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub-maintenance:${TAG}"
+HUB_IMAGE="ghcr.io/wagnerks1990/roomgoblin:${TAG}"
+MAINT_IMAGE="ghcr.io/wagnerks1990/roomgoblin-maintenance:${TAG}"
 
 echo "Waiting for CI-published RoomGoblin images for ${VERSION} (${COMMIT}) ..."
 deadline=$((SECONDS + WAIT_SECONDS))

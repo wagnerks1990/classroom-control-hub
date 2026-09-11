@@ -7,7 +7,7 @@ The Android TV maintenance container is intentionally hardened with `cap_drop: A
 Observed failure on the validated Onn deployment:
 
 ```text
-adb: failed to open /managed/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.apk: Permission denied
+adb: failed to open /managed/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.apk: Permission denied
 ```
 
 The file itself was valid. The failure was host/container DAC identity mismatch.
@@ -22,14 +22,14 @@ Expected safe modes:
 
 ```text
 data/android-tv/                       root:10001 2770
-ClassroomHub-Display-Agent.apk         *:10001    0660 or stricter while group-readable
+RoomGoblin-Display-Agent.apk         *:10001    0660 or stricter while group-readable
 ```
 
 The file owner may be root or the application UID. Group membership is the stable cross-container access contract.
 
 ## Health validation
 
-The maintenance container healthcheck now verifies that `ClassroomHub-Display-Agent.apk`, when present, is readable from inside the maintenance container. A deployment with an unreadable staged APK is therefore unhealthy instead of allowing the problem to remain hidden until an operator clicks Install/Reinstall Agent.
+The maintenance container healthcheck now verifies that `RoomGoblin-Display-Agent.apk`, when present, is readable from inside the maintenance container. A deployment with an unreadable staged APK is therefore unhealthy instead of allowing the problem to remain hidden until an operator clicks Install/Reinstall Agent.
 
 ## Verification
 
@@ -37,7 +37,7 @@ After deployment:
 
 ```bash
 docker compose exec -T maintenance-agent id
-docker compose exec -T maintenance-agent sh -lc 'test -r /managed/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.apk && echo APK-readable'
+docker compose exec -T maintenance-agent sh -lc 'test -r /managed/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.apk && echo APK-readable'
 ```
 
 The container identity should include supplemental group `10001`, and the second command should print `APK-readable` when the staged APK exists.

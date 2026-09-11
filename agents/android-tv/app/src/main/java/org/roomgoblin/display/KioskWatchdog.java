@@ -1,4 +1,4 @@
-package org.classroomhub.display;
+package org.roomgoblin.display;
 
 import android.content.Context;
 import android.os.PowerManager;
@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * It is intentionally independent of MainActivity so leaving/killing the WebView cannot stop recovery.
  */
 final class KioskWatchdog {
-    private static final String TAG="ClassroomHubKiosk";
+    private static final String TAG="RoomGoblinKiosk";
     private static final long CHECK_SECONDS=10;
     private static final long RELAUNCH_AFTER_MS=20_000L;
     private static final AtomicBoolean started=new AtomicBoolean(false);
@@ -40,7 +40,7 @@ final class KioskWatchdog {
                 screenLock.acquire();
             }
         }catch(Exception e){Log.w(TAG,"Unable to acquire always-on display wake lock",e);}
-        scheduler=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"ClassroomHub-Kiosk-Watchdog");t.setDaemon(true);return t;});
+        scheduler=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"RoomGoblin-Kiosk-Watchdog");t.setDaemon(true);return t;});
         scheduler.scheduleWithFixedDelay(()->tick(app),5,CHECK_SECONDS,TimeUnit.SECONDS);
         Log.i(TAG,"Always-on kiosk watchdog started; recovery target <=30 seconds");
     }

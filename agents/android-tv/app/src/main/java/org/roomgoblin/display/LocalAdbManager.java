@@ -1,4 +1,4 @@
-package org.classroomhub.display;
+package org.roomgoblin.display;
 
 import android.content.Context;
 import android.os.Build;
@@ -44,7 +44,7 @@ final class LocalAdbManager extends AbsAdbConnectionManager {
             .setKeySize(2048)
             .setDigests(KeyProperties.DIGEST_SHA256,KeyProperties.DIGEST_SHA512)
             .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-            .setCertificateSubject(new X500Principal("CN=Classroom Hub Device Agent"))
+            .setCertificateSubject(new X500Principal("CN=RoomGoblin Device Agent"))
             .setCertificateSerialNumber(BigInteger.valueOf(System.currentTimeMillis()))
             .setCertificateNotBefore(start.getTime())
             .setCertificateNotAfter(end.getTime())
@@ -54,7 +54,7 @@ final class LocalAdbManager extends AbsAdbConnectionManager {
 
     @Override protected PrivateKey getPrivateKey(){return privateKey;}
     @Override protected Certificate getCertificate(){return certificate;}
-    @Override protected String getDeviceName(){return "ClassroomHubDeviceAgent";}
+    @Override protected String getDeviceName(){return "RoomGoblinDeviceAgent";}
 
     boolean pairLocal(int port,String code) throws Exception {return pair("127.0.0.1",port,code);}
     boolean discoverAndConnect(Context context,long timeoutMs) throws Exception {return autoConnect(context,timeoutMs)||isConnected();}

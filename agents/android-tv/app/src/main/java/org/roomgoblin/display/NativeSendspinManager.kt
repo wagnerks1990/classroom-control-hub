@@ -1,4 +1,4 @@
-package org.classroomhub.display
+package org.roomgoblin.display
 
 import android.content.Context
 import android.os.Build
@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 
 /** Native/background Sendspin player owned by AgentService, independent of the kiosk WebView. */
 object NativeSendspinManager {
-    private const val TAG = "ClassroomHubSendspin"
+    private const val TAG = "RoomGoblinSendspin"
     private const val PREF_ENABLED = "sendspin_enabled"
     private const val PREF_URL = "sendspin_url"
     private const val PREF_NAME = "sendspin_name"

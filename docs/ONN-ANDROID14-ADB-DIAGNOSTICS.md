@@ -7,7 +7,7 @@ This note applies to the validated Onn 4K Streaming Device running Android 14 (`
 On this firmware, commands such as:
 
 ```bash
-adb -s <serial> shell dumpsys package org.classroomhub.display
+adb -s <serial> shell dumpsys package org.roomgoblin.display
 ```
 
 have repeatedly blocked or hung indefinitely. They must not be used for normal package presence, version, agent-running, or health checks, and they must not be placed on a primary Managed Displays status path.
@@ -18,10 +18,10 @@ Use direct, bounded commands instead:
 
 ```bash
 # Installed package / APK path
-adb -s <serial> shell pm path org.classroomhub.display
+adb -s <serial> shell pm path org.roomgoblin.display
 
 # Running process
-adb -s <serial> shell pidof org.classroomhub.display
+adb -s <serial> shell pidof org.roomgoblin.display
 
 # Device identity / Android properties
 adb -s <serial> shell getprop ro.product.model
@@ -34,7 +34,7 @@ adb -s <serial> shell dpm list-owners
 # Device Admin receiver declaration
 adb -s <serial> shell cmd package query-receivers \
   -a android.app.action.DEVICE_ADMIN_ENABLED \
-  org.classroomhub.display
+  org.roomgoblin.display
 
 # Agent v2 listener
 adb -s <serial> shell ss -lnt | grep 8765

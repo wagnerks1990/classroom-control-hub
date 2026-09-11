@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPOSITORY_URL="${CLASSROOM_HUB_REPOSITORY_URL:-https://github.com/wagnerks1990/classroom-control-hub.git}"
+REPOSITORY_URL="${CLASSROOM_HUB_REPOSITORY_URL:-https://github.com/wagnerks1990/RoomGoblin.git}"
 REPOSITORY_REF="${CLASSROOM_HUB_REF:-main}"
 TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
 SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"

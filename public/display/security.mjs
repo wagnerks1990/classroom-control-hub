@@ -44,7 +44,7 @@ export function authorizeMediaUrl(value, baseOrigin, accessToken = '', depth = 0
     }
     return url.href;
   }
-  // Managed-display domain routes stay same-origin with Classroom Control Hub.
+  // Managed-display domain routes stay same-origin with RoomGoblin.
   // The backend gateway preserves the original Host/TLS SNI while applying its
   // configured DNS/IP override, so TVs do not need hosts-file changes.
   if (DISPLAY_GATEWAY_HOSTS.has(url.hostname.toLowerCase())) return displayGatewayUrl(url, origin);

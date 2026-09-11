@@ -375,7 +375,7 @@ class ClassroomHubStorage{
 
   getAdminConfig(){
     const devices=this.readNormalized("devices",{}),hardware=this.readNormalized("hardware",{}),calendar=this.readNormalized("scheduler-calendar",{});
-    const site=this.getSetting("site.profile",{school:"Your School",room:devices.room||"Classroom",timezone:"America/New_York",productName:"Classroom Control Hub",logoUrl:"",faviconUrl:"",displayPrefix:"TV",theme:{mode:"dark",primary:"#2aa866",accent:"#1b7a49",background:"#040705",surface:"#121923",text:"#eef4f8"},revision:0});
+    const site=this.getSetting("site.profile",{school:"Your School",room:devices.room||"Classroom",timezone:"America/New_York",productName:"RoomGoblin",logoUrl:"/brand/roomgoblin_primary_400w.png",faviconUrl:"/brand/favicon.ico",displayPrefix:"TV",theme:{mode:"dark",primary:"#0F766E",accent:"#22C55E",background:"#040705",surface:"#1E293B",text:"#eef4f8"},revision:0});
     const preferences={};for(const r of this.db.prepare("SELECT key,value_json FROM system_preferences ORDER BY key").all())preferences[r.key]=parseJson(r.value_json,null);
     return {site,devices,hardware,calendar,preferences,accessProfiles:this.listAccessProfiles()};
   }

@@ -160,7 +160,7 @@ Preserve these invariants:
 
 - Enrollment/pairing and assignment/configuration are separate workflows.
 - Pair once to establish ADB trust and a stable managed-device ID; use Edit for school/building/room/profile/display URL changes.
-- Display Agent package is `org.classroomhub.display`.
+- Display Agent package is `org.roomgoblin.display`.
 - Android inventory and ADB key material under `data/android-tv/` are persistent runtime state.
 - The maintenance container has one deliberately writable persistent ADB-key path: `/managed/classroom-hub/data/android-tv/.android`, backed by the named Docker volume `classroom-control-hub-android-adb`.
 - Any release path that may change core Compose mounts must force-recreate the maintenance container. The GUI updater must not rely on plain `docker compose up -d`; it force-recreates core services and verifies the ADB key directory is writable before accepting the release.
@@ -172,7 +172,7 @@ Preserve these invariants:
 - Hub recovery should verify/accelerate agent launch as soon as ADB reconnects instead of waiting for the normal background policy interval.
 - Remote-shell compound scripts must be correctly quoted for Android `/system/bin/sh`; never pass an unquoted pipeline/conditional as a fragmented `sh -c` sequence.
 - Android deep sleep is not the default scheduled power method on the validated Onn because it can remove the ADB/network management path. Keep kiosk/content scheduling, HDMI-CEC panel power, and advanced Android sleep separate.
-- Managed Minimal Mode is reversible: audit first, disable only audited third-party user-0 apps, preserve `org.classroomhub.display` and Android/Google TV core services, and provide Restore Apps.
+- Managed Minimal Mode is reversible: audit first, disable only audited third-party user-0 apps, preserve `org.roomgoblin.display` and Android/Google TV core services, and provide Restore Apps.
 
 Validated lifecycle: pair/enroll -> configure -> install agent -> persistent ADB bootstrap -> unattended reboot -> Wireless Debugging restored -> fixed `:5555` reconnect -> Hub Online -> agent starts -> assigned `/display/<id>` content returns. HDMI-CEC/physical panel power remains separate follow-up validation.
 

@@ -22,7 +22,7 @@ test("supported optional integrations can be adopted or Hub-managed",()=>{
   for(const container of ["mosquitto","govee2mqtt","music-assistant-server","veyon-webapi"]){
     assert.ok(host.includes(container),`Host Agent managed container set missing ${container}`);
   }
-  assert.match(ext,/Existing container adopted by Classroom Control Hub without recreation/);
+  assert.match(ext,/Existing container adopted by RoomGoblin without recreation/);
   assert.match(ext,/dataPreserved:true/);
   assert.match(ext,/musicassistant[\s\S]*?--network","host"/);
   assert.match(host,/_adopt_existing/);

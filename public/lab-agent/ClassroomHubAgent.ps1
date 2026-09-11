@@ -106,7 +106,7 @@ function Get-InteractiveUser{
 function Invoke-InteractiveTask([string]$Executable,[string]$Arguments,[int]$TimeoutSeconds=30){
   $user=Get-InteractiveUser;if(!$user){throw 'No interactive Windows user session is available'}
   if(!(Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue)){throw 'Windows ScheduledTasks support is unavailable'}
-  $name='Classroom Hub Interactive '+[Guid]::NewGuid().ToString('N')
+  $name='RoomGoblin Interactive '+[Guid]::NewGuid().ToString('N')
   $action=New-ScheduledTaskAction -Execute $Executable -Argument $Arguments
   $principal=New-ScheduledTaskPrincipal -UserId $user.account -LogonType Interactive -RunLevel Limited
   try{
@@ -196,7 +196,7 @@ function Start-AgentUpdate($Manifest,$Stage){
   $updater=@"
 `$ErrorActionPreference='Stop';`$v=@('$($values -join "','")')|ForEach-Object{[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String(`$_))}
 `$pidToWait=[int]`$v[0];`$stage=`$v[1];`$target=`$v[2];`$marker=`$v[3];`$hash=`$v[4].ToUpperInvariant();`$version=`$v[5];`$backup=`$target+'.previous'
-try{for(`$i=0;`$i -lt 120 -and (Get-Process -Id `$pidToWait -ErrorAction SilentlyContinue);`$i++){Start-Sleep -Milliseconds 250};if(Get-Process -Id `$pidToWait -ErrorAction SilentlyContinue){throw 'Previous agent process did not exit'};if((Get-FileHash `$stage -Algorithm SHA256).Hash -ne `$hash){throw 'Staged agent hash changed'};Remove-Item `$backup -Force -ErrorAction SilentlyContinue;[IO.File]::Replace(`$stage,`$target,`$backup,`$true);& schtasks.exe /Run /TN 'Classroom Control Hub Agent'|Out-Null;if(`$LASTEXITCODE -ne 0){throw "Updated agent task failed to start (exit code `$LASTEXITCODE)"};`$ok=`$false;for(`$i=0;`$i -lt 60;`$i++){Start-Sleep 1;try{`$h=Get-Content `$marker -Raw|ConvertFrom-Json;if(`$h.version -eq `$version){`$ok=`$true;break}}catch{}};if(!`$ok){Copy-Item `$backup `$target -Force;& schtasks.exe /End /TN 'Classroom Control Hub Agent' 2>`$null;& schtasks.exe /Run /TN 'Classroom Control Hub Agent'|Out-Null;if(`$LASTEXITCODE -ne 0){throw "Rollback agent task failed to start (exit code `$LASTEXITCODE)"};throw 'Updated agent failed its health check and was rolled back'}}catch{Write-EventLog -LogName Application -Source 'ClassroomHubAgent' -EntryType Error -EventId 1002 -Message ("Agent update failed: "+`$_.Exception.Message) -ErrorAction SilentlyContinue}finally{Remove-Item `$stage -Force -ErrorAction SilentlyContinue}
+try{for(`$i=0;`$i -lt 120 -and (Get-Process -Id `$pidToWait -ErrorAction SilentlyContinue);`$i++){Start-Sleep -Milliseconds 250};if(Get-Process -Id `$pidToWait -ErrorAction SilentlyContinue){throw 'Previous agent process did not exit'};if((Get-FileHash `$stage -Algorithm SHA256).Hash -ne `$hash){throw 'Staged agent hash changed'};Remove-Item `$backup -Force -ErrorAction SilentlyContinue;[IO.File]::Replace(`$stage,`$target,`$backup,`$true);& schtasks.exe /Run /TN 'RoomGoblin Agent'|Out-Null;if(`$LASTEXITCODE -ne 0){throw "Updated agent task failed to start (exit code `$LASTEXITCODE)"};`$ok=`$false;for(`$i=0;`$i -lt 60;`$i++){Start-Sleep 1;try{`$h=Get-Content `$marker -Raw|ConvertFrom-Json;if(`$h.version -eq `$version){`$ok=`$true;break}}catch{}};if(!`$ok){Copy-Item `$backup `$target -Force;& schtasks.exe /End /TN 'RoomGoblin Agent' 2>`$null;& schtasks.exe /Run /TN 'RoomGoblin Agent'|Out-Null;if(`$LASTEXITCODE -ne 0){throw "Rollback agent task failed to start (exit code `$LASTEXITCODE)"};throw 'Updated agent failed its health check and was rolled back'}}catch{Write-EventLog -LogName Application -Source 'ClassroomHubAgent' -EntryType Error -EventId 1002 -Message ("Agent update failed: "+`$_.Exception.Message) -ErrorAction SilentlyContinue}finally{Remove-Item `$stage -Force -ErrorAction SilentlyContinue}
 "@
   $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($updater))
   try{Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded" -WindowStyle Hidden -ErrorAction Stop|Out-Null}
@@ -206,8 +206,8 @@ function Invoke-AgentCommand($Socket,$Command,$Config){
   try{
     switch([string]$Command.action){
       'message' {$text=[string]$Command.payload.text;if($text.Length -gt 2000){throw 'Message exceeds the 2,000-character Windows delivery limit'};[void](Invoke-NativeBounded "$env:SystemRoot\System32\msg.exe" @('*','/TIME:120',$text) 15);Command-Result $Socket $Command $true 'Message displayed'}
-      'restart' {[void](Invoke-NativeBounded "$env:SystemRoot\System32\shutdown.exe" @('/r','/t','30','/d','p:4:1','/c','Classroom Control Hub administrator request') 10);Command-Result $Socket $Command $true 'Restart scheduled'}
-      'shutdown' {[void](Invoke-NativeBounded "$env:SystemRoot\System32\shutdown.exe" @('/s','/t','30','/d','p:4:1','/c','Classroom Control Hub administrator request') 10);Command-Result $Socket $Command $true 'Shutdown scheduled'}
+      'restart' {[void](Invoke-NativeBounded "$env:SystemRoot\System32\shutdown.exe" @('/r','/t','30','/d','p:4:1','/c','RoomGoblin administrator request') 10);Command-Result $Socket $Command $true 'Restart scheduled'}
+      'shutdown' {[void](Invoke-NativeBounded "$env:SystemRoot\System32\shutdown.exe" @('/s','/t','30','/d','p:4:1','/c','RoomGoblin administrator request') 10);Command-Result $Socket $Command $true 'Shutdown scheduled'}
       'cancel-shutdown' {[void](Invoke-NativeBounded "$env:SystemRoot\System32\shutdown.exe" @('/a') 10);Command-Result $Socket $Command $true 'Pending shutdown cancelled'}
       'logoff' {$user=Get-InteractiveUser;if(!$user){throw 'No interactive Windows session is available'};[void](Invoke-NativeBounded "$env:SystemRoot\System32\logoff.exe" @([string]$user.sessionId) 10);Command-Result $Socket $Command $true "Interactive session $($user.sessionId) logged off"}
       'lock' {Invoke-InteractiveTask "$env:SystemRoot\System32\rundll32.exe" 'user32.dll,LockWorkStation' 15;Command-Result $Socket $Command $true 'Interactive workstation locked'}
@@ -269,7 +269,7 @@ while($true){
       }
       if($json.type -eq 'lab.command'){Invoke-AgentCommand $socket $json.command $config;if($script:ExitForUpdate){return}}
     }
-  }catch{$eventMessage=$_.Exception.Message;if($eventMessage -match 'certificate|trust relationship|SSL|TLS'){$eventMessage+=' Install the Classroom Control Hub Caddy root CA in Local Computer > Trusted Root Certification Authorities, or use a publicly trusted certificate.'};Write-EventLog -LogName Application -Source 'ClassroomHubAgent' -EntryType Error -EventId 1001 -Message $eventMessage -ErrorAction SilentlyContinue}
+  }catch{$eventMessage=$_.Exception.Message;if($eventMessage -match 'certificate|trust relationship|SSL|TLS'){$eventMessage+=' Install the RoomGoblin Caddy root CA in Local Computer > Trusted Root Certification Authorities, or use a publicly trusted certificate.'};Write-EventLog -LogName Application -Source 'ClassroomHubAgent' -EntryType Error -EventId 1001 -Message $eventMessage -ErrorAction SilentlyContinue}
   finally{if($script:Socket){try{$script:Socket.Dispose()}catch{};$script:Socket=$null}}
   Start-Sleep -Seconds 10
 }

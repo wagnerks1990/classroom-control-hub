@@ -8,7 +8,7 @@ The Managed Displays UI exposes three enrollment lifecycle actions:
 
 - **Enable enrollment** — marks the record active so policy automation can manage it.
 - **Disable enrollment** — keeps inventory and configuration but excludes the display from policy automation.
-- **Remove from Hub** — deletes only the Classroom Hub enrollment record. It does not uninstall `org.classroomhub.display`, factory-reset Android, or delete unrelated Classroom Hub data.
+- **Remove from Hub** — deletes only the Classroom Hub enrollment record. It does not uninstall `org.roomgoblin.display`, factory-reset Android, or delete unrelated Classroom Hub data.
 
 Removal is intentionally non-destructive to the physical device. Destructive device actions must remain separate and explicit.
 
@@ -20,7 +20,7 @@ A factory reset creates a new Android trust/enrollment context. If the same phys
 
 On the tested Onn 4K Streaming Device running Android 14, `dpm set-active-admin` returned success but `DevicePolicyManager.isAdminActive()` remained false. Classroom Hub therefore uses Android's user-visible Device Administrator approval flow for reliable activation.
 
-Use **Enable Device Admin** in the Device Agent v2 panel. Classroom Hub launches Android's `android.app.action.ADD_DEVICE_ADMIN` screen for `org.classroomhub.display/.AgentDeviceAdminReceiver`. Approve the request on the TV, then rerun **Capabilities**. Expected state after successful activation:
+Use **Enable Device Admin** in the Device Agent v2 panel. Classroom Hub launches Android's `android.app.action.ADD_DEVICE_ADMIN` screen for `org.roomgoblin.display/.AgentDeviceAdminReceiver`. Approve the request on the TV, then rerun **Capabilities**. Expected state after successful activation:
 
 - `deviceAdminActive: true`
 - `sleepDisplay.available: true`

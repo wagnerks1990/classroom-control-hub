@@ -87,7 +87,7 @@ The HTTPS above is only for securely retrieving the installer from GitHub. The i
 For a manual deployment:
 
 ```bash
-sudo git clone https://github.com/wagnerks1990/classroom-control-hub.git /opt/classroom-hub
+sudo git clone https://github.com/wagnerks1990/RoomGoblin.git /opt/classroom-hub
 cd /opt/classroom-hub
 sudo cp .env.example .env
 sudo bash install.sh

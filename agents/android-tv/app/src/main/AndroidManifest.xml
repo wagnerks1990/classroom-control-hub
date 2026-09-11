@@ -28,7 +28,7 @@
         </intent>
     </queries>
 
-    <!-- Package namespace remains org.classroomhub.display for upgrade compatibility. -->
+    <!-- Package namespace remains org.roomgoblin.display for upgrade compatibility. -->
     <application android:allowBackup="false" android:usesCleartextTraffic="true" android:label="RoomGoblin Display" android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" android:launchMode="singleTask">
             <intent-filter>
@@ -73,7 +73,7 @@
             </intent-filter>
         </receiver>
         <receiver android:name=".ConfigReceiver" android:enabled="true" android:exported="true">
-            <intent-filter><action android:name="org.classroomhub.display.CONFIGURE" /></intent-filter>
+            <intent-filter><action android:name="org.roomgoblin.display.CONFIGURE" /></intent-filter>
         </receiver>
     </application>
 </manifest>

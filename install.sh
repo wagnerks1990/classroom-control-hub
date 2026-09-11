@@ -14,7 +14,7 @@ case "${1:-}" in
 esac
 
 # GitHub/bootstrap source retrieval remains HTTPS; this does not enable appliance TLS.
-# https://github.com/wagnerks1990/classroom-control-hub
+# https://github.com/wagnerks1990/RoomGoblin
 TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
 SERVICES="${CLASSROOM_HUB_SERVICES_DIR:-/opt/services}"
 SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +26,7 @@ BACKUP_ROOT="${CLASSROOM_HUB_BACKUP_DIR:-/opt/classroom-hub-backups}"
 BACKUP_ROOT_REAL="$(readlink -m "$BACKUP_ROOT")"
 BACKUP="$BACKUP_ROOT/migration-$STAMP"
 
-fail(){ echo "Classroom Control Hub installer failed: $*" >&2; exit 1; }
+fail(){ echo "RoomGoblin installer failed: $*" >&2; exit 1; }
 safe_managed_root(){
   local label="$1" raw="$2" resolved
   [[ "$raw" == /* ]] || fail "$label must be an absolute path"
@@ -45,7 +45,7 @@ paths_overlap(){ [[ "$1" == "$2" || "$1" == "$2/"* || "$2" == "$1/"* ]]; }
 ! paths_overlap "$TARGET_REAL" "$BACKUP_ROOT_REAL" || fail "application and backup roots must be separate, non-nested directories"
 ! paths_overlap "$SERVICES_REAL" "$BACKUP_ROOT_REAL" || fail "services and backup roots must be separate, non-nested directories"
 if [[ -d "$TARGET" ]] && find "$TARGET" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
-  [[ -f "$TARGET/.classroom-hub-installation" || ( -f "$TARGET/docker-compose.yml" && -f "$TARGET/VERSION" ) ]] || fail "$TARGET is not an identified Classroom Control Hub installation"
+  [[ -f "$TARGET/.classroom-hub-installation" || ( -f "$TARGET/docker-compose.yml" && -f "$TARGET/VERSION" ) ]] || fail "$TARGET is not an identified RoomGoblin installation"
 fi
 
 if [[ $EUID -ne 0 ]]; then echo "Run this installer as root (sudo)." >&2; exit 1; fi
@@ -64,7 +64,7 @@ printf 'Using host group: %s (GID 10001)\n' "$HUB_INSTALL_GROUP"
 
 mkdir -p "$BACKUP_ROOT"
 if [[ -f "$TARGET/.env" || -d "$TARGET/data" ]]; then
-  echo "Existing Classroom Control Hub detected at $TARGET"
+  echo "Existing RoomGoblin detected at $TARGET"
   mkdir -p "$BACKUP"
   echo "Creating pre-migration backup at $BACKUP ..."
   rsync -a \
@@ -208,7 +208,7 @@ install -D -m 0755 "$TARGET/host-agent/update-runner.sh" /usr/local/libexec/clas
 install -D -m 0755 "$TARGET/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
 cat >/etc/systemd/system/classroom-hub-update.service <<UNIT
 [Unit]
-Description=Classroom Control Hub Native Host Update Runner
+Description=RoomGoblin Native Host Update Runner
 After=network-online.target docker.service classroom-control-hub-host-agent.service
 Wants=network-online.target
 ConditionPathExists=$TARGET/host-agent/update-runner.sh
@@ -229,7 +229,7 @@ WantedBy=multi-user.target
 UNIT
 cat >/etc/systemd/system/classroom-hub-app-update.service <<UNIT
 [Unit]
-Description=Classroom Control Hub Verified Application Update Runner
+Description=RoomGoblin Verified Application Update Runner
 After=network-online.target docker.service classroom-control-hub-host-agent.service
 Wants=network-online.target
 ConditionPathExists=$TARGET/host-agent/app-update-runner.sh
@@ -254,7 +254,7 @@ systemctl daemon-reload
 systemctl enable classroom-hub-host-agent.service >/dev/null
 systemctl restart classroom-hub-host-agent.service
 for _ in $(seq 1 30); do [[ -S /run/classroom-control-hub/host-agent.sock ]] && break; sleep 0.5; done
-[[ -S /run/classroom-control-hub/host-agent.sock ]] || { echo "Classroom Control Hub Host Agent socket was not created." >&2; systemctl status classroom-hub-host-agent.service --no-pager || true; exit 1; }
+[[ -S /run/classroom-control-hub/host-agent.sock ]] || { echo "RoomGoblin Host Agent socket was not created." >&2; systemctl status classroom-hub-host-agent.service --no-pager || true; exit 1; }
 
 cd "$TARGET"
 EXPECTED_VERSION="$(tr -d '\r\n' < VERSION)"
@@ -285,8 +285,8 @@ else
   SOURCE_COMMIT="$(git -C "$TARGET" rev-parse HEAD)"
   [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "unable to resolve the source commit"
   IMAGE_TAG="sha-${SOURCE_COMMIT}"
-  HUB_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub:${IMAGE_TAG}"
-  MAINT_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub-maintenance:${IMAGE_TAG}"
+  HUB_IMAGE="ghcr.io/wagnerks1990/roomgoblin:${IMAGE_TAG}"
+  MAINT_IMAGE="ghcr.io/wagnerks1990/roomgoblin-maintenance:${IMAGE_TAG}"
   echo "Pulling validated CI images for ${SOURCE_COMMIT} ..."
   docker pull "$HUB_IMAGE" || fail "main image is unavailable; wait for Publish Main Images to finish or use --build-local for development"
   docker pull "$MAINT_IMAGE" || fail "maintenance image is unavailable; wait for Publish Main Images to finish or use --build-local for development"
@@ -304,12 +304,12 @@ docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+proc
 docker compose exec -T maintenance-agent sh -lc 'test -w /managed/classroom-hub/data/android-tv/.android' || { echo "Android ADB key storage is not writable." >&2; exit 1; }
 docker compose exec -T maintenance-agent sh -lc 'test ! -e /managed/classroom-hub/data/android-tv/devices.json || test -r /managed/classroom-hub/data/android-tv/devices.json' || { echo "Managed Android display inventory is not readable." >&2; exit 1; }
 
-echo "Starting Classroom Control Hub backend (HTTP) ..."
+echo "Starting RoomGoblin backend (HTTP) ..."
 docker compose up -d --no-build --force-recreate --remove-orphans classroom-hub
 docker rm -f classroom-control-hub-tls >/dev/null 2>&1 || true
 
 HUB_HEALTH_URL="$(docker compose exec -T classroom-hub node -p "require('./src/network').localHttpUrl(process.env.PORT,process.env.BIND_ADDRESS)+'/health'")"
-echo "Waiting for Classroom Control Hub health ..."
+echo "Waiting for RoomGoblin health ..."
 for _ in $(seq 1 90); do
   if curl -fsS "$HUB_HEALTH_URL" >/dev/null 2>&1; then break; fi
   sleep 2
@@ -324,7 +324,7 @@ if [[ "$MAIN_VERSION" != "$EXPECTED_VERSION" || "$MAINT_VERSION" != "$EXPECTED_V
 fi
 echo "Verified component convergence: $EXPECTED_VERSION (backend, maintenance, host agent)"
 echo
-echo "Classroom Control Hub migration completed."
+echo "RoomGoblin migration completed."
 echo "Controller: http://${APPLIANCE_ADDRESS}:${HUB_PORT_VALUE}/controller/"
 SETUP_TOKEN_VALUE="$(sed -n 's/^SETUP_TOKEN=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -n "$SETUP_TOKEN_VALUE" ]]; then

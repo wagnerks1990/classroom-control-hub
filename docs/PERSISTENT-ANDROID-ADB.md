@@ -85,9 +85,9 @@ For every supported device/firmware combination record:
 ## Related source
 
 - `agents/android-tv/app/src/main/AndroidManifest.xml`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/HubStorage.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/BootReceiver.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/ConfigReceiver.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/HubStorage.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/BootReceiver.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/ConfigReceiver.java`
 - `maintenance-agent/android-tv-persistent-adb.js`
 - `public/managed-displays/app.js`
 - `docs/MANAGED-ANDROID-MINIMAL-MODE.md`

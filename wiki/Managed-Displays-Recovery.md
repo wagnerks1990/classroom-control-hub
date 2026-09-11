@@ -43,13 +43,13 @@ Refresh **Managed Displays**. Existing inventory should return without re-pairin
 
 ## Display Agent says `Not installed` but Launch Agent works
 
-On the validated Onn 4K Streaming Device running Android 14, `dumpsys package org.classroomhub.display` can block while the Display Agent is installed and running. The primary status probe therefore must not depend on `dumpsys package`.
+On the validated Onn 4K Streaming Device running Android 14, `dumpsys package org.roomgoblin.display` can block while the Display Agent is installed and running. The primary status probe therefore must not depend on `dumpsys package`.
 
 Use these authoritative checks:
 
 ```bash
-sudo docker compose exec maintenance-agent adb -s <serial> shell pm path org.classroomhub.display
-sudo docker compose exec maintenance-agent adb -s <serial> shell pidof org.classroomhub.display
+sudo docker compose exec maintenance-agent adb -s <serial> shell pm path org.roomgoblin.display
+sudo docker compose exec maintenance-agent adb -s <serial> shell pidof org.roomgoblin.display
 ```
 
 `pm path` determines installed/not installed. `pidof` independently determines running/stopped. Optional version/metadata probes may enrich status only and must never downgrade a confirmed installed/running state.

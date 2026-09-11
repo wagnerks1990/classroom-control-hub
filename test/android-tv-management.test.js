@@ -73,7 +73,7 @@ test("persistent ADB devices use fast bounded reboot recovery and agent launch a
   assert.match(app,/document\.hidden\?15000:delay/);
 });
 
-test("managed minimal mode only targets third-party packages and preserves the Classroom Hub agent",()=>{
+test("managed minimal mode only targets third-party packages and preserves the RoomGoblin agent",()=>{
   const app=fs.readFileSync(path.join(process.cwd(),"public/managed-displays/app.js"),"utf8");
   assert.match(app,/data-op="audit-apps"/);
   assert.match(app,/data-op="minimal"/);
@@ -81,7 +81,7 @@ test("managed minimal mode only targets third-party packages and preserves the C
   assert.match(app,/pm list packages -3/);
   assert.match(app,/pm disable-user --user 0/);
   assert.match(app,/pm enable/);
-  assert.match(app,/org\.classroomhub\.display/);
+  assert.match(app,/org\.roomgoblin\.display/);
 });
 
 test("maintenance image installs an ADB build that supports wireless pairing",()=>{
@@ -103,9 +103,9 @@ test("secure wireless ADB reconnect rediscovery is installed",()=>{
 
 test("persistent ADB bootstrap uses direct-boot-safe agent storage",()=>{
   const manifest=fs.readFileSync(path.join(process.cwd(),"agents/android-tv/app/src/main/AndroidManifest.xml"),"utf8");
-  const boot=fs.readFileSync(path.join(process.cwd(),"agents/android-tv/app/src/main/java/org/classroomhub/display/BootReceiver.java"),"utf8");
-  const config=fs.readFileSync(path.join(process.cwd(),"agents/android-tv/app/src/main/java/org/classroomhub/display/ConfigReceiver.java"),"utf8");
-  const storage=fs.readFileSync(path.join(process.cwd(),"agents/android-tv/app/src/main/java/org/classroomhub/display/HubStorage.java"),"utf8");
+  const boot=fs.readFileSync(path.join(process.cwd(),"agents/android-tv/app/src/main/java/org/roomgoblin/display/BootReceiver.java"),"utf8");
+  const config=fs.readFileSync(path.join(process.cwd(),"agents/android-tv/app/src/main/java/org/roomgoblin/display/ConfigReceiver.java"),"utf8");
+  const storage=fs.readFileSync(path.join(process.cwd(),"agents/android-tv/app/src/main/java/org/roomgoblin/display/HubStorage.java"),"utf8");
   const bridge=fs.readFileSync(path.join(process.cwd(),"maintenance-agent/android-tv-persistent-adb.js"),"utf8");
   assert.match(manifest,/android\.permission\.WRITE_SECURE_SETTINGS/);
   assert.match(manifest,/android:directBootAware="true"/);

@@ -11,9 +11,9 @@ test("kiosk audit inventories all packages without dumpsys package",()=>{
   assert.doesNotMatch(ui,/dumpsys package/);
 });
 
-test("kiosk clean mode removes user apps and preserves Classroom Hub agent",()=>{
+test("kiosk clean mode removes user apps and preserves RoomGoblin agent",()=>{
   assert.match(ui,/pm uninstall --user 0/);
-  assert.match(ui,/org\.classroomhub\.display/);
+  assert.match(ui,/org\.roomgoblin\.display/);
   assert.match(ui,/com\.google\.android\.youtube\.tv/);
   assert.match(ui,/com\.google\.android\.youtube\.tvmusic/);
   assert.match(ui,/com\.netflix\.ninja/);

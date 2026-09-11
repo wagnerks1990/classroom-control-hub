@@ -10,9 +10,15 @@ The built-in interface uses Goblin Teal `#0F766E`, Electric Green `#22C55E`, Sla
 
 Canonical runtime assets are stored in `public/brand/`. Full rules are maintained in `docs/brand/BRAND-GUIDE.md` and `docs/brand/AI-BRAND-CONTEXT.md`.
 
+## Android app transition
+
+Starting with `1.0.0-alpha.77`, the RoomGoblin Display Agent uses `org.roomgoblin.display`. If `org.classroomhub.display` is installed, uninstall the old Android app and install the new RoomGoblin version instead of attempting an in-place update. Android treats the two package IDs as separate apps.
+
+The managed installer removes only the old app package, installs RoomGoblin, retains the server-side device enrollment and ADB trust, and reapplies saved configuration and supported grants. Device Administrator and Accessibility approval may need to be confirmed again on the TV.
+
 ## Why old names still appear internally
 
-RoomGoblin is a compatibility-safe rebrand. Existing installations already depend on legacy paths and identifiers such as `/opt/classroom-hub`, `CLASSROOM_HUB_*`, `org.classroomhub.display`, `classroom-control-hub*` service/container/image names, and persisted enrollment/storage identifiers.
+RoomGoblin is a compatibility-safe rebrand. Existing installations already depend on legacy paths and identifiers such as `/opt/classroom-hub`, `CLASSROOM_HUB_*`, `org.roomgoblin.display`, `classroom-control-hub*` service/container/image names, and persisted enrollment/storage identifiers.
 
 Those are not the product's current name. They remain intentionally stable so an upgrade does not break installed appliances or managed endpoints.
 

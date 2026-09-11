@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Device Agent v2 is the first-party Android / Google TV management architecture for Classroom Hub. Preserve the existing package ID `org.classroomhub.display` and existing Managed Displays records while moving normal management away from an ADB-only dependency.
+Device Agent v2 is the first-party Android / Google TV management architecture for Classroom Hub. Preserve the existing package ID `org.roomgoblin.display` and existing Managed Displays records while moving normal management away from an ADB-only dependency.
 
 ## Non-negotiable architecture
 
@@ -13,14 +13,14 @@ Device Agent v2 is the first-party Android / Google TV management architecture f
 
 ## Key files
 
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/AgentService.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/AgentCapabilities.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/LocalAdbManager.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/AgentAccessibilityService.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/AgentDeviceAdminReceiver.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/RootTools.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/BootReceiver.java`
-- `agents/android-tv/app/src/main/java/org/classroomhub/display/ConfigReceiver.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentService.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentCapabilities.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/LocalAdbManager.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentAccessibilityService.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentDeviceAdminReceiver.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/RootTools.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/BootReceiver.java`
+- `agents/android-tv/app/src/main/java/org/roomgoblin/display/ConfigReceiver.java`
 - `maintenance-agent/android-tv-agent-v2.js`
 - `public/managed-displays/agent-v2-ui.js`
 - `docs/DEVICE-AGENT-V2.md`

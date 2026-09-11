@@ -17,10 +17,10 @@ const NATIVE_VEYON_URL="http://127.0.0.1:11080";
 const MUSIC_ASSISTANT_URL="http://127.0.0.1:8095";
 
 const ADDONS={
-  mosquitto:{id:"mosquitto",name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:2.0.22",dataRoot:"mosquitto",description:"MQTT broker used by Classroom Control Hub integrations."},
+  mosquitto:{id:"mosquitto",name:"MQTT Broker",container:"mosquitto",image:"eclipse-mosquitto:2.0.22",dataRoot:"mosquitto",description:"MQTT broker used by RoomGoblin integrations."},
   govee2mqtt:{id:"govee2mqtt",name:"Govee Lighting",container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72",dataRoot:"govee2mqtt",description:"Govee discovery and LAN/cloud control through MQTT."},
-  musicassistant:{id:"musicassistant",name:"Music Assistant",container:"music-assistant-server",image:"ghcr.io/music-assistant/server:2.9.13",dataRoot:"music-assistant",description:"Classroom audio and media service. A valid long-lived Music Assistant access token is required before Classroom Control Hub marks this integration ready."},
-  veyonwebapi:{id:"veyonwebapi",name:"Veyon WebAPI",container:"veyon-webapi",image:null,dataRoot:"veyon-webapi",description:"Native Veyon WebAPI service discovered on the appliance host. Service lifecycle remains host-managed while Classroom Control Hub manages Veyon application configuration."}
+  musicassistant:{id:"musicassistant",name:"Music Assistant",container:"music-assistant-server",image:"ghcr.io/music-assistant/server:2.9.13",dataRoot:"music-assistant",description:"Classroom audio and media service. A valid long-lived Music Assistant access token is required before RoomGoblin marks this integration ready."},
+  veyonwebapi:{id:"veyonwebapi",name:"Veyon WebAPI",container:"veyon-webapi",image:null,dataRoot:"veyon-webapi",description:"Native Veyon WebAPI service discovered on the appliance host. Service lifecycle remains host-managed while RoomGoblin manages Veyon application configuration."}
 };
 
 function hostAgentJson(method,pathName,body=null,timeoutMs=15000){return new Promise((resolve,reject)=>{const raw=body==null?null:Buffer.from(JSON.stringify(body));const req=http.request({socketPath:HOST_AGENT_SOCKET,path:pathName,method,headers:{"x-maintenance-token":TOKEN,...(raw?{"content-type":"application/json","content-length":raw.length}:{})}},res=>{const chunks=[];res.on("data",c=>chunks.push(c));res.on("end",()=>{const text=Buffer.concat(chunks).toString("utf8");let value;try{value=JSON.parse(text||"{}")}catch{value={error:text}}if((res.statusCode||500)>=400||value.ok===false)return reject(Error(value.error||`Host Agent HTTP ${res.statusCode}`));resolve(value)})});req.on("error",reject);req.setTimeout(timeoutMs,()=>req.destroy(Error("Host Agent request timed out")));if(raw)req.write(raw);req.end()})}
@@ -76,7 +76,7 @@ async function deployAddon(id,settings={},recreate=false){
   if(id==="musicassistant"&&exists){const status=await saveMusicAssistantSettings(settings);if(!recreate)return {ok:true,id,adopted:true,managed:true,container:addon.container,image:addon.image,message:`Existing Music Assistant adopted and authenticated successfully (${status.players?.length||0} player(s) discovered).`}}
   let resolved=settings||{};
   if(id!=="musicassistant"){const saved=await mainAppPut(id,settings);resolved=saved.resolved||resolved}
-  if(exists&&!recreate)return {ok:true,id,adopted:true,managed:true,container:addon.container,image:addon.image,message:"Existing container adopted by Classroom Control Hub without recreation."};
+  if(exists&&!recreate)return {ok:true,id,adopted:true,managed:true,container:addon.container,image:addon.image,message:"Existing container adopted by RoomGoblin without recreation."};
   let args=["run","-d","--network","host","--name",addon.container,"--restart","unless-stopped"];
   if(id==="mosquitto"){
     const username=String(resolved.username||settings.username||"classroom-hub").replace(/[^A-Za-z0-9._-]/g,"");
@@ -101,14 +101,14 @@ async function deployAddon(id,settings={},recreate=false){
     await mainAppPut("musicassistant",{url:cleanUrl(settings.url,MUSIC_ASSISTANT_URL),logLevel:String(settings.logLevel||"info")});
     const suppliedToken=String(settings.token||"").trim();
     if(suppliedToken){await new Promise(r=>setTimeout(r,2500));await saveMusicAssistantSettings(settings);return {ok:true,id,managed:true,container:addon.container,image:addon.image,output:result.stdout||"",message:"Music Assistant deployed and authenticated successfully."}}
-    return {ok:true,id,managed:true,container:addon.container,image:addon.image,setupRequired:true,output:result.stdout||"",message:"Music Assistant server deployed. Open Music Assistant, complete its first-run setup, create a long-lived token under Settings → Profile, then return here and save the token. Classroom Control Hub will remain setup-required until authentication succeeds."};
+    return {ok:true,id,managed:true,container:addon.container,image:addon.image,setupRequired:true,output:result.stdout||"",message:"Music Assistant server deployed. Open Music Assistant, complete its first-run setup, create a long-lived token under Settings → Profile, then return here and save the token. RoomGoblin will remain setup-required until authentication succeeds."};
   }
-  return {ok:true,id,managed:true,container:addon.container,image:addon.image,output:result.stdout||"",message:"Optional integration deployed and placed under Classroom Control Hub management."};
+  return {ok:true,id,managed:true,container:addon.container,image:addon.image,output:result.stdout||"",message:"Optional integration deployed and placed under RoomGoblin management."};
 }
 
 async function removeAddon(id){
   const addon=ADDONS[id];if(!addon)throw Error("Unknown optional integration");
-  if(id==="veyonwebapi"){const native=await nativeVeyon();if(native.installed)return {ok:false,id,hostManaged:true,removed:false,dataPreserved:true,message:"Native Veyon services are host-managed and are not removed by Classroom Control Hub."}}
+  if(id==="veyonwebapi"){const native=await nativeVeyon();if(native.installed)return {ok:false,id,hostManaged:true,removed:false,dataPreserved:true,message:"Native Veyon services are host-managed and are not removed by RoomGoblin."}}
   const exists=await containerExists(addon.container);if(exists)await hostAgentRequest(["rm","-f",addon.container],30000);
   return {ok:true,id,removed:exists,container:addon.container,dataPreserved:true,dataRoot:path.join(SERVICES_ROOT,addon.dataRoot),message:"Container removed; persistent integration data was preserved for redeploy or rollback."};
 }

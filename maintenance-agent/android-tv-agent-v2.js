@@ -29,18 +29,18 @@ async function agentFetch(d,pathName,opt={}){
   }catch(error){if(error.name==="AbortError"){const e=Error("Device Agent v2 request timed out");e.status=504;throw e}throw error}finally{clearTimeout(timer)}
 }
 async function configure(d,body={}){
-  const pkg=cleanPackage(body.package||d.agentPackage||"org.classroomhub.display");
+  const pkg=cleanPackage(body.package||d.agentPackage||"org.roomgoblin.display");
   const port=cleanPort(body.port||d.agentV2?.port||8765);
   const agentToken=body.rotateToken||!d.agentV2?.token?token():d.agentV2.token;
   const url=String(body.displayUrl||d.displayUrl||"").trim();if(!/^https?:\/\//i.test(url)){const e=Error("A valid HTTP(S) display URL is required");e.status=400;throw e}
   const persistentAdb=d.persistentAdb?.enabled===true;
   const targetAdbPort=cleanPort(d.persistentAdb?.targetPort||5555);
-  await adb(["-s",d.serial,"shell","am","broadcast","-a","org.classroomhub.display.CONFIGURE","-p",pkg,"--es","display_url",url,"--ez","agent_enabled","true","--ei","agent_port",String(port),"--es","agent_token",agentToken,"--ez","persistent_adb",String(persistentAdb),"--ei","target_adb_port",String(targetAdbPort)],20000);
+  await adb(["-s",d.serial,"shell","am","broadcast","-a","org.roomgoblin.display.CONFIGURE","-p",pkg,"--es","display_url",url,"--ez","agent_enabled","true","--ei","agent_port",String(port),"--es","agent_token",agentToken,"--ez","persistent_adb",String(persistentAdb),"--ei","target_adb_port",String(targetAdbPort)],20000);
   const updated=STORE.upsertDevice({...d,displayUrl:url,agentPackage:pkg,agentV2:{enabled:true,port,token:agentToken,configuredAt:new Date().toISOString()}});
   return updated;
 }
 async function activateDeviceAdmin(d){
-  const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
+  const pkg=cleanPackage(d.agentPackage||"org.roomgoblin.display");
   const component=`${pkg}/.AgentDeviceAdminReceiver`;
   const activity=`${pkg}/.DeviceAdminActivationActivity`;
   const result=await adb(["-s",d.serial,"shell","am","start","-W","-n",activity],15000);
@@ -52,7 +52,7 @@ function lifecycle(d,action){
   if(action==="remove"){
     const removed=STORE.deleteDevice(d.id);
     if(!removed){const e=Error("Managed Android display not found");e.status=404;throw e}
-    return {removed:true,deviceId:d.id,dataPreserved:true,message:"Managed display enrollment removed from Classroom Hub. The Android app, device data, and server-wide data were not deleted."};
+    return {removed:true,deviceId:d.id,dataPreserved:true,message:"Managed display enrollment removed from RoomGoblin. The Android app, device data, and server-wide data were not deleted."};
   }
   const e=Error("Lifecycle action must be enable, disable, or remove");e.status=400;throw e;
 }

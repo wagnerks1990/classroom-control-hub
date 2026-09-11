@@ -2,7 +2,7 @@
 (()=>{
   const root=document.getElementById("devices"),terminal=document.getElementById("terminal");
   if(!root||!terminal)return;
-  const KEEP="org.classroomhub.display";
+  const KEEP="org.roomgoblin.display";
   const KIOSK_REMOVABLE=[
     "com.google.android.youtube.tv",
     "com.google.android.youtube.tvunplugged",

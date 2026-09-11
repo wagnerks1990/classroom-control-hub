@@ -1,5 +1,5 @@
 [Unit]
-Description=Classroom Control Hub Native Host Agent
+Description=RoomGoblin Native Host Agent
 After=local-fs.target
 Before=docker.service
 

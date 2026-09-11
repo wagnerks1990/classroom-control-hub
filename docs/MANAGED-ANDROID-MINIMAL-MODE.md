@@ -14,7 +14,7 @@ Managed Minimal Mode is an optional Classroom Control Hub cleanup profile for An
 
 **Audit Apps** lists third-party packages and currently disabled third-party packages on the selected display.
 
-**Minimal Mode** disables third-party packages for user 0 except `org.classroomhub.display`. It uses `pm disable-user --user 0`, so package files remain installed and can be restored.
+**Minimal Mode** disables third-party packages for user 0 except `org.roomgoblin.display`. It uses `pm disable-user --user 0`, so package files remain installed and can be restored.
 
 **Restore Apps** re-enables disabled third-party packages for user 0.
 

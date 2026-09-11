@@ -7,5 +7,5 @@ dependencyResolutionManagement {
         maven { url = uri("https://jitpack.io") }
     }
 }
-rootProject.name = "ClassroomHubDisplayAgent"
+rootProject.name = "RoomGoblinDisplayAgent"
 include(":app")

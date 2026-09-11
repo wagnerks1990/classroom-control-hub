@@ -4,7 +4,7 @@ Read this before changing Android Display Agent build, staging, install, update 
 
 ## Non-negotiable invariant
 
-`data/android-tv/ClassroomHub-Display-Agent.apk` is not an operator-managed arbitrary file. It must represent the verified APK corresponding to the Android source compiled into the currently deployed maintenance image.
+`data/android-tv/RoomGoblin-Display-Agent.apk` is not an operator-managed arbitrary file. It must represent the verified APK corresponding to the Android source compiled into the currently deployed maintenance image.
 
 Do not reintroduce instructions that tell operators to manually copy an APK into the staging path as the normal update mechanism.
 
@@ -37,7 +37,7 @@ If centralized release signing is implemented later, migration must explicitly p
 
 Pre-pipeline devices may carry an agent signed by a temporary CI/debug identity. A normal in-place install can return `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
 
-Only that specific signature incompatibility may offer the explicit replacement workflow. The administrator must confirm it. Replacement removes only `org.classroomhub.display`, installs the verified current staged artifact, restores the trusted `WRITE_SECURE_SETTINGS` grant when Persistent ADB is enabled, restores saved Classroom Hub/Agent v2 configuration from the managed-device record, and relaunches the display.
+Only that specific signature incompatibility may offer the explicit replacement workflow. The administrator must confirm it. Replacement removes only `org.roomgoblin.display`, installs the verified current staged artifact, restores the trusted `WRITE_SECURE_SETTINGS` grant when Persistent ADB is enabled, restores saved Classroom Hub/Agent v2 configuration from the managed-device record, and relaunches the display.
 
 Do not turn arbitrary install failures into automatic uninstall/reinstall behavior.
 

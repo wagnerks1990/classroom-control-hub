@@ -45,7 +45,7 @@ Example approach:
 ```bash
 cd /opt
 sudo mv classroom-hub classroom-hub-legacy
-sudo git clone https://github.com/wagnerks1990/classroom-control-hub.git /opt/classroom-hub
+sudo git clone https://github.com/wagnerks1990/RoomGoblin.git /opt/classroom-hub
 ```
 
 Restore the production `.env`, persistent data, uploads/backups, and required secret mounts from the preserved installation. Do not copy old tracked application source over the Git checkout.
@@ -100,7 +100,7 @@ git status --short
 ## Development clone
 
 ```bash
-git clone https://github.com/wagnerks1990/classroom-control-hub.git
+git clone https://github.com/wagnerks1990/RoomGoblin.git
 cd classroom-control-hub
 cp .env.example .env
 ```

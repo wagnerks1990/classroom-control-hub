@@ -13,7 +13,7 @@ Administrator browser
           -> Android / Google TV
 
 Android / Google TV
-  -> org.classroomhub.display
+  -> org.roomgoblin.display
     -> immersive WebView
       -> Classroom Hub /display/<id>
 ```
@@ -65,7 +65,7 @@ The agent can become runnable slightly after ADB itself returns. Managed Display
 
 ## Display Agent
 
-Agent source is in `agents/android-tv/`; package ID is `org.classroomhub.display`.
+Agent source is in `agents/android-tv/`; package ID is `org.roomgoblin.display`.
 
 The agent is Leanback-compatible, immersive, keeps the screen awake while active, stores its assigned display URL, suppresses accidental Back exit, accepts package-scoped configuration, and participates in persistent-ADB boot recovery.
 
@@ -73,7 +73,7 @@ Managed Displays reports **Not installed**, **Installed · stopped**, **Starting
 
 The boot implementation stores the persistent-ADB policy in device-protected storage so it is available at `LOCKED_BOOT_COMPLETED`. Kiosk activity launch remains best-effort because Android/OEM firmware controls when foreground UI may start. The Hub supplies a second recovery layer: as soon as ADB reconnects, it verifies the assigned device and can accelerate agent launch rather than waiting for the normal policy interval.
 
-For test installation place the APK at `data/android-tv/ClassroomHub-Display-Agent.apk` and use **Install Agent**. Production deployments should use a signed release APK.
+For test installation place the APK at `data/android-tv/RoomGoblin-Display-Agent.apk` and use **Install Agent**. Production deployments should use a signed release APK.
 
 ## Persistent ADB
 
@@ -98,7 +98,7 @@ HDMI-CEC still requires hardware-specific validation before physical TV-panel on
 Managed Displays includes a conservative, reversible cleanup workflow for dedicated signage endpoints:
 
 - **Audit Apps** inventories third-party packages;
-- **Minimal Mode** disables third-party packages for Android user 0 except `org.classroomhub.display`;
+- **Minimal Mode** disables third-party packages for Android user 0 except `org.roomgoblin.display`;
 - **Restore Apps** re-enables packages disabled for user 0.
 
 The workflow does not uninstall firmware or remove Android/Google TV core system packages. Always audit a new hardware/firmware family before applying minimal mode. The Classroom Hub agent, WebView, networking, Settings, package management, Google/Android framework components and ADB dependencies must remain intact.

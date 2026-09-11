@@ -3,7 +3,7 @@
 Classroom Hub stages the Android display APK at:
 
 ```text
-/opt/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.apk
+/opt/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.apk
 ```
 
 The maintenance container is deliberately unprivileged and drops all Linux capabilities. It therefore cannot rely on root bypassing host file permissions.
@@ -22,7 +22,7 @@ Verification:
 ```bash
 cd /opt/classroom-hub
 docker compose exec -T maintenance-agent id
-docker compose exec -T maintenance-agent sh -lc 'test -r /managed/classroom-hub/data/android-tv/ClassroomHub-Display-Agent.apk && echo APK-readable'
+docker compose exec -T maintenance-agent sh -lc 'test -r /managed/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.apk && echo APK-readable'
 ```
 
 A healthy deployment prints `APK-readable` when the APK is staged.
