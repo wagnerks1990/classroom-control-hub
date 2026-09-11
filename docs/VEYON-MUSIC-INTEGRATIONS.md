@@ -4,13 +4,13 @@ This document defines the supported appliance architecture for Veyon classroom w
 
 ## Ownership model
 
-Classroom Control Hub separates **service lifecycle ownership** from **application configuration ownership**.
+RoomGoblin separates **service lifecycle ownership** from **application configuration ownership**.
 
 ### Veyon
 
-`veyon.service` and `veyon-webapi.service` are native Ubuntu/systemd services. Classroom Control Hub discovers and monitors them through the Host Agent. The Hub must not deploy a second Veyon WebAPI container when the native service exists, and it must not remove or recreate the native services from a managed-integration action.
+`veyon.service` and `veyon-webapi.service` are native Ubuntu/systemd services. RoomGoblin discovers and monitors them through the Host Agent. The Hub must not deploy a second Veyon WebAPI container when the native service exists, and it must not remove or recreate the native services from a managed-integration action.
 
-The Hub still owns the Veyon application configuration used by Classroom Control Hub. A host-managed service is therefore **configurable**, not monitor-only.
+The Hub still owns the Veyon application configuration used by RoomGoblin. A host-managed service is therefore **configurable**, not monitor-only.
 
 The current appliance profile is standardized on Veyon **key-file authentication** using one matching key pair named `master`. The native private and public keys must share the same Veyon Pair ID. The Host Agent synchronizes `master/private` and `master/public` into `/etc/classroom-control-hub/veyon/` before startup when native Veyon is present. The main application imports the private key into the encrypted SQLite secret store.
 
@@ -18,13 +18,13 @@ Veyon also supports logon/username-password authentication in other deployments.
 
 ### Music Assistant
 
-Music Assistant normally runs as `music-assistant-server` with host networking so local player discovery works. Classroom Control Hub may deploy or adopt that container, but container presence alone does not mean the integration is ready.
+Music Assistant normally runs as `music-assistant-server` with host networking so local player discovery works. RoomGoblin may deploy or adopt that container, but container presence alone does not mean the integration is ready.
 
 A valid long-lived Music Assistant access token is mandatory before the Hub reports Music Assistant as operational.
 
 ## Database authority
 
-The SQLite database is the Classroom Control Hub source of truth.
+The SQLite database is the RoomGoblin source of truth.
 
 ### Veyon computers
 
@@ -44,7 +44,7 @@ Legacy `data/veyon-computers.json` is migration input only. Startup recovery mer
 
 The authoritative Veyon private authentication key is stored encrypted in `secret_store` under `veyon.private-key`. The Veyon public key and non-secret deployment metadata may be stored as managed-integration configuration.
 
-For the current appliance, the canonical native key name is `master`. The pre-start key synchronization helper exports the existing native `master/private` key and its matching `master/public` key into the Classroom Control Hub compatibility path. The application then imports the private key into SQLite. Native key files remain required runtime material for Veyon, but they are not the Hub configuration authority after import.
+For the current appliance, the canonical native key name is `master`. The pre-start key synchronization helper exports the existing native `master/private` key and its matching `master/public` key into the RoomGoblin compatibility path. The application then imports the private key into SQLite. Native key files remain required runtime material for Veyon, but they are not the Hub configuration authority after import.
 
 The Hub never silently creates or rotates a Veyon key pair during discovery. Key generation/rotation must be an explicit administrator action because the matching public key must also be distributed to all managed endpoints.
 
@@ -106,16 +106,16 @@ Music Assistant uses a two-phase setup when the server is not already installed:
 
 1. deploy/adopt the Music Assistant server;
 2. open the Music Assistant UI and complete its own first-run setup;
-3. in Music Assistant, go to **Settings → Profile → Long-lived access tokens** and create a token for Classroom Control Hub;
-4. return to Classroom Control Hub, enter the token, and choose **Save & Verify**;
-5. Classroom Control Hub stores the token encrypted and performs an authenticated API check;
+3. in Music Assistant, go to **Settings → Profile → Long-lived access tokens** and create a token for RoomGoblin;
+4. return to RoomGoblin, enter the token, and choose **Save & Verify**;
+5. RoomGoblin stores the token encrypted and performs an authenticated API check;
 6. only after authentication succeeds is Music Assistant considered ready.
 
 The setup/controller card includes an **Open Music Assistant** action. When the container-facing URL uses `127.0.0.1`, the browser link substitutes the current Hub hostname so an administrator can open port 8095 from the workstation browser.
 
 ## Music Assistant API validation
 
-Every Music Assistant API request requires an authenticated long-lived token. Classroom Control Hub uses the Music Assistant API at `/api` and the existing authenticated command path. A stored token that receives an authentication error must leave the integration in `authentication-required` / setup-required state rather than reporting success.
+Every Music Assistant API request requires an authenticated long-lived token. RoomGoblin uses the Music Assistant API at `/api` and the existing authenticated command path. A stored token that receives an authentication error must leave the integration in `authentication-required` / setup-required state rather than reporting success.
 
 Container state and API state are separate concepts:
 

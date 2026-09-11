@@ -4,7 +4,7 @@ The Classroom Overview has a **Managed Displays** link beside **Refresh**. It op
 
 ## ADB key storage and inventory permissions
 
-The maintenance container intentionally runs with a read-only root filesystem and all Linux capabilities dropped. ADB needs one writable persistent directory for its client keys. Classroom Hub supplies the named Docker volume `classroom-control-hub-android-adb` at:
+The maintenance container intentionally runs with a read-only root filesystem and all Linux capabilities dropped. ADB needs one writable persistent directory for its client keys. RoomGoblin supplies the named Docker volume `classroom-control-hub-android-adb` at:
 
 ```text
 /managed/classroom-hub/data/android-tv/.android

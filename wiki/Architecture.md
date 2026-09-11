@@ -2,13 +2,13 @@
 
 See [Host Networking](Host-Networking) for the current Linux container topology, loopback-only maintenance API, explicit add-on migration, listener ports and recovery rules.
 
-Classroom Control Hub separates the classroom application, browser display clients, persistence, maintenance functions, host-level administration, and external integrations.
+RoomGoblin separates the classroom application, browser display clients, persistence, maintenance functions, host-level administration, and external integrations.
 
 ```text
 Operator Browser
       |
       v
-Classroom Control Hub API / Controller
+RoomGoblin API / Controller
       |
       +---- Display WebSocket / browser clients
       +---- Scheduler / automation engine

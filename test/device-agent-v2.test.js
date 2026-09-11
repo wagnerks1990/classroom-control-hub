@@ -101,7 +101,10 @@ test("local ADB recovery is first-party and root is policy gated",()=>{
 
 test("browser receives redacted Agent v2 configuration",()=>{
   const bridge=read("maintenance-agent/android-tv-agent-v2.js");
-  assert.match(bridge,/token:\"configured\"/);
+  const library=read("maintenance-agent/android-tv-lib.js");
+  assert.match(bridge,/device:publicDevice\(updated\)/);
+  assert.match(library,/const \{token,\.\.\.agentV2\}=device\.agentV2/);
+  assert.match(library,/tokenConfigured:Boolean\(token\)/);
   assert.doesNotMatch(bridge,/res\.json\([^\n]*agentToken/);
 });
 

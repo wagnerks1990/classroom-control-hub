@@ -34,14 +34,14 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl git gnupg openssl python3 rsync unzip zip
+ARCH="$(dpkg --print-architecture)"
+case "$ARCH" in amd64) ;; *) fail "unsupported CPU architecture: $ARCH (current validated images require amd64)" ;; esac
 
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
   echo "Installing Docker Engine and the Compose plugin from Docker's signed apt repository ..."
   install -m 0755 -d /etc/apt/keyrings
   curl --proto '=https' --tlsv1.2 -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
-  ARCH="$(dpkg --print-architecture)"
-  case "$ARCH" in amd64|arm64) ;; *) fail "unsupported CPU architecture: $ARCH" ;; esac
   CODENAME="${VERSION_CODENAME:-noble}"
   printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' "$ARCH" "$ID" "$CODENAME" >/etc/apt/sources.list.d/docker.list
   apt-get update

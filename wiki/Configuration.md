@@ -2,7 +2,7 @@
 
 See [Host Networking](Host-Networking) for the current Linux container topology, loopback-only maintenance API, explicit add-on migration, listener ports and recovery rules.
 
-Classroom Control Hub keeps public source generic while each installation supplies school-specific settings at runtime.
+RoomGoblin keeps public source generic while each installation supplies school-specific settings at runtime.
 
 ## Configuration layers
 

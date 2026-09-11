@@ -3,18 +3,20 @@ const test=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
 
-const ui=fs.readFileSync("public/managed-displays/kiosk-clean-mode.js","utf8");
+const stub=fs.readFileSync("public/managed-displays/kiosk-clean-mode.js","utf8");
+const app=fs.readFileSync("public/managed-displays/app.js","utf8");
+const html=fs.readFileSync("public/managed-displays/index.html","utf8");
 
-test("kiosk audit inventories all packages without dumpsys package",()=>{
-  assert.match(ui,/pm list packages/);
-  assert.match(ui,/===== ALL PACKAGES =====/);
-  assert.doesNotMatch(ui,/dumpsys package/);
+test("obsolete kiosk cleanup loader remains an inert compatibility stub",()=>{
+  assert.doesNotMatch(html,/kiosk-clean-mode\.js/);
+  assert.doesNotMatch(stub,/addEventListener|fetch\(|pm (?:uninstall|disable|enable|list)/);
 });
 
-test("kiosk clean mode removes user apps and preserves RoomGoblin agent",()=>{
-  assert.match(ui,/pm uninstall --user 0/);
-  assert.match(ui,/org\.roomgoblin\.display/);
-  assert.match(ui,/com\.google\.android\.youtube\.tv/);
-  assert.match(ui,/com\.google\.android\.youtube\.tvmusic/);
-  assert.match(ui,/com\.netflix\.ninja/);
+test("one reversible Minimal Mode owner disables and restores third-party apps",()=>{
+  assert.match(app,/async function enableMinimalMode/);
+  assert.match(app,/pm disable-user --user 0/);
+  assert.match(app,/async function restoreApps/);
+  assert.match(app,/pm enable/);
+  assert.match(app,/org\.roomgoblin\.display/);
+  assert.doesNotMatch(app,/pm uninstall --user 0/);
 });

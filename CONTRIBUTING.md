@@ -3,8 +3,8 @@
 Bug reports, feature proposals, test results, and documentation corrections are
 welcome through GitHub issues.
 
-To preserve the project owner's ability to maintain and relicense Classroom
-Control Hub, code contributions are accepted only after the contributor and
+To preserve the project owner's ability to maintain and relicense RoomGoblin,
+code contributions are accepted only after the contributor and
 copyright holder complete a separate written contributor agreement. Opening a
 pull request does not by itself authorize the maintainer to merge or relicense
 the contribution.

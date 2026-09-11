@@ -1,6 +1,6 @@
 # Android Agent APK Permissions
 
-Classroom Hub stages the Android display APK at:
+RoomGoblin stages the Android display APK at:
 
 ```text
 /opt/classroom-hub/data/android-tv/RoomGoblin-Display-Agent.apk

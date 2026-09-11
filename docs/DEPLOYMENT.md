@@ -2,11 +2,11 @@
 
 ## Host-network deployment contract
 
-The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
+The Linux RoomGoblin and maintenance containers, plus reviewed managed add-on templates, use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
 
 ## Current deployment model
 
-Classroom Control Hub currently runs as a direct HTTP appliance. HTTPS/TLS and the previous Caddy gateway are intentionally deferred while the deployment/update path is stabilized.
+RoomGoblin currently runs as a direct HTTP appliance. HTTPS/TLS and the previous Caddy gateway are intentionally deferred while the deployment/update path is stabilized.
 
 ```text
 Ubuntu host
@@ -32,7 +32,7 @@ Use the appliance only on a trusted classroom/admin LAN or behind network contro
 
 Recommended baseline:
 
-- Ubuntu Server 24.04 LTS on `amd64` or `arm64`;
+- Ubuntu Server 24.04 LTS on validated `amd64` hardware (`arm64` is not yet supported);
 - Docker Engine and Docker Compose v2;
 - persistent local storage for SQLite, uploads, backups, and runtime state;
 - reliable LAN connectivity to controlled classroom devices and integrations;
@@ -77,12 +77,12 @@ For a clean supported server:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/wagnerks1990/classroom-control-hub/main/deploy/bootstrap.sh \
+  https://raw.githubusercontent.com/wagnerks1990/RoomGoblin/main/deploy/bootstrap.sh \
   -o /tmp/classroom-hub-bootstrap.sh
 sudo bash /tmp/classroom-hub-bootstrap.sh
 ```
 
-The HTTPS above is only for securely retrieving the installer from GitHub. The installed Classroom Control Hub service itself currently uses HTTP.
+The HTTPS above is only for securely retrieving the installer from GitHub. The installed RoomGoblin service itself currently uses HTTP.
 
 For a manual deployment:
 
@@ -163,7 +163,7 @@ Confirm that:
 Because the controller currently uses HTTP, restrict port 3000 to trusted classroom/admin networks. Example with UFW, replacing the subnet as appropriate:
 
 ```bash
-sudo ufw allow from 172.16.127.0/24 to any port 3000 proto tcp
+sudo ufw allow from 192.0.2.0/24 to any port 3000 proto tcp
 ```
 
 Do not expose the maintenance service or Host Agent socket externally.
@@ -175,7 +175,7 @@ The Windows lab-agent installer keeps an explicit `-AllowHttp` acknowledgement w
 Example:
 
 ```powershell
-.\Install-Agent.ps1 -HubUrl http://172.16.127.5:3000 -AllowHttp
+.\Install-Agent.ps1 -HubUrl http://192.0.2.10:3000 -AllowHttp
 ```
 
 See `docs/LAB-AGENT.md` and `wiki/Windows-Lab-Agent.md`.
@@ -256,3 +256,14 @@ Back up at minimum:
 - pre-upgrade recovery snapshots.
 
 Never commit production backups or secrets to the public repository.
+
+Configuration, operational, data, and full recovery archives can contain site
+configuration, internal addresses, device inventory, user/student records,
+media, or secrets. Store them as sensitive administrative data and require the
+controller's explicit sensitive-data confirmation before creation. Full backups
+also require the separate secrets confirmation.
+
+The **diagnostic** scope is the only archive intended for a support case. It is
+metadata-only and excludes the SQLite database, runtime data, managed-service
+state, device inventory, ADB identity, student records, `.env`, certificates,
+and keys. Still inspect its contents before sharing it outside the organization.

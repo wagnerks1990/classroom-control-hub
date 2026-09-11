@@ -1,10 +1,10 @@
 # Managed Android / Google TV Minimal Mode
 
-Managed Minimal Mode is an optional Classroom Control Hub cleanup profile for Android TV / Google TV devices that are being used as dedicated classroom displays.
+Managed Minimal Mode is an optional RoomGoblin cleanup profile for Android TV / Google TV devices that are being used as dedicated classroom displays.
 
 ## Goals
 
-- Keep the Classroom Hub Display Agent installed and runnable.
+- Keep the RoomGoblin Display Agent installed and runnable.
 - Leave Android/Google TV core system packages untouched.
 - Avoid uninstalling or deleting firmware packages.
 - Disable only third-party packages installed for Android user 0.
@@ -22,7 +22,7 @@ The current implementation intentionally does not disable Google Play services, 
 
 ## Deployment guidance
 
-Use Minimal Mode only when a device is intended to function as a dedicated Classroom Hub endpoint. Schools that still need streaming, conferencing, signage, accessibility, or vendor-specific applications should audit the package list before enabling it.
+Use Minimal Mode only when a device is intended to function as a dedicated RoomGoblin endpoint. Schools that still need streaming, conferencing, signage, accessibility, or vendor-specific applications should audit the package list before enabling it.
 
 Do not use arbitrary debloat package lists copied from unrelated Android TV models. A package that is optional on one firmware build can be required on another.
 
@@ -34,7 +34,7 @@ Minimal Mode does not uninstall packages. To roll back, use **Restore Apps**. A 
 
 After enabling Minimal Mode verify:
 
-- Classroom Hub Display Agent remains installed and Running.
+- RoomGoblin Display Agent remains installed and Running.
 - Assigned display URL still loads.
 - Persistent ADB still returns on the configured management port.
 - Remote shell/status/screenshot remain functional.

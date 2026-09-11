@@ -2,7 +2,7 @@
 
 ## Versioning
 
-Classroom Control Hub uses semantic-style prerelease versions during development:
+RoomGoblin uses semantic-style prerelease versions during development:
 
 ```text
 1.0.0-alpha.N
@@ -11,6 +11,10 @@ Classroom Control Hub uses semantic-style prerelease versions during development
 ```
 
 The `alpha` container channel tracks alpha builds. `latest` remains reserved for stable releases.
+
+Production images are currently validated for `amd64` only. Do not publish or
+document `arm64` support until the Hub, maintenance image, and bundled
+Android/ADB toolchain pass the complete release matrix on that architecture.
 
 ## Current deployment invariant
 
@@ -104,6 +108,11 @@ ghcr.io/wagnerks1990/roomgoblin:1.0.0-alpha.N
 
 The maintenance image uses the corresponding maintenance package/tag.
 
+CI also publishes identical transitional aliases at
+`ghcr.io/wagnerks1990/classroom-control-hub*` for existing automation. New
+deployments use the canonical RoomGoblin names. Do not remove the aliases
+without a tested migration and rollback plan.
+
 ## Rollback
 
 If the release has no incompatible database migration, restore the previous known-good source/image while preserving persistent runtime state.
@@ -114,7 +123,7 @@ If the release changes the database schema, follow release-specific rollback ins
 
 The Infrastructure & Recovery page can check a configured GitHub repository for approved alpha, beta, or stable semantic-version releases. Draft releases and arbitrary source archives are not eligible. Private-repository read tokens are encrypted in the application database.
 
-The native `classroom-hub-app-update.service` resolves the release tag to a Git commit, repairs the runtime HTTP configuration/filesystem prerequisites, refreshes the Host Agent, rebuilds the Compose services, removes legacy Caddy orphans, and verifies the reported application version across the backend, maintenance service, and Host Agent.
+The native `classroom-hub-app-update.service` resolves the release tag to a Git commit, repairs the runtime HTTP configuration/filesystem prerequisites, refreshes the Host Agent, pulls the matching immutable RoomGoblin images, force-recreates the Compose services, removes legacy Caddy orphans, and verifies the reported application version across the backend, maintenance service, and Host Agent.
 
 Current update health requirements are:
 
@@ -124,7 +133,7 @@ Current update health requirements are:
 - Host Agent is healthy and reports the expected version;
 - no TLS/Caddy dependency is required.
 
-Every update has a pre-update operational backup. Deployment failure automatically restores the prior commit, exact retained container images, and backup. **Revert Last Upgrade** restores that same known-good set after first preserving the current state.
+Every update has a pre-update operational backup. Deployment failure automatically restores the prior commit, exact prior image tag, retained container image IDs, and backup. **Revert Last Upgrade** restores that same known-good set after first preserving the current state; it never resolves a moving channel tag for rollback.
 
 The updater runs from an immutable host-installed copy. It verifies the SHA-256 digest of the pinned revert backup, restores matching data before an older application starts, and resumes a root-journaled request after an unexpected restart.
 

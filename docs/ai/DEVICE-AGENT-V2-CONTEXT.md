@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Device Agent v2 is the first-party Android / Google TV management architecture for Classroom Hub. Preserve the existing package ID `org.roomgoblin.display` and existing Managed Displays records while moving normal management away from an ADB-only dependency.
+Device Agent v2 is the first-party Android / Google TV management architecture for RoomGoblin. Preserve the existing package ID `org.roomgoblin.display` and existing Managed Displays records while moving normal management away from an ADB-only dependency.
 
 ## Non-negotiable architecture
 
@@ -69,8 +69,8 @@ The known 2023 Onn Gen 2 rooting guide is archived and states that its method no
 ## External research license notes
 
 - `mouldybread/adb-auto-enable`: MIT; behavioral/reference research for boot/local-ADB recovery.
-- `nozza87/Auto_ADB`: GPL-3.0; do not copy code into Classroom Hub.
-- `MuntashirAkon/libadb-android`: GPL-3.0-or-later OR Apache-2.0; Classroom Hub uses the Apache-2.0 option.
+- `nozza87/Auto_ADB`: GPL-3.0; do not copy code into RoomGoblin.
+- `MuntashirAkon/libadb-android`: GPL-3.0-or-later OR Apache-2.0; RoomGoblin uses the Apache-2.0 option.
 - Magisk: GPL-3.0; not bundled.
 - Onn rooting guides: research only; not incorporated.
 

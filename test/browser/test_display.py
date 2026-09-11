@@ -20,20 +20,20 @@ VERSION = re.search(r"DISPLAY_BUILD='([^']+)'", (ROOT/'public/display/index.html
 NOW = 1788970000000
 P7 = {
     'background': {'color': '#000000'},
-    'title': 'P7 - IT II - Introduction to Networks',
+    'title': 'Period 7 - Classroom Announcement',
     'titleOptions': {'size': 72, 'color': '#ffffff'},
     'subtitle': 'Remember to Behave and Place Cellphone in Locker before Bell',
     'subtitleOptions': {'size': 40, 'color': '#ffffff'},
-    'text': 'Substitute Today\n\nUnit 1 - Networking Models, Architecture, and Core Concepts\n\nSelect todays assignment(s) - 9/9/2026\n\nDO NOW - LESSON - LEARN - DISCUSSION - ASSIGNMENT - CHECK UNDERSTANDING',
+    'text': 'Classroom Update\n\nUnit 1 - Course Models, Architecture, and Core Concepts\n\nSelect today\'s assignment(s) - 01/15/2030\n\nDO NOW - LESSON - LEARN - DISCUSSION - ASSIGNMENT - CHECK UNDERSTANDING',
     'textOptions': {'size': 54, 'color': '#ffffff', 'position': 'center'},
     'timer': {'visible': True, 'running': False, 'mode': 'countdown', 'remainingSeconds': 0,
               'durationSeconds': 3600, 'fontSize': 75, 'position': 'bottom',
-              'label': 'P7 - IT II • Class Ends In', 'timerInstanceId': 'fixture-p7'},
+              'label': 'Period 7 • Class Ends In', 'timerInstanceId': 'fixture-p7'},
 }
 P6 = copy.deepcopy(P7)
-P6.update(title='P6 - IT III - Enterprise Networking', subtitle='Mr. Wagner',
-          text='09/09/2026\n\nDO NOW - LEARN - MODULES - EXIT TICKET')
-P6['timer'].update(label='P6 - IT III • Class Ends In', timerInstanceId='fixture-p6')
+P6.update(title='Period 6 - Classroom Instructions', subtitle='Classroom Instructor',
+          text='01/15/2030\n\nDO NOW - LEARN - MODULES - EXIT TICKET')
+P6['timer'].update(label='Period 6 • Class Ends In', timerInstanceId='fixture-p6')
 CLUB_SELECTION = {
     'background': {'color': '#000000'},
     'title': 'Please log in to Schoology during HOMEROOM\nand complete your Club Selection',

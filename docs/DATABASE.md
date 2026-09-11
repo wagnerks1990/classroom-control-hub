@@ -1,6 +1,6 @@
-# Classroom Control Hub Database
+# RoomGoblin Database
 
-Classroom Control Hub 1.0 uses SQLite at `data/classroom-control-hub.db` with WAL journaling.
+RoomGoblin 1.0 uses SQLite at `data/classroom-control-hub.db` with WAL journaling.
 
 ## Schema 2 / alpha.3
 
@@ -49,7 +49,7 @@ Veyon application state is database-authoritative:
 
 For upgrades from older releases, `data/veyon-computers.json` is imported and merged into SQLite during startup recovery. The import is verified before the active legacy JSON file is removed. Migration history records the conversion. Existing rollback/migration backups remain the safety copy.
 
-Native Veyon itself may still require key files under its operating-system directories. Those files are generated/imported runtime material for Veyon, not the Classroom Control Hub source of truth. The Hub's authoritative private key remains the encrypted database value. During the migration window, the legacy host key mount may remain available only as one-time import compatibility.
+Native Veyon itself may still require key files under its operating-system directories. Those files are generated/imported runtime material for Veyon, not the RoomGoblin source of truth. The Hub's authoritative private key remains the encrypted database value. During the migration window, the legacy host key mount may remain available only as one-time import compatibility.
 
 ## Encryption
 

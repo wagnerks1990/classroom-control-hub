@@ -1,12 +1,12 @@
 # Android / Google TV Managed Displays
 
-Classroom Control Hub manages Android TV / Google TV endpoints through wireless ADB plus the Classroom Hub Display Agent. The first physically validated target is the Onn 4K Streaming Device running Android 14 (`wayne`, build `UKRB.260113.075.A1`). The provider remains generic; Onn is a validated target, not a hard-coded dependency.
+RoomGoblin manages Android TV / Google TV endpoints through wireless ADB plus the RoomGoblin Display Agent. The first physically validated target is the Onn 4K Streaming Device running Android 14 (`wayne`, build `UKRB.260113.075.A1`). The provider remains generic; Onn is a validated target, not a hard-coded dependency.
 
 ## Architecture
 
 ```text
 Administrator browser
-  -> Classroom Hub :3000
+  -> RoomGoblin :3000
     -> authenticated maintenance proxy
       -> maintenance-agent 127.0.0.1:3010
         -> wireless ADB
@@ -15,10 +15,10 @@ Administrator browser
 Android / Google TV
   -> org.roomgoblin.display
     -> immersive WebView
-      -> Classroom Hub /display/<id>
+      -> RoomGoblin /display/<id>
 ```
 
-The current appliance runtime uses Docker host networking for both Classroom Hub and the maintenance agent. Classroom Hub normally binds `0.0.0.0:3000`; maintenance binds loopback-only `127.0.0.1:3010`. Therefore the internal maintenance URL is `http://127.0.0.1:3010`. Do not regress this feature branch to the older bridge-network `maintenance-agent:3010` topology. The maintenance listener is authenticated with `MAINTENANCE_TOKEN` and must not be exposed directly to the LAN.
+The current appliance runtime uses Docker host networking for both RoomGoblin and the maintenance agent. RoomGoblin normally binds `0.0.0.0:3000`; maintenance binds loopback-only `127.0.0.1:3010`. Therefore the internal maintenance URL is `http://127.0.0.1:3010`. Do not regress this feature branch to the older bridge-network `maintenance-agent:3010` topology. The maintenance listener is authenticated with `MAINTENANCE_TOKEN` and must not be exposed directly to the LAN.
 
 ADB keys and managed-device inventory persist under `data/android-tv/`. Recreating containers must not remove enrollment records.
 
@@ -41,7 +41,7 @@ The physical Onn Android 14 test validated:
 - reboot command;
 - APK streamed installation;
 - Display Agent package/version/running detection;
-- agent configuration and immersive Classroom Hub content display;
+- agent configuration and immersive RoomGoblin content display;
 - pairing authorization surviving reboot;
 - persistent Wireless Debugging restoration after firmware disables it during reboot;
 - fixed ADB endpoint recovery at port `5555`;
@@ -58,7 +58,7 @@ reboot
  -> 172.16.x.x:5555 returns
  -> Hub transitions Recovering -> Online
  -> agent starts
- -> assigned Classroom Hub display URL loads
+ -> assigned RoomGoblin display URL loads
 ```
 
 The agent can become runnable slightly after ADB itself returns. Managed Displays therefore treats the post-boot interval as recovery/startup rather than immediately declaring a permanent agent failure.
@@ -77,9 +77,9 @@ For test installation place the APK at `data/android-tv/RoomGoblin-Display-Agent
 
 ## Persistent ADB
 
-The tested Onn firmware preserves pairing authorization but disables Wireless Debugging during reboot. Classroom Hub's opt-in persistent-ADB bootstrap grants the agent `WRITE_SECURE_SETTINGS`, records the policy, restores `development_settings_enabled` / `adb_wifi_enabled`, and pins the managed endpoint to port `5555`.
+The tested Onn firmware preserves pairing authorization but disables Wireless Debugging during reboot. RoomGoblin's opt-in persistent-ADB bootstrap grants the agent `WRITE_SECURE_SETTINGS`, records the policy, restores `development_settings_enabled` / `adb_wifi_enabled`, and pins the managed endpoint to port `5555`.
 
-This is powerful administrative access. Use it only on trusted device-management networks and restrict ADB to the Classroom Hub management host/network. See `docs/PERSISTENT-ANDROID-ADB.md` for the security model and recovery details.
+This is powerful administrative access. Use it only on trusted device-management networks and restrict ADB to the RoomGoblin management host/network. See `docs/PERSISTENT-ANDROID-ADB.md` for the security model and recovery details.
 
 A temporary failure during reboot is expected. Managed Displays uses bounded recovery polling rather than immediately demanding a new pairing code. Do not re-pair a device merely because it is rebooting or because its room/content metadata changed.
 
@@ -101,7 +101,7 @@ Managed Displays includes a conservative, reversible cleanup workflow for dedica
 - **Minimal Mode** disables third-party packages for Android user 0 except `org.roomgoblin.display`;
 - **Restore Apps** re-enables packages disabled for user 0.
 
-The workflow does not uninstall firmware or remove Android/Google TV core system packages. Always audit a new hardware/firmware family before applying minimal mode. The Classroom Hub agent, WebView, networking, Settings, package management, Google/Android framework components and ADB dependencies must remain intact.
+The workflow does not uninstall firmware or remove Android/Google TV core system packages. Always audit a new hardware/firmware family before applying minimal mode. The RoomGoblin agent, WebView, networking, Settings, package management, Google/Android framework components and ADB dependencies must remain intact.
 
 See `docs/MANAGED-ANDROID-MINIMAL-MODE.md` for operational guidance.
 
@@ -122,11 +122,11 @@ ss -lntp | grep -E ':3000|:3010'
 Expected intent:
 
 ```text
-0.0.0.0:3000   Classroom Hub
+0.0.0.0:3000   RoomGoblin
 127.0.0.1:3010 maintenance-agent
 ```
 
-From the Classroom Hub container, the maintenance API must be reachable at loopback with the maintenance token:
+From the RoomGoblin container, the maintenance API must be reachable at loopback with the maintenance token:
 
 ```bash
 docker compose exec -T classroom-hub node - <<'NODE'

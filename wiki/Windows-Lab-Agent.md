@@ -21,7 +21,7 @@ its supported capabilities during connection.
 
 ## Current HTTP-only transport
 
-The Classroom Control Hub appliance currently exposes HTTP directly on port
+The RoomGoblin appliance currently exposes HTTP directly on port
 `3000`; the previous Caddy/TLS gateway has been removed while HTTPS is redesigned.
 Plain HTTP still requires the explicit `-AllowHttp` installer option so an
 administrator consciously acknowledges the unencrypted transport.
@@ -29,7 +29,7 @@ administrator consciously acknowledges the unencrypted transport.
 Use this only on a trusted, isolated classroom/admin network. Example:
 
 ```powershell
-.\Install-Agent.ps1 -HubUrl http://172.16.127.5:3000 -AllowHttp
+.\Install-Agent.ps1 -HubUrl http://192.0.2.10:3000 -AllowHttp
 ```
 
 There is no Caddy root CA to deploy in the current architecture. When HTTPS/WSS

@@ -18,9 +18,18 @@ The managed installer removes only the old app package, installs RoomGoblin, ret
 
 ## Why old names still appear internally
 
-RoomGoblin is a compatibility-safe rebrand. Existing installations already depend on legacy paths and identifiers such as `/opt/classroom-hub`, `CLASSROOM_HUB_*`, `org.roomgoblin.display`, `classroom-control-hub*` service/container/image names, and persisted enrollment/storage identifiers.
+RoomGoblin is a compatibility-safe rebrand. Existing installations depend on
+legacy paths and identifiers such as `/opt/classroom-hub`, `CLASSROOM_HUB_*`,
+`classroom-control-hub*` service/container names, and persisted
+enrollment/storage identifiers. The alpha.77-and-later Android identity
+`org.roomgoblin.display` is new, but is now protected from casual renaming.
 
 Those are not the product's current name. They remain intentionally stable so an upgrade does not break installed appliances or managed endpoints.
+
+Canonical images are `ghcr.io/wagnerks1990/roomgoblin` and
+`ghcr.io/wagnerks1990/roomgoblin-maintenance`. CI also publishes transitional
+`classroom-control-hub*` aliases for existing automation. New deployments use
+the RoomGoblin names; removing the aliases requires a tested migration.
 
 Do not perform a repository-wide search-and-replace. A future migration of an internal identifier must include an upgrade path, rollback path, and validation of data, authentication, displays, Android/Google TV enrollment, Windows lab agents, updater, and backup/recovery behavior.
 

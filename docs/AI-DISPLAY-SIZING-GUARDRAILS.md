@@ -1,6 +1,6 @@
 # AI Guardrails: Display Sizing and Timer Chrome
 
-This file is AI-facing implementation context for future Classroom Control Hub changes.
+This file is AI-facing implementation context for future RoomGoblin changes.
 
 ## Required invariants
 

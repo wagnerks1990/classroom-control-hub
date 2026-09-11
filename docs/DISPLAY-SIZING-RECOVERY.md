@@ -29,7 +29,7 @@ After deploying/rebuilding, reload each receiver and run:
 JSON.stringify(window.ClassroomDisplayDiagnostics(), null, 2)
 ```
 
-Expected renderer revision: `single-fit-20260909-3`.
+Expected renderer revision: `single-fit-20260911-5`.
 
 For a scene configured approximately as title 72, subtitle 40, body 54 and timer 75, diagnostics should report fitted sizes no larger than approximately 79.2, 44, 59.4 and 82.5 respectively unless the configured values themselves differ. Long content may be smaller.
 

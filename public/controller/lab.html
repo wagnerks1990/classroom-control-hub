@@ -11,11 +11,13 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,Segoe UI,Arial,sans-serif}main{padding:16px;max-width:1600px;margin:auto}
 .top,.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.top{justify-content:space-between;margin-bottom:14px}h1,h2{margin:0}.muted{color:var(--muted)}
 button,input{background:#0d1317;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px}button{cursor:pointer}.primary{background:#153f2c;border-color:#2aa866}.danger{background:#461b1b;border-color:#a33}.warn{background:#4c3814;border-color:#9a7622}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--green);outline-offset:2px}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(275px,1fr));gap:10px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:12px}.online{border-color:#23764d}.offline{opacity:.72}.selected{outline:2px solid var(--blue)}
 .pill{display:inline-flex;padding:3px 7px;border:1px solid var(--border);border-radius:999px;font-size:11px}.good{color:var(--green)}.bad{color:var(--red)}.url{word-break:break-all;color:#b8d9ff}.kpi{font-size:27px;font-weight:700}
 .computerHead{display:flex;justify-content:space-between;gap:8px}.row{display:flex;gap:8px;align-items:center;margin:6px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted)}
 dialog{width:min(1800px,98vw);background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:12px}dialog::backdrop{background:#000a}#historyWrap{max-height:65vh;overflow:auto} select{background:#0d1317;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 </style>
 </head>
 <body>

@@ -1,6 +1,7 @@
-## Classroom Control Hub
+## RoomGoblin
 
 - [Home](Home)
+- [Brand and Compatibility](RoomGoblin-Brand-and-Compatibility)
 - [Architecture](Architecture)
 - [Installation and Deployment](Installation-and-Deployment)
 - [Configuration](Configuration)

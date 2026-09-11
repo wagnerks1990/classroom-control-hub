@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This pilot begins moving routine Android/Google TV management from ADB into the Classroom Hub Display Agent. ADB remains the one-time bootstrap and recovery mechanism; the installed agent is expected to maintain policy while it is running.
+This pilot begins moving routine Android/Google TV management from ADB into the RoomGoblin Display Agent. ADB remains the one-time bootstrap and recovery mechanism; the installed agent is expected to maintain policy while it is running.
 
 ## First pilot capability: self-healing Wireless Debugging
 
@@ -21,7 +21,7 @@ The watchdog is conditional: devices without the opt-in Persistent ADB policy ar
 
 1. Update/install the pilot Display Agent APK on an already enrolled display.
 2. Confirm Persistent ADB was bootstrapped previously and the agent still has `WRITE_SECURE_SETTINGS`.
-3. Leave the Classroom Hub display activity running.
+3. Leave the RoomGoblin display activity running.
 4. Manually turn **Wireless debugging** off in Android Developer Options.
 5. Wait up to 30 seconds.
 6. Re-open Developer Options and confirm Wireless debugging returns to **On** without a new ADB command from the Hub.
@@ -43,4 +43,4 @@ The next architecture increment should add an authenticated agent-to-Hub control
 
 ## Security boundary
 
-The agent can repair these settings only because the administrator explicitly granted `WRITE_SECURE_SETTINGS` during the existing Persistent ADB bootstrap. Classroom Hub must not attempt to self-grant that privileged permission. Disabling the persistent policy stops the watchdog from changing Wireless debugging.
+The agent can repair these settings only because the administrator explicitly granted `WRITE_SECURE_SETTINGS` during the existing Persistent ADB bootstrap. RoomGoblin must not attempt to self-grant that privileged permission. Disabling the persistent policy stops the watchdog from changing Wireless debugging.

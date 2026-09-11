@@ -9,7 +9,7 @@ GitHub's normal repository Contents API does not expose Wiki write operations, s
 From a clone that has permission to push the Wiki:
 
 ```bash
-cd classroom-control-hub
+cd RoomGoblin
 bash scripts/sync-wiki.sh
 ```
 

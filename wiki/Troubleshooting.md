@@ -96,7 +96,7 @@ The public repository intentionally leaves site-specific Pluto URL values out of
 
 ## Pluto API returns "Authentication required"
 
-`/api/v1/pluto/status` is itself an authenticated Classroom Control Hub endpoint. An unauthenticated CLI `curl` can be rejected by the Hub before any Pluto hardware request occurs. That response alone does not prove Pluto hardware authentication is required.
+`/api/v1/pluto/status` is itself an authenticated RoomGoblin endpoint. An unauthenticated CLI `curl` can be rejected by the Hub before any Pluto hardware request occurs. That response alone does not prove Pluto hardware authentication is required.
 
 ## Docker/Git update appears to do nothing
 
@@ -114,3 +114,9 @@ Confirm the Git checkout advanced and the containers were rebuilt/recreated.
 ## Before sharing diagnostics publicly
 
 Redact credentials, tokens, student/user data, private URLs, certificates/private keys, and any diagnostic payload containing secrets. Rotate secrets that were accidentally pasted into a public/shared transcript.
+
+Do not share configuration, operational, data, or full recovery backups. They
+are sensitive administrative archives. Generate the metadata-only diagnostic
+archive instead; it excludes databases, runtime data, managed services,
+device/ADB identity, student records, `.env`, and keys. Inspect its contents
+before sending it to support.

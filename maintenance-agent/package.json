@@ -1,17 +1,19 @@
 {
   "name": "classroom-control-hub-maintenance-agent",
-  "version": "1.0.0-alpha.78",
-  "engines": {"node": ">=22"},
+  "version": "1.0.0-alpha.79",
+  "engines": {
+    "node": ">=22"
+  },
   "packageManager": "npm@11",
   "private": true,
   "license": "MIT",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check extensions.js"
+    "check": "node --check server.js && node --check extensions.js && node --check backup-policy.js"
   },
   "dependencies": {
-    "adm-zip": "^0.6.0",
+    "adm-zip": "0.6.1",
     "express": "^5.1.0",
     "express-rate-limit": "8.7.0"
   }

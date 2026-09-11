@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Classroom Hub Display Agent `0.3.0-agent-v2` introduces a native Music Assistant playback path for managed Android/Google TV devices. Audio playback is owned by the foreground Android agent rather than the kiosk WebView. This is intended to prevent display reloads, page navigation, renderer refreshes, or kiosk recovery from interrupting classroom audio.
+RoomGoblin Display Agent `0.3.0-agent-v2` introduces a native Music Assistant playback path for managed Android/Google TV devices. Audio playback is owned by the foreground Android agent rather than the kiosk WebView. This is intended to prevent display reloads, page navigation, renderer refreshes, or kiosk recovery from interrupting classroom audio.
 
 The first target remains the physically validated Onn 4K Streaming Device (`wayne`) running Android 14. Native Sendspin itself is **not physically validated yet**; the implementation must pass CI and then be tested on the Onn before being marked production-validated.
 
@@ -11,19 +11,19 @@ The first target remains the physically validated Onn 4K Streaming Device (`wayn
 ```text
 Music Assistant
   -> Sendspin WebSocket :8927/sendspin
-    -> Classroom Hub Android Agent
+    -> RoomGoblin Android Agent
       -> Sendspin JVM protocol client
         -> timestamped AudioBuffer / clock synchronization
           -> AndroidPcmSendspinPlayer
             -> Android AudioTrack
               -> HDMI / TV audio output
 
-Classroom Hub display WebView
+RoomGoblin display WebView
   -> visual content only
   -> can reload/recover independently of native audio
 ```
 
-The agent uses the Apache-2.0 `sendspin-jvm` library, pinned to release `v0.3.4` for this implementation. The library owns the Sendspin WebSocket state machine, clock synchronization and timestamped jitter buffer. Classroom Hub supplies the Android audio sink.
+The agent uses the Apache-2.0 `sendspin-jvm` library, pinned to release `v0.3.4` for this implementation. The library owns the Sendspin WebSocket state machine, clock synchronization and timestamped jitter buffer. RoomGoblin supplies the Android audio sink.
 
 ## Initial audio-format contract
 
@@ -106,7 +106,7 @@ Before marking native Sendspin validated on a device family:
 4. Confirm the player appears in Music Assistant.
 5. Start a known audio item and confirm HDMI/TV playback.
 6. Confirm volume changes work as expected.
-7. Reload the Classroom Hub display WebView while audio is playing; audio should continue.
+7. Reload the RoomGoblin display WebView while audio is playing; audio should continue.
 8. Exit the kiosk temporarily; audio should continue while the kiosk self-heals.
 9. Allow the kiosk watchdog to restore the display within 30 seconds.
 10. Interrupt network connectivity and confirm reconnect behavior after restoration.

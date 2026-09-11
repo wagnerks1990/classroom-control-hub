@@ -41,6 +41,16 @@ function gatewayPathFor(target, baseOrigin = "http://classroom-hub.local") {
   return `${origin}${GATEWAY_PREFIX}/${url.protocol.slice(0, -1)}/${encodeURIComponent(url.host)}${url.pathname}${url.search}${url.hash}`;
 }
 
+function validateAllowedTarget(target, allowedHosts = parseAllowedHosts()) {
+  const url = target instanceof URL ? new URL(target.href) : new URL(String(target));
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Display gateway target must be an HTTP(S) URL without credentials");
+  const hostname = url.hostname.toLowerCase();
+  if (!allowedHosts.has(hostname)) throw new Error(`Display gateway host is not allowed: ${hostname}`);
+  const effectivePort = url.port || (url.protocol === "https:" ? "443" : "80");
+  if (!new Set(["80", "443"]).has(effectivePort)) throw new Error(`Display gateway port is not allowed: ${effectivePort}`);
+  return url;
+}
+
 function parseGatewayRequest(reqUrl, allowedHosts = parseAllowedHosts()) {
   const url = new URL(String(reqUrl || "/"), "http://classroom-hub.local");
   const match = url.pathname.match(/^\/display-gateway\/(https?)\/([^/]+)(\/.*)?$/i);
@@ -49,12 +59,7 @@ function parseGatewayRequest(reqUrl, allowedHosts = parseAllowedHosts()) {
   let host;
   try { host = decodeURIComponent(match[2]); } catch { throw new Error("Invalid display gateway host"); }
   if (host.includes("@") || host.includes("/") || host.includes("\\")) throw new Error("Invalid display gateway host");
-  const target = new URL(`${protocol}//${host}${match[3] || "/"}${url.search}`);
-  const hostname = target.hostname.toLowerCase();
-  if (!allowedHosts.has(hostname)) throw new Error(`Display gateway host is not allowed: ${hostname}`);
-  const effectivePort = target.port || (target.protocol === "https:" ? "443" : "80");
-  if (!new Set(["80", "443"]).has(effectivePort)) throw new Error(`Display gateway port is not allowed: ${effectivePort}`);
-  return target;
+  return validateAllowedTarget(new URL(`${protocol}//${host}${match[3] || "/"}${url.search}`), allowedHosts);
 }
 
 function installDnsOverrides(overrides = parseOverrides()) {
@@ -216,6 +221,7 @@ module.exports = {
   parseOverrides,
   parseAllowedHosts,
   gatewayPathFor,
+  validateAllowedTarget,
   parseGatewayRequest,
   upstreamRequestHeaders,
   installDnsOverrides,

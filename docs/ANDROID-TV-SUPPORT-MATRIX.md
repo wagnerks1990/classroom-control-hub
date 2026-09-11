@@ -10,7 +10,7 @@ Observed on 2026-09-09:
 
 | Capability | Result | Notes |
 | --- | --- | --- |
-| Wireless ADB pairing | Pass | Pairing-code flow works through Classroom Hub GUI. |
+| Wireless ADB pairing | Pass | Pairing-code flow works through RoomGoblin GUI. |
 | Pairing authorization after reboot | Pass | Device still listed the Hub as paired after reboot. |
 | Device identification | Pass | Manufacturer `onn`, model `onn 4K Streaming Device`, Android 14. |
 | Home / Back / OK | Pass | Remote key actions verified from Managed Displays. |
@@ -23,7 +23,7 @@ Observed on 2026-09-09:
 | Reconnect after manually re-enabling Wireless Debugging | Pass | Managed Displays Status recovered the device without re-pairing. |
 | Persistent ADB agent bootstrap | Pass | Opt-in `WRITE_SECURE_SETTINGS` boot-restoration path recovered Wireless Debugging after reboot. |
 | Display Agent install | Pass | APK installation and status/configuration were verified. |
-| Kiosk display URL | Pass | Assigned Classroom Hub content loaded fullscreen. |
+| Kiosk display URL | Pass | Assigned RoomGoblin content loaded fullscreen. |
 | Auto-launch after boot | Pass | Agent and assigned content returned after reboot. |
 | Fixed ADB port after reboot | Pass | Persistent ADB restored the managed endpoint on port 5555 after the temporary boot gap. |
 | HDMI-CEC physical panel power | Not tested | Must be validated separately from Android sleep/wake. |

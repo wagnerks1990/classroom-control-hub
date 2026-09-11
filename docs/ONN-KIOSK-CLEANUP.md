@@ -1,6 +1,6 @@
 # Onn Android 14 kiosk cleanup policy
 
-This document records the physically observed package inventory for the validated Onn 4K Streaming Device (`wayne`, Android 14 / SDK 34) and the Classroom Hub kiosk cleanup policy derived from that inventory.
+This document records the physically observed package inventory for the validated Onn 4K Streaming Device (`wayne`, Android 14 / SDK 34) and the RoomGoblin kiosk cleanup policy derived from that inventory.
 
 ## Diagnostic rule
 
@@ -8,7 +8,7 @@ Do **not** use `dumpsys package` on this validated Onn firmware for routine pack
 
 ## Kiosk Minimal Mode
 
-Minimal Mode is intentionally aggressive for dedicated Classroom Hub signage endpoints. It performs `pm uninstall --user 0` rather than merely disabling targeted packages.
+Minimal Mode is intentionally aggressive for dedicated RoomGoblin signage endpoints. It performs `pm uninstall --user 0` rather than merely disabling targeted packages.
 
 It removes every third-party package visible to user 0 except `org.roomgoblin.display`, then attempts to remove the following curated nonessential TV/media packages for user 0 when present:
 
@@ -32,7 +32,7 @@ The command reports `REMOVED`, `FAILED`, and `SKIP_NOT_INSTALLED` for every targ
 
 ## Explicitly preserved classes
 
-Do not automatically remove the Android framework, System UI, Settings, package installer/permission controller, networking/Wi-Fi stack, Bluetooth/remote services, WebView, ADB/shell, launcher fallback, Google Services Framework / Play Services, managed provisioning, device-policy dependencies, input devices, download/media providers, or OEM hardware/settings overlays. These components may be required for boot, networking, Classroom Hub rendering, remote control, recovery, updates, provisioning, or future device-owner management.
+Do not automatically remove the Android framework, System UI, Settings, package installer/permission controller, networking/Wi-Fi stack, Bluetooth/remote services, WebView, ADB/shell, launcher fallback, Google Services Framework / Play Services, managed provisioning, device-policy dependencies, input devices, download/media providers, or OEM hardware/settings overlays. These components may be required for boot, networking, RoomGoblin rendering, remote control, recovery, updates, provisioning, or future device-owner management.
 
 ## Restoration behavior
 

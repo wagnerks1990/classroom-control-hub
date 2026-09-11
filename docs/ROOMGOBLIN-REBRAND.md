@@ -26,7 +26,9 @@ Keep the following stable unless a separately reviewed migration explicitly chan
 - `/opt/classroom-hub` install path;
 - `CLASSROOM_HUB_*` environment variables;
 - `org.roomgoblin.display` Android application/package identity (alpha.77 and later);
-- `classroom-control-hub*` container, GHCR, systemd, and socket identifiers;
+- `classroom-control-hub*` container, systemd, and socket identifiers;
+- legacy `classroom-control-hub*` GHCR aliases while the canonical
+  `roomgoblin*` images are adopted;
 - database filenames and persisted keys;
 - setup/session/local-storage compatibility keys;
 - device IDs, enrollment credentials, and ADB trust material;
@@ -34,6 +36,12 @@ Keep the following stable unless a separately reviewed migration explicitly chan
 - legacy Windows agent task/service/file identifiers used by installed endpoints.
 
 Old identifiers should be described as **legacy-compatible internals**, not as the current product name.
+
+Canonical images are `ghcr.io/wagnerks1990/roomgoblin` and
+`ghcr.io/wagnerks1990/roomgoblin-maintenance`. CI temporarily publishes the
+same commits under the legacy `classroom-control-hub*` aliases for installed
+automation. The aliases are compatibility affordances; new documentation and
+deployments use the RoomGoblin names.
 
 ## Runtime brand behavior
 

@@ -25,7 +25,10 @@ class ClassroomHubStorage{
     this.masterKeyFile=masterKeyFile||"/run/secrets/classroom-control-hub-master-key";
     this.legacyMirror=!!legacyMirror;
     ensureParent(this.dbFile);
-    try{fs.chmodSync(path.dirname(this.dbFile),0o700)}catch{}
+    // The production data root is shared with the hardened maintenance service
+    // through GID 10001. Keep group traversal/write access instead of silently
+    // undoing the installer's 0770 ownership contract on every application boot.
+    try{fs.chmodSync(path.dirname(this.dbFile),0o770)}catch{}
     this.db=new DatabaseSync(this.dbFile);
     this.db.exec(`
       PRAGMA journal_mode=WAL;
@@ -375,7 +378,7 @@ class ClassroomHubStorage{
 
   getAdminConfig(){
     const devices=this.readNormalized("devices",{}),hardware=this.readNormalized("hardware",{}),calendar=this.readNormalized("scheduler-calendar",{});
-    const site=this.getSetting("site.profile",{school:"Your School",room:devices.room||"Classroom",timezone:"America/New_York",productName:"RoomGoblin",logoUrl:"/brand/roomgoblin_primary_400w.png",faviconUrl:"/brand/favicon.ico",displayPrefix:"TV",theme:{mode:"dark",primary:"#0F766E",accent:"#22C55E",background:"#040705",surface:"#1E293B",text:"#eef4f8"},revision:0});
+    const site=this.getSetting("site.profile",{school:"Your School",room:devices.room||"Classroom",timezone:"America/New_York",productName:"RoomGoblin",logoUrl:"/brand/roomgoblin_primary_400w.png",faviconUrl:"/brand/roomgoblin_app_32x32.png",displayPrefix:"TV",theme:{mode:"dark",primary:"#0F766E",accent:"#22C55E",background:"#040705",surface:"#1E293B",text:"#eef4f8"},revision:0});
     const preferences={};for(const r of this.db.prepare("SELECT key,value_json FROM system_preferences ORDER BY key").all())preferences[r.key]=parseJson(r.value_json,null);
     return {site,devices,hardware,calendar,preferences,accessProfiles:this.listAccessProfiles()};
   }

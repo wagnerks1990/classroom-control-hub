@@ -10,6 +10,7 @@ const {execFile}=require("child_process");
 const {promisify}=require("util");
 const crypto=require("crypto");
 const AdmZip=require("adm-zip");
+const {diagnosticBackupEntryAllowed,backupContainsSensitiveData,diagnosticSupportDocuments}=require("./backup-policy");
 process.umask(0o077);
 const execFileAsync=promisify(execFile);
 const app=express();
@@ -60,7 +61,7 @@ async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
 }
 async function mainAppStatus(){return mainAppRequest("GET","/api/v1/internal/maintenance/status",null,10000)}
 async function dockerContainers(){const r=await run("docker",["ps","-a","--format","{{json .}}"],{timeout:10000});return r.stdout.split(/\r?\n/).filter(Boolean).map(x=>{try{return JSON.parse(x)}catch{return {raw:x}}})}
-async function componentHealth(){let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}return {version:"1.0.0-alpha.70",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null}}
+async function componentHealth(){let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}return {version:"1.0.0-alpha.79",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null}}
 app.get("/health",async(_req,res)=>{const state=await componentHealth(),ready=state.docker&&state.hostAgent?.ok&&state.roots.hub;res.status(ready?200:503).json({ok:ready,alive:true,ready,...state})});
 app.get("/ready",async(_req,res)=>{const state=await componentHealth(),ready=state.docker&&state.hostAgent?.ok&&state.roots.hub;res.status(ready?200:503).json({ok:ready,alive:true,ready,...state})});
 app.get("/system",async(_req,res)=>{
@@ -210,6 +211,12 @@ function backupFilter(scope){
   const skipDirs=new Set(["node_modules",".git","convert-tmp","presentation-upload-tmp"]);
   return (_full,rel,ent)=>{
     const normalized=String(rel||"").replace(/\\/g,"/");
+    if(scope==="diagnostic"){
+      // A diagnostic archive is safe to attach to a support case. Include only
+      // non-runtime package/deployment metadata; never descend into data,
+      // managed services, device inventory, ADB identity, or student records.
+      return diagnosticBackupEntryAllowed(normalized,ent.isDirectory());
+    }
     const parts=normalized.split("/").filter(Boolean);
     if(ent.isDirectory()&&skipDirs.has(ent.name))return false;
     // Never recursively embed managed backups, migration archives, trash or
@@ -224,29 +231,39 @@ function backupFilter(scope){
       if(normalized.startsWith("services/"))return false;
     }
     if(scope==="quick"&&(normalized.includes("/data/")||normalized.startsWith("classroom-hub/data/")))return false;
-    if(scope==="diagnostic"&&(/\.(pem|key|crt)$/i.test(normalized)||normalized.endsWith("/.env")))return false;
     if(normalized.endsWith("/.env")||normalized==="classroom-hub/.env")return scope==="full";
     return true;
   }
 }
 app.post("/backup/create",async(req,res)=>{let dbSnapshot="";try{
   const scope=["configuration","quick","operational","diagnostic","full"].includes(req.body?.scope)?req.body.scope:"operational";
+  const containsSensitiveData=backupContainsSensitiveData(scope);
+  if(containsSensitiveData&&req.body?.confirmSensitiveData!==true)return res.status(400).json({ok:false,error:"This recovery backup contains private appliance data. Resubmit with confirmSensitiveData=true."});
   if(scope==="full"&&req.body?.confirmSecrets!==true)return res.status(400).json({ok:false,error:"Full recovery backup contains .env and the database encryption master key. Resubmit with confirmSecrets=true."});
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-${scope}-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
   const dbPath=path.join(HUB_ROOT,"data","classroom-control-hub.db");dbSnapshot=path.join(UPLOAD_DIR,`db-backup-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.db`);
-  let hasDbSnapshot=false;if(fs.existsSync(dbPath)){await run("sqlite3",[dbPath,`.backup '${dbSnapshot.replace(/'/g,"''")}'`],{timeout:60000});hasDbSnapshot=fs.existsSync(dbSnapshot)}
+  let hasDbSnapshot=false;if(!["quick","diagnostic"].includes(scope)&&fs.existsSync(dbPath)){await run("sqlite3",[dbPath,`.backup '${dbSnapshot.replace(/'/g,"''")}'`],{timeout:60000});hasDbSnapshot=fs.existsSync(dbSnapshot)}
   const baseFilter=backupFilter(scope),filter=(full,rel,ent)=>{if(/classroom-hub\.db(?:-wal|-shm)?$/.test(rel))return false;return baseFilter(full,rel,ent)};
-  copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);if(hasDbSnapshot)zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
-  if(scope==="full"||scope==="operational"||scope==="diagnostic")copyIntoZip(zip,Classroom_ROOT,"services",filter);
+  if(scope==="diagnostic"){
+    let application=null;try{application=await mainAppStatus()}catch{application={ok:false}}
+    let containers=[];try{containers=await dockerContainers()}catch{}
+    const documents=diagnosticSupportDocuments({createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.79",application,containers,system:{platform:os.platform(),architecture:os.arch(),cpuCount:os.cpus().length,memoryBytes:os.totalmem()}});
+    zip.addFile("summary.json",Buffer.from(JSON.stringify(documents.summary,null,2)));
+    zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(documents.containers,null,2)));
+  }else copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);
+  if(hasDbSnapshot)zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
+  if(scope==="full"||scope==="operational")copyIntoZip(zip,Classroom_ROOT,"services",filter);
   if(scope==="full"&&fs.existsSync(MASTER_KEY_FILE))zip.addLocalFile(MASTER_KEY_FILE,"recovery-secrets","classroom-hub-master.key");
-  const capabilities={configuration:scope!=="quick",database:hasDbSnapshot,data:["operational","diagnostic","full"].includes(scope)&&hasDbSnapshot,services:["operational","diagnostic","full"].includes(scope),secrets:scope==="full"};
-  const manifest={version:4,createdAt:new Date().toISOString(),scope,applicationVersion:applicationVersion(),hostname:os.hostname(),hubRoot:HUB_ROOT,servicesRoot:Classroom_ROOT,databaseSnapshot:hasDbSnapshot,containsSecrets:scope==="full",requiresMasterKey:true,capabilities};
+  const capabilities={configuration:["configuration","operational","full"].includes(scope),database:hasDbSnapshot,data:["operational","full"].includes(scope)&&hasDbSnapshot,services:["operational","full"].includes(scope),secrets:scope==="full"};
+  const manifest=scope==="diagnostic"
+    ?{version:4,createdAt:new Date().toISOString(),scope,applicationVersion:applicationVersion(),databaseSnapshot:false,containsSecrets:false,containsSensitiveData:false,requiresMasterKey:false,capabilities}
+    :{version:4,createdAt:new Date().toISOString(),scope,applicationVersion:applicationVersion(),hostname:os.hostname(),hubRoot:HUB_ROOT,servicesRoot:Classroom_ROOT,databaseSnapshot:hasDbSnapshot,containsSecrets:scope==="full",containsSensitiveData,requiresMasterKey:hasDbSnapshot,capabilities};
   zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify(manifest,null,2)));writeZipAtomic(zip,dest);
-  res.json({ok:true,name,size:fs.statSync(dest).size,sha256:sha256File(dest),download:`/backup/${encodeURIComponent(name)}`,containsSecrets:scope==="full"})
+  res.json({ok:true,name,size:fs.statSync(dest).size,sha256:sha256File(dest),download:`/backup/${encodeURIComponent(name)}`,containsSecrets:scope==="full",containsSensitiveData})
 }catch(e){res.status(500).json({ok:false,error:e.message})}finally{if(dbSnapshot)try{fs.rmSync(dbSnapshot,{force:true})}catch{}}});
-app.get("/backups",(_req,res)=>{const items=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>{const info=statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR);try{const plan=backupRestorePlan(n);return {...info,capabilities:plan.capabilities,restoreModes:plan.restoreModes}}catch(e){return {...info,restorable:false,error:e.message,capabilities:{}}}}).sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));res.json({ok:true,items})});
+app.get("/backups",(_req,res)=>{const items=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>{const info=statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR);try{const plan=backupRestorePlan(n);return {...info,containsSensitiveData:plan.containsSensitiveData,capabilities:plan.capabilities,restoreModes:plan.restoreModes}}catch(e){return {...info,restorable:false,error:e.message,capabilities:{}}}}).sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));res.json({ok:true,items})});
 app.get("/backups/catalog",(_req,res)=>{try{
-  const managed=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>{const info=statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR);try{const plan=backupRestorePlan(n);return {...info,source:"managed",restorable:plan.restoreModes.length>0,capabilities:plan.capabilities,restoreModes:plan.restoreModes}}catch(e){return {...info,source:"managed",restorable:false,error:e.message,capabilities:{},restoreModes:[]}}});
+  const managed=fs.readdirSync(BACKUP_DIR).filter(x=>x.endsWith(".zip")).map(n=>{const info=statInfo(path.join(BACKUP_DIR,n),BACKUP_DIR);try{const plan=backupRestorePlan(n);return {...info,source:"managed",restorable:plan.restoreModes.length>0,containsSensitiveData:plan.containsSensitiveData,capabilities:plan.capabilities,restoreModes:plan.restoreModes}}catch(e){return {...info,source:"managed",restorable:false,error:e.message,capabilities:{},restoreModes:[]}}});
   const migrationRoot="/host-backups";
   const migrations=[];
   if(fs.existsSync(migrationRoot))for(const ent of fs.readdirSync(migrationRoot,{withFileTypes:true})){
@@ -280,7 +297,7 @@ async function createOperationalBackupNamed(prefix="pre-restore") {
     const filter=(full,rel,ent)=>{if(/classroom-hub\.db(?:-wal|-shm)?$/.test(rel))return false;return backupFilter("operational")(full,rel,ent)};
     copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);
     zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
-    zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify({version:4,scope:"operational",createdAt:new Date().toISOString(),reason:prefix,applicationVersion:applicationVersion(),databaseSnapshot:true,capabilities:{configuration:true,database:true,data:true,services:true,secrets:false}},null,2)));
+    zip.addFile("backup-manifest.json",Buffer.from(JSON.stringify({version:4,scope:"operational",createdAt:new Date().toISOString(),reason:prefix,applicationVersion:applicationVersion(),databaseSnapshot:true,containsSecrets:false,containsSensitiveData:true,requiresMasterKey:true,capabilities:{configuration:true,database:true,data:true,services:true,secrets:false}},null,2)));
     writeZipAtomic(zip,dest);return {name,dest,size:fs.statSync(dest).size,sha256:sha256File(dest)};
   }finally{fs.rmSync(dbSnapshot,{force:true})}
 }
@@ -304,7 +321,8 @@ function backupRestorePlan(name){
   const names=entries.map(e=>e.entryName.replace(/\\/g,"/"));
   const hasConfig=names.some(n=>n.startsWith("classroom-hub/config/")),hasData=names.some(n=>n.startsWith("classroom-hub/data/")),hasDatabase=names.includes("classroom-hub/data/classroom-control-hub.db"),hasEnv=names.includes("classroom-hub/.env"),hasMasterKey=names.some(n=>/master\.key$/.test(n));
   const capabilities={configuration:!!(manifest?.capabilities?.configuration??(hasConfig||hasDatabase)),database:!!(manifest?.capabilities?.database??hasDatabase),data:!!(manifest?.capabilities?.data??hasData),services:!!(manifest?.capabilities?.services??names.some(n=>n.startsWith("services/"))),secrets:!!(manifest?.capabilities?.secrets??(hasEnv&&hasMasterKey))};
-  return {name:safeName,path:p,manifest,entries:entries.length,expandedBytes,hasConfig,hasData,hasDatabase,hasEnv,hasMasterKey,capabilities,restoreModes:[...(capabilities.database?["configuration"]:[]),...(capabilities.data&&capabilities.database?["data","configuration-data"]:[])],preview:names.slice(0,100)};
+  const containsSensitiveData=manifest?.containsSensitiveData===true||backupContainsSensitiveData(manifest?.scope);
+  return {name:safeName,path:p,manifest,entries:entries.length,expandedBytes,hasConfig,hasData,hasDatabase,hasEnv,hasMasterKey,containsSensitiveData,capabilities,restoreModes:[...(capabilities.database?["configuration"]:[]),...(capabilities.data&&capabilities.database?["data","configuration-data"]:[])],preview:names.slice(0,100)};
 }
 app.get("/backup/:name/restore-plan",(req,res)=>{try{res.json({ok:true,plan:backupRestorePlan(req.params.name)})}catch(e){res.status(400).json({ok:false,error:e.message})}});
 async function verifyRestoreSource(srcRoot,{data=false}={}){
@@ -377,14 +395,11 @@ app.get("/audit/status",async(_req,res)=>{try{const status=await mainAppStatus()
 app.post("/audit/prune",async(req,res)=>{try{res.json(await mainAppRequest("POST","/api/v1/internal/maintenance/audit/prune",req.body||{}))}catch(e){res.status(e.status||502).json({ok:false,error:e.message})}});
 app.get("/diagnostics/bundle",async(_req,res)=>{try{
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-diagnostics-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
-  let application=null;try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}
-  const info={createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.70",application,database:application?.database||null,roots:{hub:HUB_ROOT,services:Classroom_ROOT}};
-  zip.addFile("summary.json",Buffer.from(JSON.stringify(info,null,2)));
-  try{const c=await dockerContainers();zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(c,null,2)));for(const row of c){const n=cleanName(row.Names||row.Name||"");if(!n)continue;try{const r=await run("docker",["logs","--timestamps","--tail","1000",n],{timeout:20000,maxBuffer:16*1024*1024});zip.addFile(`logs/${n}.log`,Buffer.from((r.stdout||"")+(r.stderr||"")))}catch(e){zip.addFile(`logs/${n}.error.txt`,Buffer.from(e.message))}}}catch(e){zip.addFile("docker/error.txt",Buffer.from(e.message))}
-  try{const r=await run("docker",["stats","--no-stream","--format","{{json .}}"],{timeout:15000});zip.addFile("docker/stats.jsonl",Buffer.from(r.stdout||""))}catch{}
-  try{const r=await run("df",["-h"]);zip.addFile("host/disk.txt",Buffer.from(r.stdout||""))}catch{}
-  try{const r=await run("ip",["addr"]);zip.addFile("host/ip-addr.txt",Buffer.from(r.stdout||""))}catch{}
-  try{const r=await run("ip",["route"]);zip.addFile("host/routes.txt",Buffer.from(r.stdout||""))}catch{}
+  let application=null;try{application=await mainAppStatus()}catch{application={ok:false}}
+  let containers=[];try{containers=await dockerContainers()}catch{}
+  const documents=diagnosticSupportDocuments({createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.79",application,containers,system:{platform:os.platform(),architecture:os.arch(),cpuCount:os.cpus().length,memoryBytes:os.totalmem()}});
+  zip.addFile("summary.json",Buffer.from(JSON.stringify(documents.summary,null,2)));
+  zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(documents.containers,null,2)));
   writeZipAtomic(zip,dest);res.download(dest,name);
 }catch(e){res.status(500).json({ok:false,error:e.message})}});
 const MANAGED_INTEGRATIONS_FILE=path.join(HUB_ROOT,"data","managed-integrations.json");

@@ -103,7 +103,7 @@ Tests must verify the stamping/wrapper contracts so releases do not rely on manu
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.74` is the display-access and clean-worktree installer baseline. It keeps stable URL display access as the default, makes individual credentials optional, and prevents supported installs from modifying tracked source modes.
+At the time this document was updated, `1.0.0-alpha.79` is the production-readiness review baseline. It retains stable URL display access as the default, keeps individual credentials optional, prevents supported installs from modifying tracked source modes, and aligns immutable image publication and rollback with the canonical RoomGoblin repository.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 
@@ -112,17 +112,6 @@ A newer `VERSION` supersedes the version number, but existing behavioral invaria
 Preferred workflow:
 
 ```text
-feature/fix branch
-      ↓
-validation
-      ↓
-pull request
-      ↓
-main
-      ↓
-version tag/release
-      ↓
-GitHub Actions
       ↓
 GHCR images + release notes
 ```

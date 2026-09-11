@@ -1,6 +1,6 @@
 # Windows Classroom Lab Agent
 
-The optional Windows agent gives Classroom Control Hub a constrained way to
+The optional Windows agent gives RoomGoblin a constrained way to
 inventory classroom computers and run a small, reviewed command set. It is not
 a general remote shell.
 
@@ -25,7 +25,7 @@ avoid presenting actions that the computer cannot perform.
 
 ## Transport and signing
 
-The current Classroom Control Hub appliance is temporarily HTTP-only while the
+The current RoomGoblin appliance is temporarily HTTP-only while the
 HTTPS/TLS gateway is redesigned. The Windows installer continues to reject plain
 HTTP unless the administrator explicitly supplies `-AllowHttp`. This is an
 intentional safety acknowledgement because enrollment credentials are otherwise
@@ -37,7 +37,7 @@ enroll agents across the public Internet or an untrusted Wi-Fi/VLAN.
 Example:
 
 ```powershell
-.\Install-Agent.ps1 -HubUrl http://172.16.127.5:3000 -AllowHttp
+.\Install-Agent.ps1 -HubUrl http://192.0.2.10:3000 -AllowHttp
 ```
 
 When HTTPS is reintroduced, the installer should return to HTTPS/WSS without

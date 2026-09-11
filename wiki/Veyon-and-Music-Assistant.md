@@ -2,14 +2,14 @@
 
 ## Veyon
 
-Classroom Control Hub uses the native Ubuntu Veyon services when they are already installed:
+RoomGoblin uses the native Ubuntu Veyon services when they are already installed:
 
 ```text
 veyon.service
 veyon-webapi.service
 ```
 
-The Hub detects these services through the Host Agent and labels the integration **Host Managed**. Host Managed means Classroom Control Hub does not install, remove, or recreate the systemd services. It does **not** mean monitor-only: Veyon application configuration remains editable in Classroom Control Hub.
+The Hub detects these services through the Host Agent and labels the integration **Host Managed**. Host Managed means RoomGoblin does not install, remove, or recreate the systemd services. It does **not** mean monitor-only: Veyon application configuration remains editable in RoomGoblin.
 
 ### Authentication profile
 
@@ -21,11 +21,11 @@ Verify the native key store with:
 veyon-cli authkeys list details
 ```
 
-The `master/private` and `master/public` rows must have the same Pair ID. The Host Agent synchronizes that existing pair into `/etc/classroom-control-hub/veyon/` before startup. The application imports the private key into the encrypted SQLite secret store, which becomes the Classroom Control Hub authority for the private key.
+The `master/private` and `master/public` rows must have the same Pair ID. The Host Agent synchronizes that existing pair into `/etc/classroom-control-hub/veyon/` before startup. The application imports the private key into the encrypted SQLite secret store, which becomes the RoomGoblin authority for the private key.
 
 The Hub does not silently generate or rotate Veyon keys because a rotated public key must also be deployed to every managed workstation.
 
-Veyon itself also supports logon/username-password authentication, but the current Classroom Control Hub backend profile is key-file authentication. Do not select or document logon authentication as active until that backend path is implemented and tested.
+Veyon itself also supports logon/username-password authentication, but the current RoomGoblin backend profile is key-file authentication. Do not select or document logon authentication as active until that backend path is implemented and tested.
 
 ### Required Veyon settings
 
@@ -40,7 +40,7 @@ Open the Veyon WebAPI integration configuration and review:
 - authentication retries;
 - thumbnail concurrency.
 
-The private authentication key is encrypted in the Classroom Control Hub SQLite database. The computer inventory is also database-backed. A legacy `veyon-computers.json` file is imported and retired during upgrade recovery.
+The private authentication key is encrypted in the RoomGoblin SQLite database. The computer inventory is also database-backed. A legacy `veyon-computers.json` file is imported and retired during upgrade recovery.
 
 ### Domain and SSH credentials
 
@@ -71,11 +71,11 @@ A valid long-lived Music Assistant access token is required.
 2. Choose **Open Music Assistant**.
 3. Complete Music Assistant's own setup if needed.
 4. In Music Assistant open **Settings → Profile → Long-lived access tokens**.
-5. Create a token for Classroom Control Hub.
-6. Return to Classroom Control Hub and paste the token into the Music Assistant configuration.
+5. Create a token for RoomGoblin.
+6. Return to RoomGoblin and paste the token into the Music Assistant configuration.
 7. Choose **Save & Verify**.
 
-The token is encrypted in the Classroom Control Hub database. Save & Verify performs an authenticated Music Assistant API check. Missing or rejected credentials leave the integration in setup-required/authentication-required state.
+The token is encrypted in the RoomGoblin database. Save & Verify performs an authenticated Music Assistant API check. Missing or rejected credentials leave the integration in setup-required/authentication-required state.
 
 When the server-side URL uses `127.0.0.1:8095`, the Open Music Assistant button converts it to the current appliance hostname for browser access.
 
@@ -96,7 +96,7 @@ docker ps --filter name=music-assistant-server
 ss -lntp | grep 8095
 ```
 
-Classroom Control Hub checks:
+RoomGoblin checks:
 
 ```bash
 docker compose ps

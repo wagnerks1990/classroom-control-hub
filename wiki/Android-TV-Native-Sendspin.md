@@ -1,6 +1,6 @@
 # Android TV Native Sendspin
 
-Classroom Hub Agent `0.3.0-agent-v2` moves Music Assistant playback out of the kiosk WebView and into the persistent Android foreground agent.
+RoomGoblin Agent `0.3.0-agent-v2` moves Music Assistant playback out of the kiosk WebView and into the persistent Android foreground agent.
 
 ## Why
 
@@ -13,7 +13,7 @@ Music Assistant :8927/sendspin
       -> Android AudioTrack
         -> HDMI / TV audio
 
-Classroom Hub WebView
+RoomGoblin WebView
   -> visuals only
 ```
 

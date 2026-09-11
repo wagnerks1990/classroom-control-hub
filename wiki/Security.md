@@ -2,7 +2,7 @@
 
 See [Host Networking](Host-Networking) for the current Linux container topology, loopback-only maintenance API, explicit add-on migration, listener ports and recovery rules.
 
-Classroom Control Hub controls real classroom infrastructure and should be treated as an administrative system.
+RoomGoblin controls real classroom infrastructure and should be treated as an administrative system.
 
 ## Core principles
 
@@ -16,7 +16,7 @@ Classroom Control Hub controls real classroom infrastructure and should be treat
 
 ## Current HTTP-only boundary
 
-The current appliance intentionally exposes Classroom Control Hub directly over HTTP on TCP/3000 while HTTPS/TLS is redesigned. Caddy is not part of the current deployment.
+The current appliance intentionally exposes RoomGoblin directly over HTTP on TCP/3000 while HTTPS/TLS is redesigned. Caddy is not part of the current deployment.
 
 Default network settings:
 

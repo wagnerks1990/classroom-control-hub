@@ -2,7 +2,7 @@
 
 See [Host Networking](Host-Networking) for the current Linux container topology, loopback-only maintenance API, explicit add-on migration, listener ports and recovery rules.
 
-This page covers day-to-day operational behavior for Classroom Control Hub.
+This page covers day-to-day operational behavior for RoomGoblin.
 
 ## Service health
 
@@ -42,7 +42,7 @@ For Ant Media player URLs, HLS is the primary live-state signal when available:
 
 Two confirmed OFFLINE checks are required before ending an active automatic announcement.
 
-When live status is detected, Classroom Control Hub pauses Background Music, clears/locks the target displays, starts the local HLS player fullscreen, and applies the saved announcement volume/unmute state.
+When live status is detected, RoomGoblin pauses Background Music, clears/locks the target displays, starts the local HLS player fullscreen, and applies the saved announcement volume/unmute state.
 
 ### Manual announcements
 
@@ -61,7 +61,10 @@ When announcements end:
 7. re-run those winning automations;
 8. reconcile/resume Background Music afterward.
 
-This is a failsafe scheduler resync. Do not restore stale snapshots or replay every earlier event blindly.
+This is a failsafe scheduler resync. Each display receives only its newest
+currently applicable winner. A failed automation re-run is recorded but must
+not strand the announcement lock or skip Background Music reconciliation. Do
+not restore stale snapshots or replay every earlier event blindly.
 
 ## Background Music
 

@@ -268,8 +268,8 @@ nav button{min-width:135px}
         <img id="brandLogo" src="" alt="School logo">
       </div>
       <div>
-        <div class="brand" id="brandProductName">Classroom <span class="green">Hub</span></div>
-        <div class="ver"><span id="brandSite">RoomGoblin</span> • <span id="brandVersion">v1.0.0-alpha.74</span></div>
+        <div class="brand" id="brandProductName">Room<span class="green">Goblin</span></div>
+        <div class="ver"><span id="brandSite">RoomGoblin</span> • <span id="brandVersion">v1.0.0-alpha.79</span></div>
         <div class="brandStatus">
           <div id="brandDateTime">Loading date/time…</div>
           <div id="brandCycle">Loading school cycle…</div>
@@ -1052,7 +1052,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
     <div id="applianceInventory" class="muted">Loading appliance inventory…</div>
   </div>
   <div class="panel">
-    <div class="top"><div><h2 class="sectionTitle">Operations Health</h2><div class="muted">Run a safe end-to-end validation or export a troubleshooting bundle containing host, Docker and recent service logs. Secrets are excluded.</div></div><div class="toolbar"><button class="primary" onclick="runFullOperationsCheck()">Run Full Health Check</button><button onclick="downloadDiagnosticBundle()">Download Diagnostic Bundle</button></div></div>
+    <div class="top"><div><h2 class="sectionTitle">Operations Health</h2><div class="muted">Run a safe end-to-end validation or export a support-safe troubleshooting bundle containing only bounded application, database, host, and container health metadata. Logs, student data, secrets, and network inventory are excluded.</div></div><div class="toolbar"><button class="primary" onclick="runFullOperationsCheck()">Run Full Health Check</button><button onclick="downloadDiagnosticBundle()">Download Diagnostic Bundle</button></div></div>
     <div id="operationsCheck" class="muted">No full health check run yet.</div>
   </div>
 
@@ -1125,7 +1125,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
       <h2 class="sectionTitle">Update RoomGoblin</h2>
       <div class="muted">Check a configured GitHub repository for verified semantic-version releases. Every installation creates a database-safe backup and automatically rolls back if deployment health fails.</div>
       <div class="grid2" style="margin-top:12px">
-        <label>Trusted GitHub Repository<input id="appUpdateRepository" value="wagnerks1990/classroom-control-hub" readonly></label>
+        <label>Trusted GitHub Repository<input id="appUpdateRepository" value="wagnerks1990/RoomGoblin" readonly></label>
         <label>Release Channel<select id="appUpdateChannel"><option value="alpha">Alpha</option><option value="beta">Beta</option><option value="stable">Stable</option></select></label>
         <label>GitHub Read Token (optional/private repository)<input id="appUpdateToken" type="password" placeholder="Leave blank to keep stored token"></label>
         <label>Check Interval (hours)<input id="appUpdateInterval" type="number" min="1" max="168" value="24"></label>
@@ -1146,7 +1146,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 </section>
 <div class="footerBrand" data-kyle-attribution="true">
-  <span><b id="footerSiteName">RoomGoblin</b> • <span id="footerProductName">RoomGoblin</span> v1.0.0-alpha.74</span>
+  <span><b id="footerSiteName">RoomGoblin</b> • <span id="footerProductName">RoomGoblin</span> v1.0.0-alpha.79</span>
   <span>CLASSROOM READY</span>
   <span>Built by <a href="https://github.com/wagnerks1990" target="_blank" rel="author noopener noreferrer">Kyle Wagner</a></span>
 </div>

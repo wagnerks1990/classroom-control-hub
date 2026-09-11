@@ -7,12 +7,14 @@ RoomGoblin is the branded successor to Classroom Control Hub. The product name, 
 
 ## Compatibility contract
 
-Existing installations must continue to work through the rebrand. The following legacy identifiers may remain in commands, paths, package IDs, service names, sockets, environment variables, container/image names, persisted data, and API contracts:
+Existing installations must continue to work through the rebrand. The following
+legacy-compatible or migrated-and-protected identifiers remain part of the
+deployment contract:
 
 - `/opt/classroom-hub`
 - `CLASSROOM_HUB_*`
-- `org.roomgoblin.display`
-- `classroom-control-hub*` systemd, socket, container, and GHCR identifiers
+- `org.roomgoblin.display` for alpha.77 and later Android installations
+- `classroom-control-hub*` systemd, socket, container, and transitional GHCR aliases
 - existing setup/browser storage keys, database identifiers, device enrollment IDs, and public API names
 
 Do not rename these merely for cosmetic consistency. A future internal-identifier migration must provide upgrade, rollback, data-preservation, and device-compatibility tests first. See [`docs/ROOMGOBLIN-REBRAND.md`](docs/ROOMGOBLIN-REBRAND.md) and [`docs/brand/BRAND-GUIDE.md`](docs/brand/BRAND-GUIDE.md).
@@ -21,7 +23,7 @@ Do not rename these merely for cosmetic consistency. A future internal-identifie
 
 The Linux RoomGoblin appliance and maintenance containers, plus reviewed managed add-on templates, use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
 
-> **Status:** `1.0.0-alpha.78` — alpha software. The RoomGoblin rebrand is being integrated without breaking the deployed appliance contract.
+> **Status:** `1.0.0-alpha.79` — alpha software. Production deployment remains limited to reviewed, backed-up installations on trusted networks.
 
 ## What it does
 
@@ -89,16 +91,25 @@ The previous Caddy/HTTPS gateway has been removed for now. HTTPS will be reintro
 
 ## One-command appliance install
 
-On a clean Ubuntu Server 24.04 LTS machine, download and run the reviewed bootstrap:
+On a clean `amd64` Ubuntu Server 24.04 LTS machine, download and run the reviewed bootstrap:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/wagnerks1990/classroom-control-hub/main/deploy/bootstrap.sh \
+  https://raw.githubusercontent.com/wagnerks1990/RoomGoblin/main/deploy/bootstrap.sh \
   -o /tmp/classroom-hub-bootstrap.sh
 sudo bash /tmp/classroom-hub-bootstrap.sh
 ```
 
-The repository and bootstrap filename intentionally remain legacy-compatible for existing automation. The bootstrap installs Docker Engine and Compose from Docker's signed package repository, clones the application into `/opt/classroom-hub`, generates unique appliance credentials, installs the native Host Agent, starts the containers, verifies component health, and prints the first-time setup URL. Review the downloaded script before running it on a production machine.
+The bootstrap filename and `/opt/classroom-hub` target remain legacy-compatible
+for existing automation. The source repository is now RoomGoblin. The bootstrap
+installs Docker Engine and Compose from Docker's signed package repository,
+clones the application, generates unique appliance credentials, installs the
+native Host Agent, starts the containers, verifies component health, and prints
+the first-time setup URL. Review the downloaded script before running it.
+
+Production images are currently validated only for `amd64`. Do not use the
+bootstrap on `arm64` until multi-architecture Hub/maintenance images and the
+bundled Android/ADB toolchain have passed the same release validation.
 
 Use the web controller for routine upgrades and rollback after initial installation. The bootstrap refuses to overwrite an existing installation unless `CLASSROOM_HUB_REINSTALL=true` is explicitly supplied.
 
@@ -222,14 +233,20 @@ Project-critical invariants include Morning Announcements priority/recovery, exp
 
 ## Container images
 
-Existing deployments currently use these GHCR image identifiers:
+Canonical GHCR image identifiers are:
 
 ```text
 ghcr.io/wagnerks1990/roomgoblin
 ghcr.io/wagnerks1990/roomgoblin-maintenance
 ```
 
-The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a future stable RoomGoblin release. The image identifiers remain intentionally unchanged during the compatibility-safe brand transition. A future image rename requires dual-publish/migration support rather than silently abandoning the existing image names.
+The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a
+future stable release. During the compatibility transition, CI also publishes
+the same immutable image content under
+`ghcr.io/wagnerks1990/classroom-control-hub` and
+`ghcr.io/wagnerks1990/classroom-control-hub-maintenance`. Those are aliases for
+existing automation, not the current product identity. New deployments use the
+RoomGoblin names; do not remove the aliases without a separately tested migration.
 
 ## Project maturity
 
