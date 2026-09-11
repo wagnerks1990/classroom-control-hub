@@ -4,7 +4,7 @@
 
 *Run the room. Manage the lab.*
 
-> **Status:** `1.0.0-alpha.75` — alpha software; RoomGoblin branding is being introduced while preserving the deployed compatibility contract.
+> **Status:** `1.0.0-alpha.76` — alpha software; RoomGoblin branding is being introduced while preserving the deployed compatibility contract.
 
 ## Start here
 
