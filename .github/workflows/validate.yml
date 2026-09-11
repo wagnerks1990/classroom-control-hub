@@ -81,7 +81,8 @@ jobs:
           sudo chmod 0700 data/backups
           sudo install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub/veyon
           sudo install -d -m 0700 -o root -g root /etc/classroom-control-hub/android-agent-signing
-          sudo install -d -m 0755 -o root -g root /run/classroom-control-hub
+          sudo install -d -m 0755 /run/classroom-control-hub
+          sudo chown "$(id -u):$(id -g)" /run/classroom-control-hub
           openssl rand -hex 32 | sudo tee /etc/classroom-control-hub/master.key >/dev/null
           sudo chown root:10001 /etc/classroom-control-hub/master.key
           sudo chmod 0640 /etc/classroom-control-hub/master.key
@@ -129,3 +130,5 @@ jobs:
           foreach ($action in @('screenshot','refresh-history','instructor-lock','update-agent')) {
             if ($agent -notmatch "'$([regex]::Escape($action))'\s*\{") { throw "Missing Windows action: $action" }
           }
+          if ($failed) { throw 'Windows lab-agent contract validation failed.' }
+          
