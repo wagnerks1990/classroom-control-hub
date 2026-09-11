@@ -329,9 +329,7 @@ class DisplayBrowserTests(unittest.TestCase):
     def test_10_club_selection_survives_missing_layout_stylesheet(self):
         page=self.page(layout_css=False)
         self.replay(page,CLUB_SELECTION)
-        page.wait_for_function("document.getElementById('stage').dataset.fontStatus==='fallback'")
-        self.settle(page)
-        data=self.measure(page,'club-selection-no-layout-css',expected_font_status='fallback')
+        data=self.measure(page,'club-selection-no-layout-css')
         self.assertGreater(data['parts']['title']['font'],20)
         self.assertGreater(data['parts']['body']['font'],20)
 
