@@ -72,7 +72,7 @@ public class MainActivity extends Activity {
     private void loadConfiguredUrl(){
         if(webView==null)return;
         String url=HubStorage.prefs(this).getString("display_url","");
-        if(url==null||url.trim().isEmpty())webView.loadData("<html><body style='background:#0b1017;color:white;font-family:sans-serif;padding:8vw'><h1>Classroom Hub Display</h1><p>This device is installed but has not been assigned a display URL.</p></body></html>","text/html","UTF-8");
+        if(url==null||url.trim().isEmpty())webView.loadData("<html><body style='background:#0b1017;color:white;font-family:sans-serif;padding:8vw'><h1>RoomGoblin Display</h1><p>This device is installed but has not been assigned a display URL.</p></body></html>","text/html","UTF-8");
         else webView.loadUrl(url);
     }
 
