@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
-          sed -i 's/^MAINTENANCE_TOKEN=.*/MAINTENANCE_TOKEN=ci-maintenance-token/' .env
+          sed -i 's/^MAINTENANCE_TOKEN=.*/MAINTENANCE_TOKEN=ci-network-maintenance/' .env
           sed -i 's/^SETUP_TOKEN=.*/SETUP_TOKEN=ci-setup-token/' .env
           mkdir -p data/backups
           sudo chown -R 10001:10001 data
@@ -81,11 +81,16 @@ jobs:
           sudo chmod 0700 data/backups
           sudo install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub/veyon
           sudo install -d -m 0700 -o root -g root /etc/classroom-control-hub/android-agent-signing
+          sudo install -d -m 0755 -o root -g root /run/classroom-control-hub
           openssl rand -hex 32 | sudo tee /etc/classroom-control-hub/master.key >/dev/null
           sudo chown root:10001 /etc/classroom-control-hub/master.key
           sudo chmod 0640 /etc/classroom-control-hub/master.key
           sudo install -m 0640 -o root -g 10001 /dev/null /etc/classroom-control-hub/veyon/private.pem
-          trap 'docker compose logs --no-color || true; docker compose down -v || true' EXIT
+          python3 tools/fixtures/host-agent-network.py /run/classroom-control-hub/host-agent.sock "$(cat VERSION)" &
+          host_agent_fixture=$!
+          for i in $(seq 1 30); do [[ -S /run/classroom-control-hub/host-agent.sock ]] && break; sleep 1; done
+          [[ -S /run/classroom-control-hub/host-agent.sock ]]
+          trap 'kill "$host_agent_fixture" 2>/dev/null || true; docker compose logs --no-color || true; docker compose down -v || true; sudo rm -f /run/classroom-control-hub/host-agent.sock' EXIT
           docker compose build classroom-hub maintenance-agent
           docker compose up -d maintenance-agent classroom-hub
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/health >/dev/null && break; sleep 2; done
