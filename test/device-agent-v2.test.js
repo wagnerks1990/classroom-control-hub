@@ -96,7 +96,7 @@ test("local ADB recovery is first-party and root is policy gated",()=>{
   assert.match(service,/local-adb-self-grant/);
   assert.match(service,/local-adb-switch-port/);
   assert.match(root,/allow_root_tools/);
-  assert.match(root,/Root tools are disabled by Classroom Hub policy/);
+  assert.match(root,/Root tools are disabled by RoomGoblin policy/);
 });
 
 test("browser receives redacted Agent v2 configuration",()=>{

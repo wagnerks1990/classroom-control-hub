@@ -40,10 +40,13 @@ test('timer overlay remains a compact box inside its reserved region', () => {
     'full-width timer chrome is the regression this test prevents');
 });
 
-test('receiver cache key matches active renderer revision', () => {
+test('receiver cache key and build identity are release-stamped at image build', () => {
   const source = fs.readFileSync(indexPath, 'utf8');
-  const version = fs.readFileSync(path.join(process.cwd(),'VERSION'),'utf8').trim().replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
   assert.match(source, /layout\.mjs\?v=single-fit-20260909-4/);
   assert.match(source, /layout\.css\?v=single-fit-20260909-4/);
-  assert.match(source, new RegExp(`DISPLAY_BUILD='${version}'`));
+  assert.match(source, /DISPLAY_BUILD='\d+\.\d+\.\d+-alpha\.\d+'/);
+  assert.match(dockerfile,/RELEASE_VERSION="\$\(cat VERSION\)"/);
+  assert.ok(dockerfile.includes('public/display/index.html'),
+    'display receiver must be stamped from VERSION during the image build');
 });
