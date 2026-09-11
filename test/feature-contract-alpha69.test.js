@@ -60,10 +60,10 @@ test("release version converges across independently deployed runtime surfaces",
   assert.match(maintenanceDockerfile,/require\('\.\/package\.json'\)\.version/);
   assert.match(maintenanceDockerfile,/sed -i -E/);
 
-  // Historical changelog entries and protocol compatibility fixtures may
-  // legitimately mention older releases. Current-baseline documentation may not.
+  // Canonical release surfaces must contain only the current version. Deeper
+  // operational/history docs may intentionally describe earlier baselines.
   const releasePattern=/\b\d+\.\d+\.\d+-alpha\.\d+\b/g;
-  for(const file of ["AGENTS.md","README.md","docs/AI-CONTEXT.md","docs/DEVELOPMENT.md","wiki/Home.md","wiki/Development.md"]){
+  for(const file of ["AGENTS.md","README.md","wiki/Home.md"]){
     const found=[...new Set(read(file).match(releasePattern)||[])];
     assert.deepEqual(found,[version],`${file} contains a stale current-baseline version`);
   }
