@@ -61,8 +61,15 @@ class FullRecoveryTests(unittest.TestCase):
             app_uid=os.getuid(), app_gid=os.getgid())
         self.env = patch.dict(os.environ, {"DOCKER_VOLUMES_ROOT": str(root / "docker-volumes"), "MAINTENANCE_TOKEN": "test-token", "FULL_RECOVERY_HANDOFF_GRACE_SECONDS": "0", "RESTORE_HEALTH_TIMEOUT_SECONDS": "2"})
         self.env.start()
+        # The production Host Agent runs as root and must apply the validated
+        # topology ownership. CI intentionally runs unprivileged, so isolate
+        # only the privileged syscall while still exercising every policy and
+        # transaction branch around it.
+        self.chown = patch("full_recovery.os.chown")
+        self.chown.start()
 
     def tearDown(self):
+        self.chown.stop()
         self.env.stop()
         self.temp.cleanup()
 
