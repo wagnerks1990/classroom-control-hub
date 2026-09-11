@@ -16,7 +16,7 @@ After an Android factory reset, the old Hub enrollment can remain as stale inven
 
 ## Device Administrator
 
-For already provisioned Android TV devices, Device Admin is an optional fallback management tier. Use **Enable Device Admin** from Device Agent v2. Classroom Hub opens Android's native Device Administrator confirmation screen for `org.classroomhub.display/.AgentDeviceAdminReceiver`; approval must occur on the TV.
+For already provisioned Android TV devices, Device Admin is an optional fallback management tier. Use **Enable Device Admin** from Device Agent v2. Classroom Hub opens Android's native Device Administrator confirmation screen for `org.roomgoblin.display/.AgentDeviceAdminReceiver`; approval must occur on the TV.
 
 After approval, rerun **Capabilities** and verify `deviceAdminActive: true`. Device Admin can unlock lock/sleep behavior but is not equivalent to Device Owner.
 

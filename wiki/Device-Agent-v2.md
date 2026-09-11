@@ -2,7 +2,7 @@
 
 Device Agent v2 is the next-generation Android / Google TV management layer for Classroom Hub.
 
-It keeps the existing `org.classroomhub.display` package identity and existing Managed Displays enrollment records, but changes management from **ADB-only** to a dual-channel design:
+It keeps the existing `org.roomgoblin.display` package identity and existing Managed Displays enrollment records, but changes management from **ADB-only** to a dual-channel design:
 
 - authenticated Agent management over the LAN for normal health/control,
 - ADB for privileged recovery and bootstrap.

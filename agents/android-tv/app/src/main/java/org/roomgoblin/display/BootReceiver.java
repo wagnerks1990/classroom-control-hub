@@ -1,4 +1,4 @@
-package org.classroomhub.display;
+package org.roomgoblin.display;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -8,7 +8,7 @@ import android.provider.Settings;
 import android.util.Log;
 
 public class BootReceiver extends BroadcastReceiver {
-    private static final String TAG="ClassroomHubDisplay";
+    private static final String TAG="RoomGoblinDisplay";
 
     @Override public void onReceive(Context context, Intent intent) {
         SharedPreferences prefs=HubStorage.prefs(context);

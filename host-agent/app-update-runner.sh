@@ -208,7 +208,7 @@ if [[ -n "$TRACKED_CHANGES" ]]; then
 fi
 ORIGIN_URL="$(git remote get-url origin)"
 case "$ORIGIN_URL" in
-  https://github.com/wagnerks1990/classroom-control-hub|https://github.com/wagnerks1990/classroom-control-hub.git|git@github.com:wagnerks1990/classroom-control-hub.git) ;;
+  https://github.com/wagnerks1990/RoomGoblin|https://github.com/wagnerks1990/RoomGoblin.git|git@github.com:wagnerks1990/classroom-control-hub.git) ;;
   *) echo "Refusing update from unexpected origin: $ORIGIN_URL"; exit 36 ;;
 esac
 git fetch --force --prune --tags origin
@@ -235,8 +235,8 @@ if [[ "$ACTION" == revert && -n "$PREVIOUSHUBIMAGE" && -n "$PREVIOUSMAINTENANCEI
   activate_image_id "$PREVIOUSMAINTENANCEIMAGE" maintenance-agent
 else
   IMAGE_TAG="$TARGETREF"
-  HUB_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub:${IMAGE_TAG}"
-  MAINTENANCE_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub-maintenance:${IMAGE_TAG}"
+  HUB_IMAGE="ghcr.io/wagnerks1990/roomgoblin:${IMAGE_TAG}"
+  MAINTENANCE_IMAGE="ghcr.io/wagnerks1990/roomgoblin-maintenance:${IMAGE_TAG}"
   write_state building "Pulling immutable CI-built images for $ACTUAL_VERSION." null
   docker pull "$HUB_IMAGE"
   docker pull "$MAINTENANCE_IMAGE"
@@ -270,4 +270,4 @@ fi
 install -D -m 0755 "$HUB_ROOT/host-agent/update-runner.sh" /usr/local/libexec/classroom-control-hub/update-runner.sh
 install -D -m 0755 "$HUB_ROOT/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
 rm -f "$REQUEST_FILE"
-write_state completed "Classroom Control Hub $ACTUAL_VERSION deployed and verified successfully over HTTP." true
+write_state completed "RoomGoblin $ACTUAL_VERSION deployed and verified successfully over HTTP." true

@@ -20,7 +20,7 @@ test("maintenance image loads Device Agent v2 bridge",()=>{
 
 test("Device Agent v2 keeps the existing package identity and advances native-player version",()=>{
   const gradle=read("agents/android-tv/app/build.gradle.kts");
-  assert.match(gradle,/applicationId = "org\.classroomhub\.display"/);
+  assert.match(gradle,/applicationId = "org\.roomgoblin\.display"/);
   assert.match(gradle,/versionCode = 4/);
   assert.match(gradle,/versionName = "0\.3\.0-agent-v2"/);
 });
@@ -35,23 +35,23 @@ test("Device Agent v2 declares durable boot, management and media playback foreg
 });
 
 test("Device Agent v2 control channel requires per-device authentication",()=>{
-  const service=read("agents/android-tv/app/src/main/java/org/classroomhub/display/AgentService.java");
+  const service=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentService.java");
   assert.match(service,/x-classroom-hub-agent-token/);
   assert.match(service,/MessageDigest\.isEqual/);
   assert.doesNotMatch(service,/authorized\([^)]*\)\s*\{[^}]*return true;\s*\}/s);
 });
 
 test("Device Agent v2 exposes stock, accessibility, device-owner, local ADB, kiosk and native audio tiers",()=>{
-  const caps=read("agents/android-tv/app/src/main/java/org/classroomhub/display/AgentCapabilities.java");
+  const caps=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentCapabilities.java");
   for(const capability of ["bootAutoStart","agentHttpApi","globalNavigation","deviceOwnerProvisioning","localAdbPairing","wirelessAdbDiscovery","legacyAdbPortSwitch","rootProbe","kioskAlwaysOn","kioskSelfHeal","nativeSendspin"]){
     assert.match(caps,new RegExp(`\\"${capability}\\"`));
   }
 });
 
 test("always-on kiosk recovery is process-level and bounded below thirty seconds",()=>{
-  const watchdog=read("agents/android-tv/app/src/main/java/org/classroomhub/display/KioskWatchdog.java");
-  const activity=read("agents/android-tv/app/src/main/java/org/classroomhub/display/MainActivity.java");
-  const service=read("agents/android-tv/app/src/main/java/org/classroomhub/display/AgentService.java");
+  const watchdog=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/KioskWatchdog.java");
+  const activity=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/MainActivity.java");
+  const service=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentService.java");
   assert.match(watchdog,/RELAUNCH_AFTER_MS=20_000L/);
   assert.match(watchdog,/CHECK_SECONDS=10/);
   assert.match(watchdog,/SCREEN_BRIGHT_WAKE_LOCK/);
@@ -63,8 +63,8 @@ test("always-on kiosk recovery is process-level and bounded below thirty seconds
 
 test("Accessibility activation is guided by a foreground helper activity",()=>{
   const manifest=read("agents/android-tv/app/src/main/AndroidManifest.xml");
-  const helper=read("agents/android-tv/app/src/main/java/org/classroomhub/display/AccessibilityActivationActivity.java");
-  const service=read("agents/android-tv/app/src/main/java/org/classroomhub/display/AgentService.java");
+  const helper=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/AccessibilityActivationActivity.java");
+  const service=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentService.java");
   const ui=read("public/managed-displays/agent-v2-ui.js");
   assert.match(manifest,/\.AccessibilityActivationActivity/);
   assert.match(helper,/ACTION_ACCESSIBILITY_SETTINGS/);
@@ -74,9 +74,9 @@ test("Accessibility activation is guided by a foreground helper activity",()=>{
 
 test("native Sendspin player is independent of the WebView and constrained to PCM baseline",()=>{
   const gradle=read("agents/android-tv/app/build.gradle.kts");
-  const manager=read("agents/android-tv/app/src/main/java/org/classroomhub/display/NativeSendspinManager.kt");
-  const player=read("agents/android-tv/app/src/main/java/org/classroomhub/display/AndroidPcmSendspinPlayer.kt");
-  const service=read("agents/android-tv/app/src/main/java/org/classroomhub/display/AgentService.java");
+  const manager=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/NativeSendspinManager.kt");
+  const player=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/AndroidPcmSendspinPlayer.kt");
+  const service=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentService.java");
   assert.match(gradle,/sendspin-jvm:v0\.3\.4/);
   assert.match(manager,/SendSpinClient/);
   assert.match(manager,/AudioFormat\("pcm", 2, 48_000, 16\)/);
@@ -89,8 +89,8 @@ test("native Sendspin player is independent of the WebView and constrained to PC
 });
 
 test("local ADB recovery is first-party and root is policy gated",()=>{
-  const service=read("agents/android-tv/app/src/main/java/org/classroomhub/display/AgentService.java");
-  const root=read("agents/android-tv/app/src/main/java/org/classroomhub/display/RootTools.java");
+  const service=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/AgentService.java");
+  const root=read("agents/android-tv/app/src/main/java/org/roomgoblin/display/RootTools.java");
   assert.match(service,/local-adb-pair/);
   assert.match(service,/local-adb-connect/);
   assert.match(service,/local-adb-self-grant/);

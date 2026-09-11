@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Managed Android/Google TV devices must never reinstall an arbitrary historical APK merely because a file named `ClassroomHub-Display-Agent.apk` exists in persistent data.
+Managed Android/Google TV devices must never reinstall an arbitrary historical APK merely because a file named `RoomGoblin-Display-Agent.apk` exists in persistent data.
 
-The appliance owns the complete build -> sign -> verify -> stage -> install lifecycle for `org.classroomhub.display`.
+The appliance owns the complete build -> sign -> verify -> stage -> install lifecycle for `org.roomgoblin.display`.
 
 ## Source-of-truth model
 
@@ -26,8 +26,8 @@ The final maintenance image contains the unsigned APK, Android `apksigner`, and 
 
 It verifies that the bundled unsigned APK SHA-256, package name, versionCode, and versionName match the metadata produced during the image build. It then signs that APK using the appliance's persistent signing identity and stages:
 
-- `data/android-tv/ClassroomHub-Display-Agent.apk`
-- `data/android-tv/ClassroomHub-Display-Agent.json`
+- `data/android-tv/RoomGoblin-Display-Agent.apk`
+- `data/android-tv/RoomGoblin-Display-Agent.json`
 
 The staged metadata records package identity, version name/code, unsigned bundle SHA-256, signed APK SHA-256, signing-certificate SHA-256, signing mode, source and staging time.
 
@@ -64,7 +64,7 @@ The verified Managed Displays install path handles only that specific condition:
 1. attempt normal `adb install -r -g`;
 2. recognize Android's signature-incompatibility error;
 3. require explicit administrator confirmation;
-4. uninstall only `org.classroomhub.display`;
+4. uninstall only `org.roomgoblin.display`;
 5. install the verified staged APK;
 6. restore `WRITE_SECURE_SETTINGS` through trusted ADB when Persistent ADB is enabled;
 7. restore the saved display URL, Agent v2 token/port and persistent-ADB configuration;
@@ -125,4 +125,4 @@ After an appliance update that changes Android agent source:
 
 If `/etc/classroom-control-hub/android-agent-signing` is lost, maintenance creates a new signing identity. Existing devices will then require the explicit signature-transition replacement workflow again.
 
-Restoring only `data/android-tv/ClassroomHub-Display-Agent.apk` is not sufficient for long-term update continuity. Preserve the signing directory together with appliance configuration and backups.
+Restoring only `data/android-tv/RoomGoblin-Display-Agent.apk` is not sufficient for long-term update continuity. Preserve the signing directory together with appliance configuration and backups.

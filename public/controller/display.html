@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Classroom Control Hub Controller</title>
+<title>RoomGoblin Controller</title>
 <link rel="stylesheet" href="/shared/attribution.css">
 <script src="/shared/attribution.js" defer></script>
 <style>
@@ -146,8 +146,8 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
 <div class="wrap">
   <div class="top">
     <div>
-      <h1>Classroom Control Hub Controller</h1>
-      <div class="muted">Classroom Control Hub • v1.0.0-alpha.74 • multi-display controller</div>
+      <h1>RoomGoblin Controller</h1>
+      <div class="muted">RoomGoblin • v1.0.0-alpha.74 • multi-display controller</div>
     </div>
     <div id="conn" class="muted">Connecting…</div>
   </div>
@@ -181,7 +181,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <button class="danger" style="font-weight:800" onclick="clearClassroom()">CLEAR CLASSROOM</button>
           <button onclick="resumeClassroom()">Resume Sessions</button>
         </div>
-        <div class="muted" style="margin-top:7px">Clear Classroom stops lesson queues, pauses spotlight rotation, and blanks every enabled Classroom Control Hub display immediately.</div>
+        <div class="muted" style="margin-top:7px">Clear Classroom stops lesson queues, pauses spotlight rotation, and blanks every enabled RoomGoblin display immediately.</div>
       </div>
 
       <div class="panel">
@@ -255,7 +255,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <hr>
 
           <label>Body Message</label>
-          <textarea id="text">Classroom Control Hub Online</textarea>
+          <textarea id="text">RoomGoblin Online</textarea>
           <div class="grid2">
             <div><label>Text color</label><input id="textColor" type="color" value="#ffffff"></div>
             <div><label>Screen background</label><input id="bgColor" type="color" value="#101318"></div>
@@ -382,10 +382,10 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
               <button onclick="retryMorningAnnouncementsAudio(true)">Reload + Unmute</button>
               <button class="danger" onclick="stopMorningAnnouncements()">Stop / Clear</button>
             </div>
-            <div class="muted" style="margin-top:8px">Classroom Control Hub forces <code>autoplay=true</code> and <code>mute=false</code>, grants the embedded player autoplay permission, then retries unmute/play at multiple intervals. Browser/kiosk autoplay policy can still override audible autoplay.</div>
+            <div class="muted" style="margin-top:8px">RoomGoblin forces <code>autoplay=true</code> and <code>mute=false</code>, grants the embedded player autoplay permission, then retries unmute/play at multiple intervals. Browser/kiosk autoplay policy can still override audible autoplay.</div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <div><h2 style="margin:0">Media Library</h2><div class="muted">Local files stored on the Classroom Control Hub.</div></div>
+            <div><h2 style="margin:0">Media Library</h2><div class="muted">Local files stored on the RoomGoblin.</div></div>
             <button onclick="loadMedia()">Refresh</button>
           </div>
           <div id="dropZone" class="drop" style="margin-top:10px">Drop image/video/PDF here</div>
@@ -401,7 +401,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px">
             <input id="mediaLocalDirect" type="checkbox" checked style="margin-top:3px">
             <span><strong>Load URL directly from this TV/browser</strong><br>
-            <span class="muted">Useful when the TV network can reach a site that the Classroom Control Hub server cannot.</span></span>
+            <span class="muted">Useful when the TV network can reach a site that the RoomGoblin server cannot.</span></span>
           </label>
           <div class="grid2">
             <div><label>Fit</label><select id="mediaFit"><option>contain</option><option>cover</option><option>fill</option></select></div>

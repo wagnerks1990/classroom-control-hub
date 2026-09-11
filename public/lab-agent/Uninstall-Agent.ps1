@@ -2,14 +2,14 @@
 param([switch]$KeepConfiguration)
 $ErrorActionPreference='Stop'
 if(!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run this uninstaller in an elevated PowerShell window.'}
-$task=Get-ScheduledTask -TaskName 'Classroom Control Hub Agent' -ErrorAction SilentlyContinue
+$task=Get-ScheduledTask -TaskName 'RoomGoblin Agent' -ErrorAction SilentlyContinue
 if($task){
-  & schtasks.exe /End /TN 'Classroom Control Hub Agent' 2>$null
+  & schtasks.exe /End /TN 'RoomGoblin Agent' 2>$null
   if($LASTEXITCODE -notin @(0,1)){throw "Could not stop the agent task (schtasks exit code $LASTEXITCODE)."}
-  & schtasks.exe /Delete /TN 'Classroom Control Hub Agent' /F 2>$null
+  & schtasks.exe /Delete /TN 'RoomGoblin Agent' /F 2>$null
   if($LASTEXITCODE -ne 0){throw "Could not delete the agent task (schtasks exit code $LASTEXITCODE)."}
 }
-Get-ScheduledTask -TaskName 'Classroom Hub Interactive *' -ErrorAction SilentlyContinue|Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
+Get-ScheduledTask -TaskName 'RoomGoblin Interactive *' -ErrorAction SilentlyContinue|Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
 $root=Join-Path $env:ProgramData 'ClassroomControlHub'
 if(Test-Path -LiteralPath $root){
   if($KeepConfiguration){
@@ -20,4 +20,4 @@ if(Test-Path -LiteralPath $root){
     if(Test-Path -LiteralPath $config){& icacls.exe $config /inheritance:r /grant:r 'SYSTEM:(F)' 'Administrators:(F)'|Out-Null;if($LASTEXITCODE -ne 0){throw 'Configuration was retained but its private ACL could not be verified.'}}
   }else{Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction Stop}
 }
-Write-Host 'Classroom Control Hub agent removed. Revoke its credential in the web controller.'
+Write-Host 'RoomGoblin agent removed. Revoke its credential in the web controller.'

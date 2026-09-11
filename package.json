@@ -1,6 +1,6 @@
 {
-  "name": "classroom-control-hub",
-  "version": "1.0.0-alpha.76",
+  "name": "roomgoblin",
+  "version": "1.0.0-alpha.77",
   "engines": {"node": ">=22"},
   "packageManager": "npm@11",
   "private": true,

@@ -10,7 +10,7 @@ Do **not** use `dumpsys package` on this validated Onn firmware for routine pack
 
 Minimal Mode is intentionally aggressive for dedicated Classroom Hub signage endpoints. It performs `pm uninstall --user 0` rather than merely disabling targeted packages.
 
-It removes every third-party package visible to user 0 except `org.classroomhub.display`, then attempts to remove the following curated nonessential TV/media packages for user 0 when present:
+It removes every third-party package visible to user 0 except `org.roomgoblin.display`, then attempts to remove the following curated nonessential TV/media packages for user 0 when present:
 
 - `com.google.android.youtube.tv`
 - `com.google.android.youtube.tvunplugged`

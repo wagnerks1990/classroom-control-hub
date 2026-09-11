@@ -84,5 +84,5 @@ chown root:root "$TARGET_DIR/key-name"
 
 # The application imports private.pem into its encrypted SQLite secret store at
 # startup. These host files are runtime material for native Veyon compatibility,
-# not Classroom Control Hub's configuration authority.
+# not RoomGoblin's configuration authority.
 exit 0

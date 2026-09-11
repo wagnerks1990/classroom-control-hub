@@ -31,14 +31,14 @@
       <div class="muted" style="margin-bottom:8px"><b>Required:</b> Music Assistant API access is disabled until a valid long-lived access token is saved. Create one in Music Assistant under Settings → Profile → Long-lived access tokens.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">
         ${field({key:"url",label:"Music Assistant URL",value:url,placeholder:"http://127.0.0.1:8095",help:"Host-local API address. The Open Music Assistant button converts this to a browser-reachable address.",scope})}
-        ${field({key:"token",label:"Long-lived access token",value:cfg.token||"",placeholder:"Required access token",help:"Stored encrypted in the Classroom Control Hub database. Saving is rejected if authentication fails.",secret:true,scope})}
+        ${field({key:"token",label:"Long-lived access token",value:cfg.token||"",placeholder:"Required access token",help:"Stored encrypted in the RoomGoblin database. Saving is rejected if authentication fails.",secret:true,scope})}
       </div>
       <div class="actions toolbar" style="margin-top:10px"><button type="button" data-open-music-assistant>Open Music Assistant</button><span class="muted">Create/copy the token there, return here, paste it, then Save & Verify.</span></div>
     </div>`;
   }
   function veyonFields(cfg,scope){
     return `<div class="integration-guided-fields" style="grid-column:1/-1">
-      <div class="muted" style="margin-bottom:8px">The native Veyon services remain host-managed, but Classroom Control Hub owns their application configuration. This appliance is standardized on Veyon key-file authentication with the matching <b>master</b> key pair. Domain credentials and Linux SSH credentials below are optional endpoint-deployment credentials, not normal Veyon control authentication.</div>
+      <div class="muted" style="margin-bottom:8px">The native Veyon services remain host-managed, but RoomGoblin owns their application configuration. This appliance is standardized on Veyon key-file authentication with the matching <b>master</b> key pair. Domain credentials and Linux SSH credentials below are optional endpoint-deployment credentials, not normal Veyon control authentication.</div>
       <h4 style="margin:10px 0 4px">Veyon WebAPI & Authentication</h4>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
         ${field({key:"url",label:"WebAPI URL",value:cfg.url||"http://127.0.0.1:11080",placeholder:"http://127.0.0.1:11080",scope})}

@@ -55,7 +55,7 @@
         }
       }
       panel.querySelectorAll("button[data-v2-action]").forEach(b=>{b.disabled=false;if(b.dataset.v2Action==="enable-device-admin")b.title="Opens Android's Device Administrator approval flow on the TV.";else if(b.dataset.v2Action==="enable-accessibility")b.title="Opens Android Accessibility settings so Home/Back/Recents can be granted.";else if(b.dataset.v2Action?.startsWith("sendspin-"))b.title="Native Music Assistant Sendspin playback runs inside the Android agent, independently of the WebView.";else b.title="Uses Device Agent v2; ADB is not required after initial v2 configuration."});
-      lifecycleBox.querySelectorAll("button").forEach(b=>{b.disabled=false;b.title="Changes only Classroom Hub enrollment state; it does not factory-reset the TV or uninstall the agent."});
+      lifecycleBox.querySelectorAll("button").forEach(b=>{b.disabled=false;b.title="Changes only RoomGoblin enrollment state; it does not factory-reset the TV or uninstall the agent."});
       probe(card).catch(()=>{});
     }
   }
@@ -67,9 +67,9 @@
       const staged=artifact?.available?artifact.versionName:null,update=!!staged&&installedVersion!==staged;
       status.textContent=`Online · ${installedVersion}${staged?` · staged ${staged}${update?' · update available':''}`:' · staged APK unavailable'}${a?.enabled?` · Sendspin ${a.connected?(a.playing?'playing':'connected'):'offline'}`:''}`;status.style.color="";
       const installButton=card.querySelector('.controls button[data-op="install"]');
-      if(installButton&&staged){installButton.textContent=update?`Update Agent → ${staged}`:`Reinstall Agent ${staged}`;installButton.title="Installs the verified APK staged from the current Classroom Hub source.";}
+      if(installButton&&staged){installButton.textContent=update?`Update Agent → ${staged}`:`Reinstall Agent ${staged}`;installButton.title="Installs the verified APK staged from the current RoomGoblin source.";}
       const navAvailable=j.status?.capabilities?.globalNavigation?.available===true;
-      for(const op of ["home","back","recents"]){const b=card.querySelector(`button[data-v2-action="${op}"]`);if(b){b.title=navAvailable?"Uses the enabled Classroom Hub Accessibility service.":"Requires Enable Accessibility on the TV before this action can work.";}}
+      for(const op of ["home","back","recents"]){const b=card.querySelector(`button[data-v2-action="${op}"]`);if(b){b.title=navAvailable?"Uses the enabled RoomGoblin Accessibility service.":"Requires Enable Accessibility on the TV before this action can work.";}}
     }catch(e){status.textContent=e.status===409?"Not configured":`Unavailable · ${e.message}`;status.style.color=""}
     finally{delete card.dataset.v2ProbeBusy}
   }
@@ -85,13 +85,16 @@
         let result;
         try{result=await maintenanceCall(id,"/agent/artifact/install",{method:"POST",body:JSON.stringify({replaceExisting:false})})}
         catch(error){
-          if(error.payload?.code!=="signature_transition_required")throw error;
-          const confirmed=window.confirm(`This device has an older Classroom Hub agent signed with a different temporary key. Replace it with ${artifact.versionName} using this appliance's persistent signing identity? Classroom Hub will immediately restore the saved display and Agent v2 configuration.`);
+          if(!["signature_transition_required","legacy_package_reinstall_required"].includes(error.payload?.code))throw error;
+          const legacy=error.payload?.code==="legacy_package_reinstall_required";
+          const confirmed=window.confirm(legacy
+            ? `The old Android app must be uninstalled before RoomGoblin ${artifact.versionName} can be installed. This is a reinstall, not an in-place update. Continue? RoomGoblin will restore the saved display and Agent v2 configuration afterward.`
+            : `This device has an older RoomGoblin agent signed with a different temporary key. Replace it with ${artifact.versionName} using this appliance's persistent signing identity? RoomGoblin will immediately restore the saved display and Agent v2 configuration.`);
           if(!confirmed)return;
           result=await maintenanceCall(id,"/agent/artifact/install",{method:"POST",body:JSON.stringify({replaceExisting:true})});
         }
         terminal("Android agent installation",result);
-        window.alert(result.message||`Installed Classroom Hub Display Agent ${artifact.versionName}.`);
+        window.alert(result.message||`Installed RoomGoblin Display Agent ${artifact.versionName}.`);
         await new Promise(resolve=>setTimeout(resolve,1200));
         await probe(card);
       }catch(error){window.alert(`Android agent install: ${error.message}`)}finally{installButton.disabled=false}
@@ -102,8 +105,8 @@
       e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
       const card=lifecycleButton.closest(".card[data-id]"),id=card?.dataset.id;if(!id)return;
       const op=lifecycleButton.dataset.lifecycleAction;
-      if(op==="remove"&&!window.confirm("Remove this managed display from Classroom Hub? This removes the Hub enrollment only. It will not uninstall the Android app, factory-reset the TV, or delete other Classroom Hub data."))return;
-      if(op==="disable"&&!window.confirm("Disable this enrollment? Classroom Hub policy automation will ignore it until re-enabled."))return;
+      if(op==="remove"&&!window.confirm("Remove this managed display from RoomGoblin? This removes the Hub enrollment only. It will not uninstall the Android app, factory-reset the TV, or delete other RoomGoblin data."))return;
+      if(op==="disable"&&!window.confirm("Disable this enrollment? RoomGoblin policy automation will ignore it until re-enabled."))return;
       lifecycleButton.disabled=true;
       try{const j=await maintenanceCall(id,"/lifecycle",{method:"POST",body:JSON.stringify({action:op})});terminal(`Managed display lifecycle: ${op}`,j);if(op==="remove")card.remove();else window.location.reload()}
       catch(err){window.alert(`Managed display lifecycle: ${err.message}`)}finally{lifecycleButton.disabled=false}
@@ -123,14 +126,14 @@
       }else if(op==="capabilities"){
         const j=await call(id,"/capabilities");terminal("Device Agent v2 capabilities",j.capabilities);
       }else if(op==="enable-device-admin"){
-        const j=await call(id,"/device-admin/activate",{method:"POST",body:"{}"});terminal("Device Admin activation",j);window.alert("Classroom Hub opened its Device Administrator activation helper on the TV. Approve the Android system prompt if shown, then run Capabilities again.");
+        const j=await call(id,"/device-admin/activate",{method:"POST",body:"{}"});terminal("Device Admin activation",j);window.alert("RoomGoblin opened its Device Administrator activation helper on the TV. Approve the Android system prompt if shown, then run Capabilities again.");
       }else if(op==="enable-accessibility"){
-        const j=await call(id,"/action",{method:"POST",body:JSON.stringify({action:"open-accessibility-settings"})});terminal("Accessibility activation",j.result);window.alert("Accessibility settings were requested on the TV. Enable Classroom Hub control fallback, then run Capabilities again.");
+        const j=await call(id,"/action",{method:"POST",body:JSON.stringify({action:"open-accessibility-settings"})});terminal("Accessibility activation",j.result);window.alert("Accessibility settings were requested on the TV. Enable RoomGoblin control fallback, then run Capabilities again.");
       }else if(op==="sendspin-configure"){
         const current=(await call(id,"/status")).status?.sendspin||{};
         const defaultUrl=current.url||"ws://MUSIC_ASSISTANT_HOST:8927/sendspin";
         const url=window.prompt("Music Assistant Sendspin URL (normally ws://<Music Assistant host>:8927/sendspin)",defaultUrl);if(url===null)return;
-        const defaultName=current.name||card.querySelector("h3")?.textContent||"Classroom Hub Display";
+        const defaultName=current.name||card.querySelector("h3")?.textContent||"RoomGoblin Display";
         const name=window.prompt("Music Assistant player name",defaultName);if(name===null)return;
         const j=await call(id,"/action",{method:"POST",body:JSON.stringify({action:"sendspin-configure",enabled:true,url:url.trim(),name:name.trim()})});terminal("Native Sendspin configured",j.result);
       }else if(op==="sendspin-status"){

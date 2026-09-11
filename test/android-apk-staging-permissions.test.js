@@ -12,6 +12,6 @@ test("maintenance container joins shared application data group",()=>{
 
 test("maintenance healthcheck verifies staged Android agent APK readability",()=>{
   const section=compose.slice(compose.indexOf("  maintenance-agent:"));
-  assert.match(section,/ClassroomHub-Display-Agent\.apk/);
+  assert.match(section,/RoomGoblin-Display-Agent\.apk/);
   assert.match(section,/fs\.accessSync\(apk,fs\.constants\.R_OK\)/);
 });

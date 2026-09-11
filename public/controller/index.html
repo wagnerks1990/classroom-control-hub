@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Classroom Control Hub</title>
+<title>RoomGoblin</title>
 <link rel="stylesheet" href="/shared/attribution.css">
 <script src="/shared/branding.js" defer></script>
 <style>
@@ -264,12 +264,12 @@ nav button{min-width:135px}
 <div class="app">
 <aside>
   <div class="brandWrap">
-      <div class="logo" id="brandLogoWrap" title="Classroom Control Hub" style="display:none">
+      <div class="logo" id="brandLogoWrap" title="RoomGoblin" style="display:none">
         <img id="brandLogo" src="" alt="School logo">
       </div>
       <div>
         <div class="brand" id="brandProductName">Classroom <span class="green">Hub</span></div>
-        <div class="ver"><span id="brandSite">Classroom Control Hub</span> • <span id="brandVersion">v1.0.0-alpha.74</span></div>
+        <div class="ver"><span id="brandSite">RoomGoblin</span> • <span id="brandVersion">v1.0.0-alpha.74</span></div>
         <div class="brandStatus">
           <div id="brandDateTime">Loading date/time…</div>
           <div id="brandCycle">Loading school cycle…</div>
@@ -321,7 +321,7 @@ nav button{min-width:135px}
   </div>
 
   <div class="grid">
-    <div class="card"><div class="muted">Classroom Control Hub</div><div class="kpi" id="hubState">…</div></div>
+    <div class="card"><div class="muted">RoomGoblin</div><div class="kpi" id="hubState">…</div></div>
     <div class="card"><div class="muted">MQTT / Govee</div><div class="kpi" id="mqttState">…</div></div>
     <div class="card"><div class="muted">Pluto Mark I</div><div class="kpi" id="plutoState">…</div></div>
   </div>
@@ -354,7 +354,7 @@ nav button{min-width:135px}
     <div class="top" style="position:static;margin:0 0 10px;padding:0;border:0;background:none;box-shadow:none">
       <div>
         <h2 class="sectionTitle">Displays</h2>
-        <div class="muted">Live preview, connection state, last heartbeat, and current content for each Classroom Control Hub display.</div>
+        <div class="muted">Live preview, connection state, last heartbeat, and current content for each RoomGoblin display.</div>
       </div>
       <div class="toolbar"><button onclick="refreshOverviewDisplayPreviews()">Reload Previews</button><button class="primary" onclick="reloadAllDisplays()">Reload All Displays</button></div>
     </div>
@@ -365,7 +365,7 @@ nav button{min-width:135px}
 </section>
 
 <section id="display" class="page">
-  <div class="top"><h1>Display Content</h1><span class="muted">Existing Classroom Control Hub display/session controller</span></div>
+  <div class="top"><h1>Display Content</h1><span class="muted">Existing RoomGoblin display/session controller</span></div>
   <iframe data-lazy-src="/controller/display.html" title="Classroom display controls"></iframe>
 </section>
 
@@ -404,7 +404,7 @@ nav button{min-width:135px}
     </div>
     <div>
       <div class="panel"><h2 class="sectionTitle">Now Playing / Player Controls</h2><div id="maPlayers" class="muted">Loading…</div></div>
-      <details class="panel"><summary><b>Music Assistant Connection & TV Audio Bridge</b></summary><div style="margin-top:12px"><div id="maStatus" class="muted">Loading…</div><div class="grid2" style="margin-top:12px"><label><b>Server URL</b><input id="maUrl" value="http://127.0.0.1:8095" style="width:100%;margin-top:5px"></label><label><b>Long-lived access token</b><input id="maToken" type="password" placeholder="Leave blank to keep existing encrypted token" style="width:100%;margin-top:5px"></label></div><div class="toolbar" style="margin-top:10px"><button class="primary" onclick="saveMusicAssistantConfig()">Save & Test</button></div><hr style="border:0;border-top:1px solid var(--border);margin:16px 0"><div class="muted">Selected Classroom Control Hub TVs can register as persistent Music Assistant players without changing their visual content.</div><div id="maTvTargets" class="toolbar" style="margin-top:10px"></div><div class="toolbar" style="margin-top:10px"><button class="primary" onclick="musicAssistantTvBridge('attach')">Attach Selected TVs</button><button onclick="musicAssistantTvBridge('detach')">Detach Selected TVs</button></div></div></details>
+      <details class="panel"><summary><b>Music Assistant Connection & TV Audio Bridge</b></summary><div style="margin-top:12px"><div id="maStatus" class="muted">Loading…</div><div class="grid2" style="margin-top:12px"><label><b>Server URL</b><input id="maUrl" value="http://127.0.0.1:8095" style="width:100%;margin-top:5px"></label><label><b>Long-lived access token</b><input id="maToken" type="password" placeholder="Leave blank to keep existing encrypted token" style="width:100%;margin-top:5px"></label></div><div class="toolbar" style="margin-top:10px"><button class="primary" onclick="saveMusicAssistantConfig()">Save & Test</button></div><hr style="border:0;border-top:1px solid var(--border);margin:16px 0"><div class="muted">Selected RoomGoblin TVs can register as persistent Music Assistant players without changing their visual content.</div><div id="maTvTargets" class="toolbar" style="margin-top:10px"></div><div class="toolbar" style="margin-top:10px"><button class="primary" onclick="musicAssistantTvBridge('attach')">Attach Selected TVs</button><button onclick="musicAssistantTvBridge('detach')">Detach Selected TVs</button></div></div></details>
     </div>
   </div>
 </section>
@@ -675,7 +675,7 @@ nav button{min-width:135px}
 
   <div class="panel" style="margin-bottom:14px">
     <div class="top">
-      <div><h2 class="sectionTitle" style="margin:0">Morning Announcements • Live Watch</h2><div class="muted">On student school days, Classroom Control Hub watches the Ant Media stream during the morning window. When it becomes live, it takes all configured targets fullscreen with audio-on redundancy. When the stream ends, it clears the announcement and releases the displays back to the normal scheduler.</div></div>
+      <div><h2 class="sectionTitle" style="margin:0">Morning Announcements • Live Watch</h2><div class="muted">On student school days, RoomGoblin watches the Ant Media stream during the morning window. When it becomes live, it takes all configured targets fullscreen with audio-on redundancy. When the stream ends, it clears the announcement and releases the displays back to the normal scheduler.</div></div>
       <span id="morningWatchState" class="pill">Loading…</span>
     </div>
     <div class="grid2" style="margin-top:10px">
@@ -752,7 +752,7 @@ nav button{min-width:135px}
       <div id="autoPayload" class="panel" style="box-shadow:none;margin-top:12px"></div>
       <div class="panel" style="box-shadow:none;margin-top:12px">
         <div class="top">
-          <div><b>Additional Actions</b><div class="muted">Classroom Control Hub automatically clears all display screens before Action 1. Add Action 2, Action 3, and more here; they run in order. Cross-domain actions use their own target type.</div></div>
+          <div><b>Additional Actions</b><div class="muted">RoomGoblin automatically clears all display screens before Action 1. Add Action 2, Action 3, and more here; they run in order. Cross-domain actions use their own target type.</div></div>
           <button type="button" onclick="addAutomationStep()">+ Add Action</button>
         </div>
         <div id="autoActionSteps"></div>
@@ -850,9 +850,9 @@ nav button{min-width:135px}
   <div class="panel">
     <h2 class="sectionTitle">How schedules work</h2>
     <div class="muted">
-      Classroom Control Hub checks the schedule every 15 seconds. Events can run on normal weekly weekdays, configured rotating school days,
+      RoomGoblin checks the schedule every 15 seconds. Events can run on normal weekly weekdays, configured rotating school days,
       or exact calendar dates. District no-school dates above are globally suppressed. The configured rotation counts
-      only eligible Monday–Friday school days, so blocked dates do not advance the rotation. Schedule and calendar settings are saved in the Classroom Control Hub database.
+      only eligible Monday–Friday school days, so blocked dates do not advance the rotation. Schedule and calendar settings are saved in the RoomGoblin database.
     </div>
   </div>
 </section>
@@ -970,7 +970,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
     <div class="formGrid">
       <div class="formField"><label>School / District Name</label><input id="cfgSchool"></div>
       <div class="formField"><label>Classroom Name</label><input id="cfgRoom"></div>
-      <div class="formField"><label>Product / Portal Name</label><input id="cfgProductName" placeholder="Classroom Control Hub"></div>
+      <div class="formField"><label>Product / Portal Name</label><input id="cfgProductName" placeholder="RoomGoblin"></div>
       <div class="formField"><label>Logo URL (optional)</label><input id="cfgLogoUrl" placeholder="https://.../logo.png"></div>
       <div class="formField"><label>Favicon URL (optional)</label><input id="cfgFaviconUrl" placeholder="/favicon.ico"></div>
       <div class="formField"><label>Default Display Prefix</label><input id="cfgDisplayPrefix" placeholder="TV"></div>
@@ -995,7 +995,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 
   <div class="panel">
-    <div class="top" style="position:static;box-shadow:none;margin:0 0 10px"><div><h2 class="sectionTitle">Integrations & Hardware</h2><div class="muted">Current Classroom Control Hub hardware integrations and discovered device counts.</div></div><button onclick="showPage('system')">Install / Manage Docker Integrations</button></div>
+    <div class="top" style="position:static;box-shadow:none;margin:0 0 10px"><div><h2 class="sectionTitle">Integrations & Hardware</h2><div class="muted">Current RoomGoblin hardware integrations and discovered device counts.</div></div><button onclick="showPage('system')">Install / Manage Docker Integrations</button></div>
     <div class="grid2" style="align-items:start">
       <div class="card" style="box-shadow:none"><h3>MQTT / Govee</h3><div class="formGrid"><div class="formField"><label>Broker URL</label><input id="cfgMqttUrl" placeholder="mqtt://127.0.0.1:1883"></div><div class="formField"><label>Username</label><input id="cfgMqttUsername" autocomplete="off"></div><div class="formField"><label>Password</label><input id="cfgMqttPassword" type="password" autocomplete="new-password" placeholder="Leave blank to keep stored password"></div><label><input id="cfgMqttJsonBridge" type="checkbox"> JSON command bridge</label><label><input id="cfgMqttLegacyBridge" type="checkbox"> Legacy topic bridge</label></div></div>
       <div class="card" style="box-shadow:none"><h3>Pluto AV Matrix</h3><div class="formGrid"><div class="formField"><label>HTTP endpoint</label><input id="cfgPlutoUrl" placeholder="http://192.168.1.50/cgi-bin/instr"></div><div class="formField"><label>Timeout (ms)</label><input id="cfgPlutoTimeout" type="number" min="500" max="30000"></div><div class="formField"><label>Read retries</label><input id="cfgPlutoRetries" type="number" min="0" max="10"></div></div></div>
@@ -1048,7 +1048,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   <div id="maintHealth" class="panel">Loading maintenance service…</div>
   <div class="panel"><div class="top"><div><h2 class="sectionTitle">Appliance Health</h2><div class="muted">Native host CPU, memory, storage, temperature, SMART and Ubuntu update status.</div></div><button onclick="loadHostHealth()">Refresh</button></div><div id="hostHealth" class="muted">Loading host health…</div><div class="toolbar" style="margin-top:12px"><button onclick="refreshUbuntuUpdates()">Refresh Update Status</button><button class="danger" onclick="installUbuntuUpdates()">Install Available Updates</button></div><pre id="hostUpdateOutput" class="raw" style="display:none;margin-top:10px;max-height:240px"></pre></div>
   <div class="panel">
-    <div class="top"><div><h2 class="sectionTitle">Dedicated Appliance Ownership</h2><div class="muted">Classroom Control Hub treats this server as its appliance. Core and adopted integrations are managed here; redundant or unknown containers are flagged for review instead of being removed automatically.</div></div><button onclick="loadApplianceInventory()">Refresh</button></div>
+    <div class="top"><div><h2 class="sectionTitle">Dedicated Appliance Ownership</h2><div class="muted">RoomGoblin treats this server as its appliance. Core and adopted integrations are managed here; redundant or unknown containers are flagged for review instead of being removed automatically.</div></div><button onclick="loadApplianceInventory()">Refresh</button></div>
     <div id="applianceInventory" class="muted">Loading appliance inventory…</div>
   </div>
   <div class="panel">
@@ -1058,7 +1058,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
 
   <div class="grid2" style="align-items:start">
     <div class="panel">
-      <div class="top"><div><h2 class="sectionTitle">Host Services</h2><div class="muted">Classroom Control Hub inventory and lifecycle controls for appliance-level systemd services. Protected core services cannot be disabled from the controller.</div></div><button onclick="loadHostServices()">Refresh</button></div>
+      <div class="top"><div><h2 class="sectionTitle">Host Services</h2><div class="muted">RoomGoblin inventory and lifecycle controls for appliance-level systemd services. Protected core services cannot be disabled from the controller.</div></div><button onclick="loadHostServices()">Refresh</button></div>
       <div id="hostServices" class="scroll">Loading host services…</div>
     </div>
     <div class="panel">
@@ -1069,7 +1069,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
 
   <div class="grid2" style="align-items:start">
     <div class="panel">
-      <div class="top"><div><h2 class="sectionTitle">Managed Containers</h2><div class="muted">Status, logs, restart and lifecycle controls for the Classroom Control Hub stack.</div></div><button onclick="loadManagedContainers()">Refresh</button></div>
+      <div class="top"><div><h2 class="sectionTitle">Managed Containers</h2><div class="muted">Status, logs, restart and lifecycle controls for the RoomGoblin stack.</div></div><button onclick="loadManagedContainers()">Refresh</button></div>
       <div id="managedContainers" class="scroll">Loading…</div>
     </div>
     <div class="panel">
@@ -1090,7 +1090,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
     <pre id="maintLogOutput" class="raw" style="max-height:520px">Select a container.</pre>
   </div>
   <div class="panel">
-    <div class="top"><div><h2 class="sectionTitle">Audit Log Retention</h2><div class="muted">Classroom Control Hub keeps administrative actions in the permanent SQLite audit trail. High-frequency discovery, polling, request traffic, and transient status data are aggregated separately as telemetry.</div></div><button onclick="loadAuditStatus()">Refresh</button></div>
+    <div class="top"><div><h2 class="sectionTitle">Audit Log Retention</h2><div class="muted">RoomGoblin keeps administrative actions in the permanent SQLite audit trail. High-frequency discovery, polling, request traffic, and transient status data are aggregated separately as telemetry.</div></div><button onclick="loadAuditStatus()">Refresh</button></div>
     <div id="auditStatus" class="muted">Loading audit status…</div>
     <div class="toolbar" style="margin-top:10px"><label>Keep <select id="auditRetentionDays"><option value="90">90 days</option><option value="180" selected>180 days</option><option value="365">1 year</option><option value="730">2 years</option></select></label><button class="danger" onclick="pruneAuditHistory()">Apply Retention</button></div>
   </div>
@@ -1122,7 +1122,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
       <div id="managedBackups" class="scroll">Loading…</div>
     </div>
     <div class="panel">
-      <h2 class="sectionTitle">Update Classroom Control Hub</h2>
+      <h2 class="sectionTitle">Update RoomGoblin</h2>
       <div class="muted">Check a configured GitHub repository for verified semantic-version releases. Every installation creates a database-safe backup and automatically rolls back if deployment health fails.</div>
       <div class="grid2" style="margin-top:12px">
         <label>Trusted GitHub Repository<input id="appUpdateRepository" value="wagnerks1990/classroom-control-hub" readonly></label>
@@ -1146,14 +1146,14 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 </section>
 <div class="footerBrand" data-kyle-attribution="true">
-  <span><b id="footerSiteName">Classroom Control Hub</b> • <span id="footerProductName">Classroom Control Hub</span> v1.0.0-alpha.74</span>
+  <span><b id="footerSiteName">RoomGoblin</b> • <span id="footerProductName">RoomGoblin</span> v1.0.0-alpha.74</span>
   <span>CLASSROOM READY</span>
   <span>Built by <a href="https://github.com/wagnerks1990" target="_blank" rel="author noopener noreferrer">Kyle Wagner</a></span>
 </div>
 </main>
 </div>
 <div id="hubToast" role="status" aria-live="polite" style="display:none;position:fixed;right:18px;bottom:18px;z-index:60000;max-width:460px;padding:12px 14px;border-radius:10px;background:#16202b;border:1px solid #3a4a5a;box-shadow:0 12px 35px rgba(0,0,0,.45);font-weight:700"></div>
-<div id="loginOverlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle" style="display:none;position:fixed;inset:0;z-index:50000;background:rgba(3,7,12,.96);align-items:center;justify-content:center;padding:20px"><div class="panel" style="width:min(420px,100%);margin:0"><h2 id="loginTitle">Sign in to Classroom Control Hub</h2><div class="muted">Enter your local Classroom Control Hub account.</div><div class="formField"><label for="loginUser">Username</label><input id="loginUser" autocomplete="username"></div><div class="formField"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div><label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="loginRemember" type="checkbox" style="width:auto"> Remember for 7 days</label><div class="toolbar"><button class="primary" onclick="performLogin()">Sign In</button></div><div id="loginMsg" class="bad" role="alert" aria-live="assertive" style="margin-top:8px"></div></div></div>
+<div id="loginOverlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle" style="display:none;position:fixed;inset:0;z-index:50000;background:rgba(3,7,12,.96);align-items:center;justify-content:center;padding:20px"><div class="panel" style="width:min(420px,100%);margin:0"><h2 id="loginTitle">Sign in to RoomGoblin</h2><div class="muted">Enter your local RoomGoblin account.</div><div class="formField"><label for="loginUser">Username</label><input id="loginUser" autocomplete="username"></div><div class="formField"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div><label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="loginRemember" type="checkbox" style="width:auto"> Remember for 7 days</label><div class="toolbar"><button class="primary" onclick="performLogin()">Sign In</button></div><div id="loginMsg" class="bad" role="alert" aria-live="assertive" style="margin-top:8px"></div></div></div>
 <div id="accountModal" class="authModal" role="dialog" aria-modal="true" aria-labelledby="accountTitle"><div class="panel"><div class="top"><div><h2 id="accountTitle">My Account</h2><div id="accountIdentity" class="muted"></div></div><button onclick="closeAccountModal()" aria-label="Close account dialog">Close</button></div><div class="grid2" style="margin-top:12px"><div class="card"><h3>Change Password</h3><div class="formField"><label for="currentPassword">Current password</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="formField"><label for="newPassword">New password</label><input id="newPassword" type="password" autocomplete="new-password"></div><div class="formField"><label for="confirmPassword">Confirm new password</label><input id="confirmPassword" type="password" autocomplete="new-password"></div><div class="toolbar"><button class="primary" onclick="changeMyPassword()">Change Password</button></div><div id="passwordMsg" class="muted" aria-live="polite"></div></div><div class="card"><div class="top"><div><h3>Active Sessions</h3><div class="muted">Current and recent signed-in browsers.</div></div><button onclick="logoutOtherSessions()">Sign out others</button></div><div id="sessionList" class="subtle">Loading…</div></div></div></div></div>
 <script src="/controller/app.js"></script>
 </body></html>

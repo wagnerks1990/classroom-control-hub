@@ -30,14 +30,14 @@ COPY agents/android-tv ./
 RUN gradle :app:assembleRelease --no-daemon --stacktrace --max-workers=2 \
  && test -s app/build/outputs/apk/release/app-release-unsigned.apk \
  && BADGING="$(aapt dump badging app/build/outputs/apk/release/app-release-unsigned.apk | head -n1)" \
- && printf '%s\n' "$BADGING" | grep -Fq "package: name='org.classroomhub.display'" \
+ && printf '%s\n' "$BADGING" | grep -Fq "package: name='org.roomgoblin.display'" \
  && VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)" \
  && VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)" \
  && test -n "$VERSION_NAME" -a -n "$VERSION_CODE" \
  && printf '%s\n' "$BADGING" | grep -Fq "versionCode='$VERSION_CODE'" \
  && printf '%s\n' "$BADGING" | grep -Fq "versionName='$VERSION_NAME'" \
  && SHA="$(sha256sum app/build/outputs/apk/release/app-release-unsigned.apk | awk '{print $1}')" \
- && printf '{"package":"org.classroomhub.display","versionName":"%s","versionCode":%s,"unsignedSha256":"%s"}\n' "$VERSION_NAME" "$VERSION_CODE" "$SHA" > /android-agent/agent-build.json
+ && printf '{"package":"org.roomgoblin.display","versionName":"%s","versionCode":%s,"unsignedSha256":"%s"}\n' "$VERSION_NAME" "$VERSION_CODE" "$SHA" > /android-agent/agent-build.json
 
 FROM node:22-bookworm-slim
 

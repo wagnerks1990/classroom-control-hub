@@ -4,7 +4,7 @@
 
 *Run the room. Manage the lab.*
 
-> **Status:** `1.0.0-alpha.76` — alpha software; RoomGoblin branding is being introduced while preserving the deployed compatibility contract.
+> **Status:** `1.0.0-alpha.77` — alpha software; RoomGoblin branding is being introduced while preserving the deployed compatibility contract.
 
 ## Start here
 
@@ -79,6 +79,6 @@ music-assistant-server     ghcr.io/music-assistant/server:2.9.13
 
 ## Repository and documentation
 
-Source repository: https://github.com/wagnerks1990/classroom-control-hub
+Source repository: https://github.com/wagnerks1990/RoomGoblin
 
 The repository `docs/` directory is the canonical technical documentation set. `wiki/` is the Git-tracked mirror of this GitHub Wiki. AI coding assistants should read `AGENTS.md`, `docs/AI-CONTEXT.md`, and `docs/brand/AI-BRAND-CONTEXT.md` before modifying the project.

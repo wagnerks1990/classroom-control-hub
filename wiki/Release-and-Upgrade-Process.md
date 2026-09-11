@@ -98,8 +98,8 @@ After an upgrade, hard-refresh the controller when frontend assets changed and v
 Intended GHCR pattern:
 
 ```text
-ghcr.io/wagnerks1990/classroom-control-hub:alpha
-ghcr.io/wagnerks1990/classroom-control-hub:1.0.0-alpha.N
+ghcr.io/wagnerks1990/roomgoblin:alpha
+ghcr.io/wagnerks1990/roomgoblin:1.0.0-alpha.N
 ```
 
 The maintenance image uses the corresponding maintenance package/tag.

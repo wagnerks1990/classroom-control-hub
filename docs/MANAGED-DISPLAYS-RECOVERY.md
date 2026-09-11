@@ -82,16 +82,16 @@ Then open **Managed Displays** and use **Refresh**. The status should report `AD
 On the validated Onn 4K Streaming Device running Android 14, the Hub reported **Not installed** even while both of these live checks succeeded:
 
 ```bash
-adb -s <serial> shell pm path org.classroomhub.display
-adb -s <serial> shell pidof org.classroomhub.display
+adb -s <serial> shell pm path org.roomgoblin.display
+adb -s <serial> shell pidof org.roomgoblin.display
 ```
 
-The first returned the package APK path and the second returned a live PID. The old browser probe ran `dumpsys package` before checking `pidof`; on this device `dumpsys package org.classroomhub.display` could block indefinitely. That made the primary status path slow/unreliable even though the package was installed and running.
+The first returned the package APK path and the second returned a live PID. The old browser probe ran `dumpsys package` before checking `pidof`; on this device `dumpsys package org.roomgoblin.display` could block indefinitely. That made the primary status path slow/unreliable even though the package was installed and running.
 
 The status contract is now:
 
-1. `pm path org.classroomhub.display` determines **installed / not installed**.
-2. `pidof org.classroomhub.display` independently determines **running / stopped**.
+1. `pm path org.roomgoblin.display` determines **installed / not installed**.
+2. `pidof org.roomgoblin.display` independently determines **running / stopped**.
 3. `dumpsys package` is not part of the critical agent-status path.
 4. Optional metadata/version probes must be bounded and may enrich status only; failure must not downgrade a confirmed installed/running state.
 
@@ -119,8 +119,8 @@ The following recovery sequence was validated against the classroom appliance an
 3. Normalizing `data/android-tv` to `root:10001 2770` restored access to the nested `.android` volume.
 4. `devices.json` was found intact with the saved `L127 Hallway` record but was mode `0600`; changing it to `root:10001 0660` restored inventory without re-pairing.
 5. Wireless Debugging was manually re-enabled and the device returned Online at its fixed `:5555` endpoint.
-6. The UI still said **Not installed**, while `pm path org.classroomhub.display` returned the APK path and `pidof org.classroomhub.display` returned PID `1558`.
-7. `dumpsys package org.classroomhub.display` hung on the device, confirming it must not be used in the critical agent-status probe.
+6. The UI still said **Not installed**, while `pm path org.roomgoblin.display` returned the APK path and `pidof org.roomgoblin.display` returned PID `1558`.
+7. `dumpsys package org.roomgoblin.display` hung on the device, confirming it must not be used in the critical agent-status probe.
 
 ## Verification
 
@@ -144,8 +144,8 @@ sudo docker inspect classroom-control-hub-maintenance --format '{{json .Mounts}}
 For an online managed Android display:
 
 ```bash
-sudo docker compose exec maintenance-agent adb -s <serial> shell pm path org.classroomhub.display
-sudo docker compose exec maintenance-agent adb -s <serial> shell pidof org.classroomhub.display
+sudo docker compose exec maintenance-agent adb -s <serial> shell pm path org.roomgoblin.display
+sudo docker compose exec maintenance-agent adb -s <serial> shell pidof org.roomgoblin.display
 ```
 
 CI or a successful image build does not prove that an already-running maintenance container has the current mount set. Deployment/recovery is not complete until the container has been recreated and the storage/inventory checks succeed.

@@ -9,6 +9,14 @@
 
 The RoomGoblin identity applies to operator-facing UI, setup, browser titles, icons, documentation, screenshots, release notes, user-facing agent names, installer messages, and future marketing material.
 
+## Android application migration in alpha.77
+
+RoomGoblin now uses the canonical Android application ID `org.roomgoblin.display`. Android treats this as a different application from the earlier `org.classroomhub.display` package.
+
+If the old Android app exists, **uninstall it and install the new RoomGoblin Display Agent instead of attempting an in-place update**. The managed installation workflow performs that package replacement, preserves the RoomGoblin server-side device record and saved display URL, and restores supported configuration and grants after installation. Device Administrator or Accessibility approval may require confirmation again because Android associates those approvals with the application package.
+
+Do not leave both packages installed on the same display. Rollback to a release before alpha.77 requires uninstalling `org.roomgoblin.display` and reinstalling the legacy APK; Android cannot cross-update between the two package identities.
+
 ## Compatibility rule
 
 The rebrand is intentionally not a blind source-wide rename. Earlier Classroom Control Hub releases created identifiers that are part of the deployed contract. Cosmetic consistency is not sufficient justification to break them.
@@ -17,7 +25,7 @@ Keep the following stable unless a separately reviewed migration explicitly chan
 
 - `/opt/classroom-hub` install path;
 - `CLASSROOM_HUB_*` environment variables;
-- `org.classroomhub.display` Android application/package identity;
+- `org.roomgoblin.display` Android application/package identity (alpha.77 and later);
 - `classroom-control-hub*` container, GHCR, systemd, and socket identifiers;
 - database filenames and persisted keys;
 - setup/session/local-storage compatibility keys;
@@ -61,7 +69,7 @@ A RoomGoblin release is acceptable only when all of the following remain true:
 - an existing appliance can fast-forward update without moving or deleting its data;
 - current administrators can sign in after the update;
 - current browser display URLs and receiver IDs continue working;
-- enrolled Android/Google TV devices retain ADB trust and the existing package upgrades in place;
+- enrolled Android/Google TV devices retain ADB trust while the old Android app is explicitly uninstalled and the new RoomGoblin package is installed and reconfigured;
 - Windows lab agents do not require re-enrollment solely due to the product rename;
 - updater, rollback, backup, database, scheduler, and Host Agent health checks still pass;
 - operator-facing default branding shows RoomGoblin on fresh installs;

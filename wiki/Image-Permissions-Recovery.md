@@ -8,4 +8,4 @@ Keep existing migration backups, preserve genuine local edits, pull the approved
 
 The generated `.classroom-hub-installation` marker is now ignored by Git; keep it. A healthy maintenance service does not establish that the Hub is healthy. Verify Hub health, stable restarts, both network modes, Host Agent and actual display/controller access before migrating add-ons.
 
-Full diagnostic commands, build boundaries, recovery and test contract: [Image source permissions and restart-loop recovery](https://github.com/wagnerks1990/classroom-control-hub/blob/main/docs/IMAGE-PERMISSIONS-RECOVERY.md).
+Full diagnostic commands, build boundaries, recovery and test contract: [Image source permissions and restart-loop recovery](https://github.com/wagnerks1990/RoomGoblin/blob/main/docs/IMAGE-PERMISSIONS-RECOVERY.md).

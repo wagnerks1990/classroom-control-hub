@@ -11,14 +11,14 @@ if($HubUrl.Scheme -ne 'https' -and !$AllowHttp){throw 'HTTP enrollment requires 
 if(!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run this installer in an elevated PowerShell window.'}
 $root=Join-Path $env:ProgramData 'ClassroomControlHub';New-Item $root -ItemType Directory -Force|Out-Null
 & icacls.exe $root /inheritance:r /grant:r 'SYSTEM:(OI)(CI)(F)' 'Administrators:(OI)(CI)(F)' | Out-Null
-if($LASTEXITCODE -ne 0){throw 'Could not secure the Classroom Control Hub agent directory.'}
+if($LASTEXITCODE -ne 0){throw 'Could not secure the RoomGoblin agent directory.'}
 $agent=Join-Path $root 'ClassroomHubAgent.ps1';$config=Join-Path $root 'lab-agent.json'
 $origin=$HubUrl.GetLeftPart([UriPartial]::Authority)
 try{$manifest=Invoke-RestMethod ($origin+'/api/v1/lab-agent/manifest') -TimeoutSec 20}
 catch{
   $detail=$_.Exception.Message
   if($HubUrl.Scheme -eq 'https'){$detail+=' Verify that the Hub certificate is trusted by this computer.'}
-  throw "Classroom Control Hub package preflight failed: $detail"
+  throw "RoomGoblin package preflight failed: $detail"
 }
 if(!$manifest.sha256 -or $manifest.sha256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'Hub returned an invalid lab-agent manifest'}
 $stage=Join-Path $root ('ClassroomHubAgent.'+[Guid]::NewGuid().ToString('N')+'.download.ps1')
@@ -50,8 +50,8 @@ $taskAction=New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPo
 $taskPrincipal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $taskTrigger=New-ScheduledTaskTrigger -AtStartup
 $taskSettings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-Register-ScheduledTask -TaskName 'Classroom Control Hub Agent' -Action $taskAction -Principal $taskPrincipal -Trigger $taskTrigger -Settings $taskSettings -Force|Out-Null
+Register-ScheduledTask -TaskName 'RoomGoblin Agent' -Action $taskAction -Principal $taskPrincipal -Trigger $taskTrigger -Settings $taskSettings -Force|Out-Null
 if(!(Get-EventLog -LogName Application -Source 'ClassroomHubAgent' -Newest 1 -ErrorAction SilentlyContinue)){New-EventLog -LogName Application -Source 'ClassroomHubAgent' -ErrorAction SilentlyContinue}
-& schtasks.exe /Run /TN 'Classroom Control Hub Agent' | Out-Null
+& schtasks.exe /Run /TN 'RoomGoblin Agent' | Out-Null
 if($LASTEXITCODE -ne 0){throw "Agent task was installed but could not be started (schtasks exit code $LASTEXITCODE)."}
-Write-Host "Classroom Control Hub agent installed for $AgentId. Enrollment completes when it connects."
+Write-Host "RoomGoblin agent installed for $AgentId. Enrollment completes when it connects."

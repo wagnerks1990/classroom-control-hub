@@ -314,10 +314,10 @@ test("Kyle Wagner attribution is installed on every current site surface",()=>{
 test("school branding is public, database-backed, validated, and contains no secrets",async()=>{
   let result=await request("/api/v1/branding");
   assert.equal(result.response.status,200,JSON.stringify(result.json));
-  assert.equal(result.json.branding.productName,"Classroom Control Hub");
+  assert.equal(result.json.branding.productName,"RoomGoblin");
   assert.equal(result.json.branding.room,"Classroom");
 
-  result=await request("/api/v1/admin/site",{method:"PUT",authenticated:true,body:{school:"Example School District",room:"Technology Classroom",productName:"Technology Classroom Hub",logoUrl:"/media/brand/logo.svg",faviconUrl:"https://assets.example.test/icon.png",displayPrefix:"TV",timezone:"America/New_York",theme:{mode:"dark",primary:"#123456",accent:"#654321",background:"#101820",surface:"#182630",text:"#fefefe"}}});
+  result=await request("/api/v1/admin/site",{method:"PUT",authenticated:true,body:{school:"Example School District",room:"Technology Classroom",productName:"Technology RoomGoblin",logoUrl:"/media/brand/logo.svg",faviconUrl:"https://assets.example.test/icon.png",displayPrefix:"TV",timezone:"America/New_York",theme:{mode:"dark",primary:"#123456",accent:"#654321",background:"#101820",surface:"#182630",text:"#fefefe"}}});
   assert.equal(result.response.status,200,JSON.stringify(result.json));
   assert.equal(result.json.site.school,"Example School District");
   assert.equal(result.json.site.room,"Technology Classroom");
@@ -327,7 +327,7 @@ test("school branding is public, database-backed, validated, and contains no sec
   assert.equal("spaceName" in result.json.site,false);
 
   result=await request("/api/v1/branding");
-  assert.equal(result.json.branding.productName,"Technology Classroom Hub");
+  assert.equal(result.json.branding.productName,"Technology RoomGoblin");
   assert.equal(result.json.branding.theme.primary,"#123456");
   assert.equal(JSON.stringify(result.json).includes("preferences"),false);
   assert.equal("organizationName" in result.json.branding,false);
@@ -450,7 +450,7 @@ test("verified application updater has a durable host job and GUI rollback contr
   assert.match(runner,/127\.0\.0\.1:\$\{port\}/);
   assert.match(controller,/Revert Last Upgrade/);
   assert.match(controller,/Automatically install approved releases/);
-  assert.doesNotMatch(controller,/Upload a Classroom Control Hub release ZIP/);
+  assert.doesNotMatch(controller,/Upload a RoomGoblin release ZIP/);
 });
 
 test("one-command deployment bootstraps a guarded appliance with unique credentials",()=>{

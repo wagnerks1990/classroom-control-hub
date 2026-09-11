@@ -11,7 +11,7 @@ Existing installations must continue to work through the rebrand. The following 
 
 - `/opt/classroom-hub`
 - `CLASSROOM_HUB_*`
-- `org.classroomhub.display`
+- `org.roomgoblin.display`
 - `classroom-control-hub*` systemd, socket, container, and GHCR identifiers
 - existing setup/browser storage keys, database identifiers, device enrollment IDs, and public API names
 
@@ -21,7 +21,7 @@ Do not rename these merely for cosmetic consistency. A future internal-identifie
 
 The Linux RoomGoblin appliance and maintenance containers, plus reviewed managed add-on templates, use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
 
-> **Status:** `1.0.0-alpha.76` — alpha software. The RoomGoblin rebrand is being integrated without breaking the deployed appliance contract.
+> **Status:** `1.0.0-alpha.77` — alpha software. The RoomGoblin rebrand is being integrated without breaking the deployed appliance contract.
 
 ## What it does
 
@@ -225,8 +225,8 @@ Project-critical invariants include Morning Announcements priority/recovery, exp
 Existing deployments currently use these GHCR image identifiers:
 
 ```text
-ghcr.io/wagnerks1990/classroom-control-hub
-ghcr.io/wagnerks1990/classroom-control-hub-maintenance
+ghcr.io/wagnerks1990/roomgoblin
+ghcr.io/wagnerks1990/roomgoblin-maintenance
 ```
 
 The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a future stable RoomGoblin release. The image identifiers remain intentionally unchanged during the compatibility-safe brand transition. A future image rename requires dual-publish/migration support rather than silently abandoning the existing image names.

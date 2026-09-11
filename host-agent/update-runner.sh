@@ -29,7 +29,7 @@ write_state refreshing "Refreshing Ubuntu package metadata." null
 apt-get update
 write_state installing "Installing available package updates. Automatic autoremove is intentionally disabled." null
 apt-get -y upgrade
-write_state verifying "Verifying package database and Classroom Control Hub health." null
+write_state verifying "Verifying package database and RoomGoblin health." null
 dpkg --audit
 apt-get check
 cd "$HUB_ROOT"

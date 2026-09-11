@@ -19,7 +19,7 @@ The direct source tree on `main` is canonical.
 ## Local workflow
 
 ```bash
-git clone https://github.com/wagnerks1990/classroom-control-hub.git
+git clone https://github.com/wagnerks1990/RoomGoblin.git
 cd classroom-control-hub
 cp .env.example .env
 npm install

@@ -91,7 +91,7 @@ Existing Mosquitto, Govee2MQTT, Node-RED, Music Assistant, Veyon, and other exte
 Clone directly into the standard path:
 
 ```bash
-sudo git clone https://github.com/wagnerks1990/classroom-control-hub.git /opt/classroom-hub
+sudo git clone https://github.com/wagnerks1990/RoomGoblin.git /opt/classroom-hub
 cd /opt/classroom-hub
 sudo cp .env.example .env
 ```

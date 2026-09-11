@@ -43,5 +43,5 @@ test("setup wizard supports adopt, install, and recreate actions returned by mod
   assert.match(setup,/m\.canDeploy!==false/);
   const extension=read("maintenance-agent/extensions.js");
   assert.match(extension,/musicassistant:[\s\S]*?externalOnly:false/);
-  assert.match(extension,/Existing container adopted by Classroom Control Hub without recreation/);
+  assert.match(extension,/Existing container adopted by RoomGoblin without recreation/);
 });

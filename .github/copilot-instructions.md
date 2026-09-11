@@ -4,7 +4,7 @@
 
 The current product name is **RoomGoblin — Classroom & Lab Management Hub**. The tagline is **Run the room. Manage the lab.** Read `/docs/brand/AI-BRAND-CONTEXT.md` before adding or changing user-facing names, colors, logos, icons, setup copy, documentation, or agent presentation.
 
-Do not perform blind renames of legacy identifiers. Existing installations depend on compatibility-sensitive names such as `/opt/classroom-hub`, `CLASSROOM_HUB_*`, `org.classroomhub.display`, `classroom-control-hub*` service/container/image/socket identifiers, persisted keys, and enrollment IDs. New user-facing copy should say RoomGoblin; legacy names may remain only for history or compatibility contracts documented in `/docs/ROOMGOBLIN-REBRAND.md`.
+Do not perform blind renames of legacy identifiers. Alpha.77 intentionally changes the Android identity from `org.classroomhub.display` to `org.roomgoblin.display` and therefore requires uninstall/reinstall. Existing appliance paths, environment variables, service/socket/container identifiers, persisted keys, and enrollment IDs remain compatibility-sensitive. New user-facing copy should say RoomGoblin; old names may remain only for history, transition detection, or compatibility contracts documented in `/docs/ROOMGOBLIN-REBRAND.md`.
 
 ## Host-network deployment contract
 

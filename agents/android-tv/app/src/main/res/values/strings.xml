@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Classroom Hub Display</string>
-    <string name="agent_accessibility_description">Optional Classroom Hub control fallback for Home, Back, and Recents when ADB is unavailable.</string>
-    <string name="device_admin_description">Optional Classroom Hub device administration for managed display lock and enterprise capabilities.</string>
+    <string name="app_name">RoomGoblin Display</string>
+    <string name="agent_accessibility_description">Optional RoomGoblin control fallback for Home, Back, and Recents when ADB is unavailable.</string>
+    <string name="device_admin_description">Optional RoomGoblin device administration for managed display lock and enterprise capabilities.</string>
 </resources>

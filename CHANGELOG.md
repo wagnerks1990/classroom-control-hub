@@ -250,3 +250,16 @@ Initial public GitHub/Docker migration of Classroom Control Hub.
 - Added public `.gitignore`, `.dockerignore`, and `.env.example` files.
 - Added GitHub Actions workflows for validation and GHCR container publishing.
 - Preserved the existing modular display, automation, announcement-priority, background-music, AV, lighting, lab, maintenance, and host-agent architecture.
+# 1.0.0-alpha.77 - 2026-09-11
+
+### Changed
+
+- Adopted `org.roomgoblin.display` as the Android/Google TV application ID and `RoomGoblin-Display-Agent` as the staged APK identity.
+- Updated canonical repository and GHCR references from the former repository name to RoomGoblin.
+- Renamed the root and maintenance npm packages to RoomGoblin identities.
+
+### Migration
+
+- The old `org.classroomhub.display` Android app cannot be updated in place because RoomGoblin uses a new package identity. If the old app exists, uninstall it and install the new RoomGoblin Display Agent instead of selecting an in-place update.
+- Managed Displays detects the old package during installation, removes only that package, installs RoomGoblin, updates the stored package identity, and restores the saved display configuration and supported grants.
+- Existing appliance data, database files, enrollment inventory, ADB trust material, host paths, and rollback snapshots remain preserved.

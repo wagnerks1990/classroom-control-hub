@@ -25,7 +25,7 @@ async function requireOnline(d){
 }
 async function agentStatus(d){
   d=await requireOnline(d);
-  const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
+  const pkg=cleanPackage(d.agentPackage||"org.roomgoblin.display");
   let installed=false,running=false;
   try{
     const r=await adb(["-s",d.serial,"shell","pm","path",pkg],8000);
@@ -39,14 +39,14 @@ async function agentStatus(d){
   return {ok:true,deviceId:d.id,package:pkg,installed,running};
 }
 async function broadcastPolicy(d,enabled,targetPort){
-  const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
-  await adb(["-s",d.serial,"shell","am","broadcast","-a","org.classroomhub.display.CONFIGURE","-p",pkg,"--ez","persistent_adb",enabled?"true":"false","--ei","target_adb_port",String(targetPort)],15000);
+  const pkg=cleanPackage(d.agentPackage||"org.roomgoblin.display");
+  await adb(["-s",d.serial,"shell","am","broadcast","-a","org.roomgoblin.display.CONFIGURE","-p",pkg,"--ez","persistent_adb",enabled?"true":"false","--ei","target_adb_port",String(targetPort)],15000);
 }
 async function bootstrap(d,targetPort){
   d=await requireOnline(d);
-  const pkg=cleanPackage(d.agentPackage||"org.classroomhub.display");
+  const pkg=cleanPackage(d.agentPackage||"org.roomgoblin.display");
   const packages=(await adb(["-s",d.serial,"shell","pm","path",pkg],10000)).stdout||"";
-  if(!packages.includes("package:")){const e=Error("Classroom Hub Display Agent must be installed before persistent ADB can be enabled.");e.status=409;throw e}
+  if(!packages.includes("package:")){const e=Error("RoomGoblin Display Agent must be installed before persistent ADB can be enabled.");e.status=409;throw e}
 
   await adb(["-s",d.serial,"shell","pm","grant",pkg,"android.permission.WRITE_SECURE_SETTINGS"],15000);
   await adb(["-s",d.serial,"shell","settings","put","global","development_settings_enabled","1"],10000);

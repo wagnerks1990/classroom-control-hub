@@ -7,7 +7,7 @@ Device Agent v2 changes Managed Displays from an ADB-dependent design into a dua
 1. **Agent channel** — an authenticated first-party management service runs on the Android / Google TV device and remains usable when external ADB is unavailable.
 2. **ADB channel** — external ADB remains the privileged recovery/out-of-band channel. The agent also experiments with a first-party on-device ADB client so it can repair wireless debugging and request a fixed ADB port after reboot.
 
-The package ID remains `org.classroomhub.display`. Existing enrolled device records and display URLs are intentionally retained.
+The package ID remains `org.roomgoblin.display`. Existing enrolled device records and display URLs are intentionally retained.
 
 ## Persistence invariant
 
