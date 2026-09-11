@@ -1,6 +1,6 @@
 // One owner for title, subtitle, body, timer geometry and fitted font sizes.
 // All measurements are untransformed CSS layout pixels on the 1920x1080 stage.
-export const LAYOUT_REVISION = 'single-fit-20260909-4';
+export const LAYOUT_REVISION = 'single-fit-20260911-5';
 export const FONT_CAPS = Object.freeze({title:118, subtitle:82, body:120, timer:132});
 // Auto-fit may improve readability slightly, but configured scene sizes remain the
 // visual baseline. The renderer may always shrink below that preference to keep
@@ -12,6 +12,46 @@ export const bounded = (value, fallback, min, max) => Math.max(min, Math.min(max
 function autoCap(value, fallback, globalCap) {
   const configured = bounded(value, fallback, 1, 2000);
   return Math.min(globalCap, configured * AUTO_GROW_FACTOR);
+}
+
+// Containment must not depend on the companion stylesheet arriving before the
+// first fit. Managed TV WebViews can retain or temporarily fail a stylesheet
+// request while still executing the newer module. In that state the legacy
+// inline max-height/flex rules make an overflowing child look contained. Keep
+// the structural contract here as inline styles; layout.css remains responsible
+// for fonts and provides the same declarations for the no-script/loading path.
+function establishStructuralStyles(nodes) {
+  const {title, titleRegion, subtitle, subtitleRegion, text, textLayer,
+    timerRegion, timerOverlay, timerLabel, timerValue} = nodes;
+  for (const box of [titleRegion, subtitleRegion, textLayer, timerRegion]) {
+    box.style.minWidth = '0';
+    box.style.minHeight = '0';
+    box.style.overflow = 'hidden';
+  }
+  for (const el of [title, subtitle, text]) {
+    el.style.width = '100%';
+    el.style.maxWidth = 'none';
+    el.style.maxHeight = 'none';
+    el.style.height = 'auto';
+    el.style.minWidth = '0';
+    el.style.minHeight = '0';
+    el.style.flex = '0 0 auto';
+    el.style.overflow = 'visible';
+    el.style.margin = '0';
+    el.style.lineHeight = '1.2';
+    el.style.whiteSpace = 'break-spaces';
+  }
+  Object.assign(timerRegion.style, {
+    position:'absolute', left:'80px', right:'80px', height:'240px',
+    alignItems:'center', justifyContent:'center', zIndex:'10000', pointerEvents:'none'
+  });
+  Object.assign(timerOverlay.style, {
+    position:'static', top:'auto', bottom:'auto', transform:'none', minWidth:'0',
+    maxWidth:'none', maxHeight:'none', height:'auto', flex:'0 0 auto', margin:'0',
+    padding:'.18em .55em', overflow:'visible', lineHeight:'1.2'
+  });
+  timerLabel.style.lineHeight = '1.2';
+  timerValue.style.lineHeight = '1.2';
 }
 
 function available(box) {
@@ -98,6 +138,7 @@ export function fitElement(el, box, cap) {
 export function createDisplayLayout(nodes, getState) {
   const {stage, title, titleRegion, subtitle, subtitleRegion, text, textLayer,
     timerRegion, timerOverlay, timerLabel, timerValue} = nodes;
+  establishStructuralStyles(nodes);
   let frame = null, previousKey = '', fontEpoch = 0, passCount = 0;
   let fontStatus = 'loading', disposed = false, report = {};
   stage.dataset.renderer = LAYOUT_REVISION;
@@ -110,6 +151,7 @@ export function createDisplayLayout(nodes, getState) {
   }
   function fitTimer(state) {
     timerRegion.hidden = !state.visible;
+    timerRegion.style.display = state.visible ? 'flex' : 'none';
     if (!state.visible) return {fontSize:0, scale:1, status:'hidden'};
     const actual = timerValue.textContent;
     timerValue.textContent = '8888888888888:88:88';

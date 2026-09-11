@@ -15,6 +15,8 @@ Keep a fixed 1920x1080 logical canvas and one uniform viewport scale. Never mult
 
 Measure natural-height, non-shrinking children. Child scroll dimensions already include child padding. Check actual browser text bounds as well as boxes: a line-height that is too tight can clip glyphs even when the element box fits.
 
+Enforce the containment-critical natural-height/non-shrinking child and timer-region styles from the layout module before measurement. Do not depend only on the companion stylesheet: managed WebViews may execute a new module while retaining or failing an older CSS request.
+
 Automatic fitting grows and shrinks up to component caps, not legacy preferred sizes. Manual sizes still yield to containment. Do not hide an overflow error at a minimum font floor; report content that is too dense to be readable.
 
 Timer geometry is an independently bounded band. Routine ticks may change digits/expiration state only, never font size, label markup, borders, or layout. Keep MM:SS/HH:MM:SS transitions stable. A different layout-relevant state may request one coalesced pass; identical replay and viewport-only scaling must not create repeated passes.

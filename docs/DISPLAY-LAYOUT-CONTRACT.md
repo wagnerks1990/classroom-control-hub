@@ -29,6 +29,8 @@ The timer has its own band rather than a content-dependent height shared with th
 
 Fitting measures the child's natural height and width, including its padding and border exactly once. Removing max-height and flex compression from the child prevents hidden clipping from masquerading as a successful fit. Line-height reserves glyph ascent/descent, and preserved whitespace wraps rather than hanging outside the region.
 
+The layout engine applies those containment-critical structural declarations as inline styles before its first measurement. The companion stylesheet carries the same declarations and the packaged font, but a stale or temporarily unavailable stylesheet cannot leave legacy `max-height` or flex-shrink rules active and cause partially clipped multiline text to be accepted as a fit.
+
 Extremely dense content is not silently clipped at a 12px minimum. The engine may shrink below the readable threshold; exceptionally large blocks are uniformly contained. `fitWarning=content-too-dense` and component status `below-readable-minimum` flag the result. This is a visibility safeguard, not a promise that arbitrary amounts of text can remain readable. Split dense material into separate screens.
 
 ## Updates, timers, and state replay
@@ -49,9 +51,9 @@ JSON.stringify(window.ClassroomDisplayDiagnostics(), null, 2)
 
 The report contains renderer revision, CSS viewport, DPR, stage scale, font-load status, layout pass count, fitted logical sizes, region geometry, and containment warnings. It does not expose credentials or the lesson body. Layout telemetry also accompanies receiver heartbeats.
 
-Expected renderer revision: `single-fit-20260909-4`, released with alpha.72. Configured sizes are the visual baseline; automatic growth is bounded near that baseline, and mandatory shrink-to-fit containment prevents title, subtitle, body, and compact timer overflow.
+Expected renderer revision: `single-fit-20260911-5`, released with alpha.78. Configured sizes are the visual baseline; automatic growth is bounded near that baseline, and mandatory shrink-to-fit containment prevents title, subtitle, body, and compact timer overflow.
 
-Browser regression tests load the real receiver HTML, layout module, CSS, shared scripts, and fonts. Only transport, the branding API, and the unrelated audio SDK are mocked. Chromium and Firefox CI tests cover P6/P7 samples, 1080p/4K, DPR 1/2, 720p, 1082x1226, reload/reconnect, live commands versus replay, colors, timer ticks/expiry/hour changes, timer positions, long labels, style-only changes, clear, manual sizes, long unbroken words, and dense content. They measure element and text-range bounds and check component overlap. Screenshots and measurement JSON are retained as CI artifacts.
+Browser regression tests load the real receiver HTML, layout module, CSS, shared scripts, and fonts. Only transport, the branding API, and the unrelated audio SDK are mocked. Chromium and Firefox CI tests cover P6/P7 samples, the captured multiline club-selection announcement with its companion stylesheet deliberately withheld, 1080p/4K, DPR 1/2, 720p, 1082x1226, reload/reconnect, live commands versus replay, colors, timer ticks/expiry/hour changes, timer positions, long labels, style-only changes, clear, manual sizes, long unbroken words, and dense content. They measure element and text-range bounds and check component overlap. Screenshots and measurement JSON are retained as CI artifacts.
 
 ```bash
 bash tools/prepare-display-fonts.sh

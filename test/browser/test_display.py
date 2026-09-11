@@ -34,6 +34,22 @@ P6 = copy.deepcopy(P7)
 P6.update(title='P6 - IT III - Enterprise Networking', subtitle='Mr. Wagner',
           text='09/09/2026\n\nDO NOW - LEARN - MODULES - EXIT TICKET')
 P6['timer'].update(label='P6 - IT III • Class Ends In', timerInstanceId='fixture-p6')
+CLUB_SELECTION = {
+    'background': {'color': '#000000'},
+    'title': 'Please log in to Schoology during HOMEROOM\nand complete your Club Selection',
+    'titleOptions': {'size': 72, 'color': '#ffffff'},
+    'subtitle': '10th, 11th & 12th Grade Students',
+    'subtitleOptions': {'size': 40, 'color': '#ffffff'},
+    'text': ('Select a 1st Choice\nSelect a 2nd Choice\nSelect a 3rd Choice\n'
+             'Make sure all three choices are different\n\n'
+             'Choosing three different clubs gives you a better chance of\n'
+             'being placed in a club you selected.'),
+    'textOptions': {'size': 54, 'color': '#ffffff', 'position': 'center'},
+    'timer': {'visible': True, 'running': False, 'mode': 'countdown',
+              'remainingSeconds': 295, 'durationSeconds': 300, 'fontSize': 75,
+              'position': 'bottom', 'label': 'B2 - P8 • Class Ends In',
+              'timerInstanceId': 'fixture-club-selection'},
+}
 
 TRANSPORT = """(() => {
   window.__now = 1788970000000;
@@ -82,7 +98,7 @@ class DisplayBrowserTests(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, width=1920, height=1080, dpr=1):
+    def page(self, width=1920, height=1080, dpr=1, layout_css=True):
         context = self.browser.new_context(viewport={'width': width, 'height': height}, device_scale_factor=dpr)
         self.addCleanup(context.close)
         page = context.new_page()
@@ -95,6 +111,8 @@ class DisplayBrowserTests(unittest.TestCase):
                 return req.fulfill(json={'branding': {}})
             if path == '/display/sendspin.bundle.js':
                 return req.fulfill(content_type='text/javascript', body='export class SendspinPlayer {}')
+            if path == '/display/layout.css' and not layout_css:
+                return req.fulfill(content_type='text/css', body='')
             if path in ['/display/tv7', '/display/tv1', '/display/']:
                 path = '/display/index.html'
             file = ROOT/'public'/path.lstrip('/')
@@ -153,11 +171,11 @@ class DisplayBrowserTests(unittest.TestCase):
                       {'type': 'command', 'command': {'type': kind, 'payload': payload}})
         self.settle(page)
 
-    def measure(self, page, label):
+    def measure(self, page, label, expected_font_status='ready'):
         data = page.evaluate(MEASURE)
         self.measurements.append({'label':label, **data})
         page.screenshot(path=str(OUTPUT/f'{self.engine}-{label}.png'))
-        self.assertEqual(data['diagnostics']['fontStatus'], 'ready')
+        self.assertEqual(data['diagnostics']['fontStatus'], expected_font_status)
         self.assertFalse(self.errors, self.errors)
         self.assertEqual(page.locator('script[data-controlhub-display-autofit]').count(), 0)
         for name, item in data['parts'].items():
@@ -308,7 +326,14 @@ class DisplayBrowserTests(unittest.TestCase):
         self.command(page,'display.timer',{'fontSize':75,'autoFit':True})
         self.measure(page,'timer-auto-restored')
 
-    def test_10_media_url_policy_and_external_frame_isolation(self):
+    def test_10_club_selection_survives_missing_layout_stylesheet(self):
+        page=self.page(layout_css=False)
+        self.replay(page,CLUB_SELECTION)
+        data=self.measure(page,'club-selection-no-layout-css')
+        self.assertGreater(data['parts']['title']['font'],20)
+        self.assertGreater(data['parts']['body']['font'],20)
+
+    def test_11_media_url_policy_and_external_frame_isolation(self):
         page=self.page();self.replay(page,P6)
         before=page.evaluate(MEASURE)
         for value in ['javascript:window.__xss=1', 'data:text/html,<script>parent.__xss=1</script>',
@@ -333,7 +358,7 @@ class DisplayBrowserTests(unittest.TestCase):
         self.assertEqual(page.locator('#media iframe').count(),0)
         self.assertFalse(self.errors)
 
-    def test_11_reject_audio_socket_destination_without_opening_socket(self):
+    def test_12_reject_audio_socket_destination_without_opening_socket(self):
         page=self.page();self.replay(page,P6)
         page.evaluate('window.__originalReceiver=window.__receiverSocket')
         for url in ['wss://attacker.example/music-assistant/sendspin-proxy?ticket='+'a'*32,
@@ -343,7 +368,7 @@ class DisplayBrowserTests(unittest.TestCase):
             self.assertEqual(page.evaluate('window.__sent.filter(x=>x.type==="music.assistant.status").at(-1).status.state'),'error')
         self.assertFalse(self.errors)
 
-    def test_12_identify_timeout_is_bounded_and_replaced(self):
+    def test_13_identify_timeout_is_bounded_and_replaced(self):
         page=self.page();self.replay(page,P6)
         page.evaluate("""() => {
           window.__delays=[];window.__cancelled=[];
