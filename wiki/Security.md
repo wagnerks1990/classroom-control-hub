@@ -32,6 +32,28 @@ Use host/network firewall rules to limit access to expected management subnets. 
 
 HTTPS should return later as a separately reviewed feature with certificate trust, DNS/SNI, migration, proxy-trust, cold-start, and rollback coverage. Do not restore Caddy ad hoc on individual appliances.
 
+## Full Recovery secrets and transport
+
+A `.rgbak` Full Recovery Export can reconstruct the appliance and must be
+handled like a private key. It is encrypted and authenticated with AES-256-GCM
+using a key derived from the administrator's passphrase by scrypt. Keep the
+bundle and passphrase in separate approved storage, never attach either to a
+support case, and periodically test-import the bundle on an isolated host.
+
+Recovery passphrases are accepted only over a direct loopback connection or
+HTTPS terminated by a same-host loopback reverse proxy. For the proxy case,
+configure the exact `TRUST_PROXY_HOPS` count and block direct client access to
+the backend listener. Remote direct HTTP remains forbidden for export, import,
+unlock/plan, restore start, and encrypted-bundle download even on a trusted LAN.
+
+Decryption/authentication, the exact manifest inventory, archive path/type/
+capacity checks, and the Host Agent's independent staging validation must pass
+before mutation. The Host Agent owns destination paths and restricts ownership
+and modes to reviewed values. Its durable journal and safety copies are also
+sensitive: retain them only as required to finish or roll back the transaction,
+and do not expose `/var/lib/classroom-hub/full-recovery` or
+`${HOST_BACKUP_DIR}/recovery-staging` through a file share or web server.
+
 ## Windows lab-agent transport
 
 Windows agent enrollment over HTTP requires the explicit `-AllowHttp` switch. This acknowledgement must remain while the Hub is HTTP-only because the enrollment exchange is otherwise unencrypted.

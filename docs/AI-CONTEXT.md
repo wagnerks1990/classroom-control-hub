@@ -46,11 +46,18 @@ The Host Agent extension may dynamically allow safe lifecycle/read operations fo
 
 ### Current network exposure
 
-The appliance is intentionally **HTTP-only for the current development/live-test phase**. The main application publishes port `3000` directly, with `HUB_BIND_ADDRESS=0.0.0.0` by default so trusted classroom/admin LAN clients can reach it. Caddy and the built-in HTTPS/TLS gateway were removed after alpha.70 deployment failures and will be redesigned later.
+The appliance is intentionally **HTTP-only for ordinary administration in the current development/live-test phase**. The main application publishes port `3000` directly, with `HUB_BIND_ADDRESS=0.0.0.0` by default so trusted classroom/admin LAN clients can reach it. Caddy and the built-in HTTPS/TLS gateway were removed after alpha.70 deployment failures and will be redesigned later.
 
 Do not assume an HTTPS reverse proxy exists. Do not add Caddy/TLS dependencies, certificate checks, `HUB_TLS_HOST`, `HUB_HTTP_PORT`, or `HUB_HTTPS_PORT` back into deployment/update health gates unless HTTPS is being deliberately reintroduced as a separate reviewed feature. With no reverse proxy, `TRUST_PROXY_HOPS` defaults to `0`.
 
 HTTP is a temporary trusted-network deployment mode. Avoid exposing the appliance directly to untrusted networks or the public Internet. Windows lab-agent HTTP enrollment keeps an explicit `-AllowHttp` acknowledgement until TLS returns.
+
+Full Recovery passphrases are a stricter boundary: the browser may transmit one
+only through loopback or HTTPS terminated by a same-host loopback reverse proxy. A trusted LAN does not
+make remote plaintext HTTP acceptable for `.rgbak` export/import.
+An HTTPS proxy deployment must set the exact `TRUST_PROXY_HOPS` value and block
+direct client access to the backend; forwarded transport headers are not a
+security boundary when port 3000 remains directly reachable.
 
 ## Persistent state
 
@@ -73,7 +80,7 @@ The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades
 
 ## Current known-good baseline
 
-`1.0.0-alpha.79` is the current production-readiness review baseline.
+`1.0.0-alpha.80` is the current production-readiness review baseline.
 
 Production deployment is currently validated only on `amd64` Ubuntu Server
 24.04 LTS. Treat `arm64` as unsupported until both container images and the
@@ -92,6 +99,32 @@ Alpha.71 recovery invariants:
 - setup receiver IDs remain editable and display groups must be pruned to the saved receiver set;
 - supported existing integration containers can be adopted without recreation;
 - HTTP-only deployment must not regain a TLS-gateway dependency.
+
+Alpha.80 Full Recovery invariants:
+
+- the portable artifact is one AES-256-GCM `.rgbak` envelope using scrypt
+  `N=32768/r=8/p=1`, a random 16-byte salt and 12-byte nonce, and an
+  authenticated canonical bounded header;
+- passphrases are memory-only, 16 characters minimum/1024 UTF-8 bytes maximum,
+  and may cross the browser boundary only over loopback or HTTPS terminated by
+  a same-host loopback proxy;
+- the buffered payload default is 256 MiB and its absolute ceiling is 512 MiB;
+- maintenance stages beneath `/host-backups/recovery-staging`; the Host Agent
+  owns final paths, modes and IDs, serializes with
+  `/run/classroom-control-hub-appliance-mutation.lock`, and journals under
+  `/var/lib/classroom-hub/full-recovery`;
+- every affected state root has a safety snapshot and any failed/interrupted
+  transaction rolls all changed roots back before normal service resumes;
+- the active database/master key, ADB private/public keys/named volume, and
+  Android signing keystore/password are indivisible identity pairs/sets;
+- acceptance requires SQLite integrity/schema/readiness and successful
+  decryption of every `secret_store` row, plus application, scheduler, Host
+  Agent, maintenance, version, asset and managed-device verification;
+- only explicit `deploymentOwnership: roomgoblin` service state with the fixed
+  reviewed image identity may be recreated; adopted/external collisions fail
+  closed, and an owned service's saved stopped state is preserved;
+- native Veyon identity recovery is restricted to the reviewed
+  `VEYON_RECOVERY_ROOT=/veyon-recovery` mount.
 
 Verified classroom behaviors remain:
 

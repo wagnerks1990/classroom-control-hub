@@ -1,84 +1,135 @@
-# Database-First Recovery
+# Database-First and Full Recovery
 
-RoomGoblin is moving toward a database-first persistence model so a rebuilt appliance can be restored without manually reconstructing site configuration.
+> **Status in alpha.80:** RoomGoblin supports a passphrase-encrypted,
+> authenticated, one-export/one-import full recovery on the reviewed Ubuntu
+> Server 24.04 LTS `amd64` appliance profile.
 
-> **Status in alpha.79:** This page is an acceptance contract, not a completed
-> feature announcement. Alpha.79 can create and inspect protected backup
-> archives and restore database-backed settings/data into an already running
-> appliance. It does not yet provide clean-host **Import Full Recovery**,
-> automatic one-bundle restoration of the master key/ADB trust/managed-service
-> state, or SQLite-backed Android inventory. The current **Full Recovery**
-> backup label must not be interpreted as proof that the workflow below has
-> passed its acceptance test.
+## One export, one import
 
-## Target recovery contract
+**Full Recovery Export** creates one `.rgbak` containing exactly the
+non-regenerable RoomGoblin state needed by a compatible clean installation:
 
-A complete recovery should require only:
+- the SQLite-safe snapshot of the configured active database;
+- the matching external master encryption key;
+- uploaded media, presentations and required application assets;
+- Android/Google TV inventory, ADB trust keys and Android signing identity;
+- allowlisted persistent state for supported RoomGoblin-owned services;
+- bounded native Veyon recovery identity; and
+- a versioned manifest and exact file inventory.
 
-1. the RoomGoblin SQLite database;
-2. the matching master encryption key;
-3. required RoomGoblin binary/data assets;
-4. minimal deployment/bootstrap configuration needed to start the appliance.
+Source code, Docker images/layers, caches, logs, nested backups, arbitrary host
+files and host network configuration are excluded. Android inventory remains in
+the compatibility file `data/android-tv/devices.json` in alpha.80, but it is
+covered automatically and restores stable IDs/assignments without re-pairing.
 
-After restoring those items onto a clean supported installation, RoomGoblin should return to an operational state without restoring arbitrary historical JSON configuration files.
+Export briefly quiesces running add-ons only when their RoomGoblin ownership
+marker and pinned image both match, then restarts them in dependency-safe order.
+Adopted/external services are neither stopped nor copied. A stop/restart failure
+fails the export and removes the incomplete bundle.
 
-## What should live in SQLite
+## `.rgbak` security
 
-Application-owned durable configuration should be database-authoritative whenever practical, including:
+The envelope uses AES-256-GCM with a scrypt-derived key
+(`N=32768`, `r=8`, `p=1`), a random 16-byte salt and 12-byte nonce, and a
+canonical authenticated header. The inner allowlisted manifest also verifies
+every file by SHA-256 before host mutation.
 
-- site/classroom identity and preferences;
-- school-cycle and scheduler configuration;
-- class schedules and calendar exceptions;
-- browser display definitions and groups;
-- display credential/enrollment metadata;
-- Android/Google TV managed-device inventory and profiles;
-- automations, actions, targets and scenes;
-- integration URLs and non-secret settings;
-- MQTT/Govee, Pluto, Veyon, Music Assistant and Morning Announcements application settings;
-- managed-module configuration;
-- access profiles and application policies;
-- update, privacy, lab-agent and other controller-managed policies;
-- durable lab/device inventory that RoomGoblin owns.
+Passphrases must contain at least 16 characters and no more than 1024 UTF-8
+bytes. They are not persisted or logged. Losing the passphrase makes the export
+unrecoverable, so keep it separately from the `.rgbak`. The browser may submit
+a recovery passphrase only over loopback or HTTPS terminated by a same-host
+loopback reverse proxy;
+RoomGoblin's temporary direct-HTTP LAN mode is not safe for this operation.
+For HTTPS, configure the exact `TRUST_PROXY_HOPS` count and firewall direct
+client access to port 3000 so forwarded transport headers cannot be spoofed.
 
-Passwords, tokens, API keys and private keys owned by RoomGoblin should use the encrypted SQLite `secret_store`.
+The buffered payload limit is 256 MiB by default and 512 MiB absolutely. Ensure
+the target data and host-backup filesystems have room for staging, the imported
+state and a complete pre-restore safety snapshot.
 
-Environment values for integrations may remain migration/first-start fallbacks, but an established database value must win after setup.
+## Host transaction and rollback
 
-## What should remain outside SQLite
+Maintenance authenticates the envelope and stages allowlisted content beneath
+`/host-backups/recovery-staging` (`${HOST_BACKUP_DIR}/recovery-staging` on the
+host). The native Host Agent:
 
-Some state should intentionally remain outside the database:
+1. acquires `/run/classroom-control-hub-appliance-mutation.lock` so update and
+   recovery cannot overlap;
+2. writes a durable journal beneath `/var/lib/classroom-hub/full-recovery`;
+3. snapshots every state root the transaction can change;
+4. quiesces affected RoomGoblin and bounded Veyon services;
+5. commits the database/master-key, assets, ADB/signing identities and supported
+   service state with fixed host-owned paths, permissions and ownership;
+6. recreates/restarts the installed RoomGoblin release as required;
+7. verifies SQLite integrity/schema/readiness, every encrypted `secret_store`
+   row, application/scheduler/maintenance/Host Agent/version health, assets and
+   managed-device recovery; and
+8. rolls every changed root back from the safety snapshot if commit,
+   verification or interrupted-transaction recovery fails.
 
-- the master encryption key;
-- database path and host/container bootstrap settings;
-- bind addresses/listener ports and host filesystem paths;
-- maintenance/bootstrap authentication required before the database is available;
-- large media/presentation/generated artifacts;
-- ADB or other external-tool key files that must exist in a filesystem location;
-- third-party managed-service persistent data directories;
-- backup archives.
+Do not remove staging, journal or safety-snapshot data while a recovery is
+active or failed.
 
-Large/binary files should remain filesystem-backed while SQLite stores authoritative metadata/references where useful.
+## Service ownership
 
-## Current highest-priority migration
+RoomGoblin recreates a Docker add-on only when saved
+`deploymentOwnership` is `roomgoblin` and its image matches the fixed reviewed
+service identity. It never replaces an adopted/external service. A same-name,
+ownership or image collision fails closed for operator review. A
+RoomGoblin-owned service that was stopped at export remains stopped after
+restore.
 
-`data/android-tv/devices.json` is active durable RoomGoblin state and should move into normalized SQLite tables while preserving stable managed-device IDs, profiles, assignments, device/agent state and recovery policy.
+Native Veyon recovery is restricted to the reviewed
+`VEYON_RECOVERY_ROOT=/veyon-recovery` mount. Recovery does not create a generic
+root filesystem-write API.
 
-The migration must not require existing managed displays to be re-paired. ADB trust/key material must remain intact.
+ADB private/public keys and the named
+`classroom-control-hub-android-adb` volume are one identity and must remain
+writable after recreation. Android keystore/password and SQLite database/master
+key are likewise indivisible pairs. RoomGoblin must not generate a replacement
+identity and report recovery success.
 
-## Legacy JSON rule
+Export snapshots the application-reported active SQLite file, including a
+historical/custom source filename. On the clean host, recovery retains fresh
+host-specific `.env` values but normalizes the restored database and
+`DATABASE_FILE` to `/app/data/classroom-control-hub.db`. It does not copy stale
+source-host listener, token, network or root-path settings.
 
-Historical `data/*.json` paths may remain as compatibility namespace names or one-time migration inputs, but production operation should not depend on them when `LEGACY_JSON_MIRROR=false`.
+## Clean-host recovery drill
 
-A legacy file migration should:
+On an isolated compatible host:
 
-1. import transactionally;
-2. verify the imported data;
-3. record migration history;
-4. retain a rollback backup;
-5. retire the active legacy file only after verification.
+1. install the compatible RoomGoblin release and establish administrator access;
+2. use loopback or HTTPS through the same-host proxy to import the one `.rgbak`
+   and enter its separately stored passphrase;
+3. review the restore plan and start Full Recovery;
+4. verify login/site identity, database integrity and encrypted integrations;
+5. verify schedules, displays, automations/scenes, Morning Announcements
+   priority and post-release resync, and Background Music reconciliation;
+6. verify assets, Android inventory/agent state and previously paired devices
+   without re-pairing, lab/Veyon state, and owned service running/stopped state;
+7. confirm adopted/external services were not replaced and all component
+   versions converge; and
+8. test wrong passphrases, corrupted/truncated/oversized bundles, collisions,
+   insufficient space, injected phase failures and interruption/restart rollback
+   in a disposable environment.
 
-## Restore acceptance
+Keep the source appliance and older off-host exports until the restored system
+passes the drill. A bundle that has never been test-imported is not a verified
+disaster-recovery plan.
 
-A future full restore is considered successful only when a clean RoomGoblin installation can recover the database, master key and required assets and then verify users, site identity, schedules, displays, automations, integrations, encrypted credentials, managed Android devices, lab state, media references, update policy and critical classroom behavior without manually re-entering configuration. Alpha.79 has not yet passed this acceptance test.
+Import validates envelope, v6 manifest, release-major and schema compatibility.
+The clean-host installer separately enforces the supported Ubuntu `amd64` host
+profile; architecture is not stored as a portable v6 manifest field.
 
-See `docs/DATABASE-FIRST-RECOVERY.md` in the repository for the complete persistence classification and migration acceptance contract.
+## Persistence rule for future work
+
+Application-owned durable configuration should be SQLite-authoritative whenever
+practical. Large/non-regenerable files and external-service data may remain on
+disk, but every such path must be explicitly classified, added to the Full
+Recovery allowlist/manifest, and covered by recovery tests. Environment values
+may bootstrap or migrate a setting; they must not overwrite an established
+database value.
+
+See `docs/DATABASE-FIRST-RECOVERY.md` in the repository for the complete
+technical contract and acceptance matrix.

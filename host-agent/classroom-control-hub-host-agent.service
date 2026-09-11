@@ -1,7 +1,7 @@
 [Unit]
 Description=RoomGoblin Native Host Agent
-After=local-fs.target
-Before=docker.service
+After=local-fs.target docker.service
+Requires=docker.service
 
 [Service]
 Type=simple
@@ -11,6 +11,8 @@ WorkingDirectory=/opt/classroom-hub/host-agent
 EnvironmentFile=-/opt/classroom-hub/.env
 Environment=CLASSROOM_HUB_DIR=/opt/classroom-hub
 Environment=HOST_SERVICES_DIR=/opt/services
+Environment=HOST_BACKUP_DIR=/opt/classroom-hub-backups
+Environment=DOCKER_VOLUMES_ROOT=/var/lib/docker/volumes
 Environment=CLASSROOM_HUB_HOST_AGENT_SOCKET=/run/classroom-control-hub/host-agent.sock
 RuntimeDirectory=classroom-control-hub
 RuntimeDirectoryMode=0750
@@ -23,7 +25,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-ReadWritePaths=/run/classroom-control-hub /opt /etc/classroom-control-hub
+ReadWritePaths=/run/classroom-control-hub /opt /etc/classroom-control-hub /var/lib/classroom-hub /var/lib/docker/volumes
 
 [Install]
 WantedBy=multi-user.target

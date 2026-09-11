@@ -1,6 +1,6 @@
 {
   "name": "roomgoblin",
-  "version": "1.0.0-alpha.79",
+  "version": "1.0.0-alpha.80",
   "engines": {
     "node": ">=22"
   },

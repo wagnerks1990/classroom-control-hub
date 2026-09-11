@@ -5,10 +5,12 @@ const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 
-test('maintenance compose gives adb a narrow persistent writable key volume',()=>{
-  const override=read('docker-compose.override.yml');
-  assert.match(override,/classroom-hub-android-adb:\/managed\/classroom-hub\/data\/android-tv\/\.android/);
-  assert.match(override,/name: classroom-control-hub-android-adb/);
+test('core and maintenance share the fixed ADB identity volume read-only at maintenance',()=>{
+  const override=read('docker-compose.override.yml'),compose=read('docker-compose.yml');
+  assert.match(compose,/classroom-hub-android-adb:\/app\/data\/android-tv\/\.android/);
+  assert.match(compose,/classroom-hub-android-adb:\/managed\/classroom-hub\/data\/android-tv\/\.android:ro/);
+  assert.match(override,/classroom-hub-android-adb:\/managed\/classroom-hub\/data\/android-tv\/\.android:ro/);
+  assert.match(compose,/name: classroom-control-hub-android-adb/);
   assert.doesNotMatch(override,/privileged:\s*true/);
   assert.doesNotMatch(override,/cap_add:/);
 });

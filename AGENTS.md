@@ -28,7 +28,7 @@ Do not infer production configuration from public defaults. Site-specific config
 
 ## Current baseline
 
-The current review baseline is `1.0.0-alpha.79`.
+The current review baseline is `1.0.0-alpha.80`.
 
 Verified live-test/recovery behaviors inherited by this baseline include:
 
@@ -49,6 +49,9 @@ Verified live-test/recovery behaviors inherited by this baseline include:
 - Background Music recovery after priority audio;
 - class timer continuation rules and display/client version convergence;
 - compatibility-safe RoomGoblin presentation defaults while legacy deployment/device identifiers remain stable.
+- passphrase-encrypted/authenticated single-export full recovery with host-owned
+  staging, complete safety snapshots, durable journal recovery and all-state
+  rollback.
 
 When a later `VERSION` exists, it supersedes this baseline, but these behavioral invariants must remain covered unless a release deliberately changes them.
 
@@ -122,6 +125,42 @@ Core service recreation is also part of the updater contract. A release can chan
 `DATABASE_FILE` is authoritative. Installer/update logic must never silently select another SQLite filename merely because it exists. Before a migration, back up every `data/*.db` with SQLite's `.backup` API. If database filenames are reconciled, stop the application first, verify the destination with `PRAGMA quick_check`, preserve the previous file for rollback, and update `.env` before recreating the container.
 
 The maintenance backup/restore implementation and application runtime must agree on the canonical active database. A release that can start against a stale alternate database is not acceptable.
+
+### Full Recovery transaction
+
+Alpha.80 Full Recovery exports exactly one `.rgbak` envelope. It uses
+AES-256-GCM and scrypt (`N=32768`, `r=8`, `p=1`) with a random 16-byte salt and
+12-byte nonce; the canonical bounded header is authenticated additional data.
+Passphrases are 16 characters minimum and 1024 UTF-8 bytes maximum and must
+never be persisted or logged. Buffered recovery payloads default to 256 MiB and
+have an absolute 512 MiB limit.
+
+Never accept a recovery passphrase from a remote direct-HTTP browser. Use
+loopback or HTTPS terminated by a same-host loopback reverse proxy. Normal trusted-LAN HTTP support does not
+weaken this passphrase-transport boundary.
+
+Maintenance stages only authenticated, allowlisted content beneath
+`/host-backups/recovery-staging`; the corresponding host root is
+`${HOST_BACKUP_DIR}/recovery-staging`. The Host Agent serializes recovery and
+updates with `/run/classroom-control-hub-appliance-mutation.lock` and journals
+full recovery
+under `/var/lib/classroom-hub/full-recovery`. Preserve recovery on restart:
+unfinished transactions roll back from their complete safety snapshot before a
+new mutation can begin. Bundle paths, UID/GID, and modes are evidence only;
+fixed host policy owns destinations and permissions.
+
+Commit the active database and master key as one identity, then require
+`PRAGMA quick_check`, schema/readiness checks, and decryption of every
+`secret_store` row. Treat ADB private/public keys plus the named
+`classroom-control-hub-android-adb` volume as one identity, and the Android
+signing keystore/password as another indivisible identity. Do not regenerate
+either identity and report success. Native Veyon recovery is bounded to the
+configured `VEYON_RECOVERY_ROOT=/veyon-recovery` mount.
+
+Only a service whose saved `deploymentOwnership` is `roomgoblin` and whose
+image matches the fixed reviewed identity may be recreated. Never replace an
+adopted/external service; fail closed on an ownership, name, or image collision.
+Preserve the saved running/stopped state of owned services.
 
 ## Version convergence
 

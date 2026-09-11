@@ -48,8 +48,8 @@ test("lab computer removal can revoke credentials and pending enrollment atomica
 test("maintenance backups and restores enforce private files and reject link traversal",()=>{
   const source=fs.readFileSync(path.join(__dirname,"..","maintenance-agent","server.js"),"utf8");
   assert.match(source,/process\.umask\(0o077\)/);
-  assert.match(source,/ent\.isSymbolicLink\(\)\)continue/);
-  assert.match(source,/Symbolic links are not permitted in restore archives/);
+  assert.match(source,/ent\.isSymbolicLink\(\)\)throw Error\(`Symbolic links are not permitted in recovery sources/);
+  assert.match(source,/Special files are not permitted in restore archives/);
   assert.match(source,/fs\.chmodSync\(dest,0o600\)/);
   assert.match(source,/restoreModes/);
   assert.match(source,/restore-journal\.json/);

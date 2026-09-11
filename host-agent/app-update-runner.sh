@@ -5,7 +5,7 @@ HUB_ROOT="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
 STATE_DIR=/var/lib/classroom-hub
 STATE_FILE="$STATE_DIR/app-update-status.json"
 REQUEST_FILE="$STATE_DIR/app-update-request.json"
-LOCK_FILE=/run/classroom-control-hub-app-update.lock
+LOCK_FILE=/run/classroom-control-hub-appliance-mutation.lock
 mkdir -p "$STATE_DIR"
 
 write_state(){
@@ -75,7 +75,8 @@ health_check(){
 }
 
 adb_storage_check(){
-  docker compose exec -T maintenance-agent sh -lc 'test -w /managed/classroom-hub/data/android-tv/.android' || return 1
+  docker volume inspect classroom-control-hub-android-adb >/dev/null || return 1
+  docker compose exec -T maintenance-agent sh -lc 'test -r /managed/classroom-hub/data/android-tv/.android' || return 1
   docker compose exec -T maintenance-agent sh -lc 'test ! -e /managed/classroom-hub/data/android-tv/devices.json || test -r /managed/classroom-hub/data/android-tv/devices.json' || return 1
 }
 
@@ -141,6 +142,8 @@ refresh_host_agent(){
   install -D -m 0644 "$HUB_ROOT/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-hub-host-agent.service
   if [[ "$HUB_ROOT" != /opt/classroom-hub ]]; then sed -i "s#/opt/classroom-hub#$HUB_ROOT#g" /etc/systemd/system/classroom-hub-host-agent.service; fi
   sed -i "s#^Environment=HOST_SERVICES_DIR=.*#Environment=HOST_SERVICES_DIR=${HOST_SERVICES_DIR:-/opt/services}#" /etc/systemd/system/classroom-hub-host-agent.service
+  sed -i "s#^Environment=HOST_BACKUP_DIR=.*#Environment=HOST_BACKUP_DIR=${HOST_BACKUP_DIR:-/opt/classroom-hub-backups}#" /etc/systemd/system/classroom-hub-host-agent.service
+  sed -i "s#^Environment=DOCKER_VOLUMES_ROOT=.*#Environment=DOCKER_VOLUMES_ROOT=${DOCKER_VOLUMES_ROOT:-/var/lib/docker/volumes}#" /etc/systemd/system/classroom-hub-host-agent.service
   python3 -m py_compile "$HUB_ROOT/host-agent/server.py"
   systemctl daemon-reload
   systemctl restart classroom-hub-host-agent.service

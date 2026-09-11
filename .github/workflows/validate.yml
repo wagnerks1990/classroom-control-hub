@@ -24,6 +24,7 @@ jobs:
           test -f maintenance-agent/server.js
           test -f maintenance-agent/extensions.js
           test -f host-agent/start.py
+          test -f host-agent/full_recovery.py
           test -f public/controller/index.html
           test -f public/display/index.html
           test -f AGENTS.md
@@ -54,7 +55,9 @@ jobs:
       - name: Verify executable Full Recovery Export contract
         run: node --test test/full-recovery-export.test.js
       - name: Validate host agent Python
-        run: python -m py_compile host-agent/server.py host-agent/start.py
+        run: |
+          python -m py_compile host-agent/server.py host-agent/start.py host-agent/full_recovery.py
+          python -m unittest host-agent/test_full_recovery.py
       - name: Validate installer shell syntax
         run: bash -n install.sh deploy/bootstrap.sh deploy/host-group.sh host-agent/update-runner.sh host-agent/app-update-runner.sh host-agent/sync-veyon-key.sh
       - name: Validate Compose configuration
@@ -82,6 +85,7 @@ jobs:
           sudo chmod 0770 data
           sudo chmod 0700 data/backups
           sudo install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub/veyon
+          sudo install -d -m 0700 -o root -g root /opt/classroom-hub-backups/recovery-staging
           sudo install -d -m 0700 -o root -g root /etc/classroom-control-hub/android-agent-signing
           sudo install -d -m 0755 /run/classroom-control-hub
           sudo chown "$(id -u):$(id -g)" /run/classroom-control-hub

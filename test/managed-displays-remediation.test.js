@@ -19,9 +19,10 @@ test("managed Android inventory permissions survive install and GUI update paths
     assert.match(source,/chmod 0660 .*data\/android-tv\/devices\.json/);
   }
 
-  assert.match(updater,/test -w \/managed\/classroom-hub\/data\/android-tv\/\.android/);
+  assert.match(updater,/docker volume inspect classroom-control-hub-android-adb/);
+  assert.match(updater,/test -r \/managed\/classroom-hub\/data\/android-tv\/\.android/);
   assert.match(updater,/test ! -e \/managed\/classroom-hub\/data\/android-tv\/devices\.json \|\| test -r \/managed\/classroom-hub\/data\/android-tv\/devices\.json/);
-  assert.match(installer,/test -w \/managed\/classroom-hub\/data\/android-tv\/\.android/);
+  assert.match(installer,/test -r \/managed\/classroom-hub\/data\/android-tv\/\.android/);
   assert.match(installer,/Managed Android display inventory is not readable/);
 });
 

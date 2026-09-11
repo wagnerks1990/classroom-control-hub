@@ -24,6 +24,8 @@ test("supported optional integrations can be adopted or Hub-managed",()=>{
   }
   assert.match(ext,/Existing container adopted by RoomGoblin without recreation/);
   assert.match(ext,/dataPreserved:true/);
+  assert.match(ext,/org\.roomgoblin\.deployment-ownership=roomgoblin/);
+  assert.match(ext,/\.roomgoblin-managed/);
   assert.match(ext,/musicassistant[\s\S]*?--network","host"/);
   assert.match(host,/_adopt_existing/);
   assert.match(host,/docker','inspect'/);

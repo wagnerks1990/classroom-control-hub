@@ -86,6 +86,7 @@ HUB_INSTALL_GROUP="$(ensure_hub_install_group)" || fail "Host group preflight fa
 printf 'Using host group: %s (GID 10001)\n' "$HUB_INSTALL_GROUP"
 
 mkdir -p "$BACKUP_ROOT"
+install -d -m 0700 -o root -g root "$BACKUP_ROOT/recovery-staging"
 if [[ -f "$TARGET/.env" || -d "$TARGET/data" ]]; then
   echo "Existing RoomGoblin detected at $TARGET"
   mkdir -p "$BACKUP"
@@ -166,6 +167,50 @@ set_env_path(){
 set_env_path HOST_CLASSROOM_HUB_DIR "$TARGET"
 set_env_path HOST_SERVICES_DIR "$SERVICES"
 set_env_path HOST_BACKUP_DIR "$BACKUP_ROOT"
+DOCKER_ROOT="$(docker info --format '{{.DockerRootDir}}')"
+[[ "$DOCKER_ROOT" = /* && -d "$DOCKER_ROOT" && ! -L "$DOCKER_ROOT" ]] || fail "Docker reported an unsafe data root"
+DOCKER_VOLUMES_ROOT="$DOCKER_ROOT/volumes"
+set_env_path DOCKER_VOLUMES_ROOT "$DOCKER_VOLUMES_ROOT"
+
+# Migrate the legacy bind-mounted ADB identity before Compose overlays the path
+# with its fixed named volume. Existing non-empty volume state is authoritative
+# and is never overwritten during an upgrade.
+ADB_VOLUME=classroom-control-hub-android-adb
+ADB_VOLUME_EXISTED=true
+if ! docker volume inspect "$ADB_VOLUME" >/dev/null 2>&1; then
+  ADB_VOLUME_EXISTED=false
+  docker volume create --label org.roomgoblin.deployment-ownership=roomgoblin "$ADB_VOLUME" >/dev/null
+fi
+ADB_VOLUME_OWNER="$(docker volume inspect "$ADB_VOLUME" --format '{{index .Labels "org.roomgoblin.deployment-ownership"}}')"
+ADB_VOLUME_COMPOSE_NAME="$(docker volume inspect "$ADB_VOLUME" --format '{{index .Labels "com.docker.compose.volume"}}')"
+ADB_VOLUME_COMPOSE_PROJECT="$(docker volume inspect "$ADB_VOLUME" --format '{{index .Labels "com.docker.compose.project"}}')"
+if [[ "$ADB_VOLUME_OWNER" != roomgoblin && !( "$ADB_VOLUME_COMPOSE_NAME" == classroom-hub-android-adb && "$ADB_VOLUME_COMPOSE_PROJECT" =~ ^(classroom-hub|classroom-control-hub|roomgoblin)$ ) ]]; then
+  fail "Existing ADB volume is not owned by RoomGoblin"
+fi
+ADB_VOLUME_MOUNT="$(docker volume inspect "$ADB_VOLUME" --format '{{.Mountpoint}}')"
+[[ "$ADB_VOLUME_MOUNT" == "$DOCKER_VOLUMES_ROOT/$ADB_VOLUME/_data" ]] || fail "Docker returned an unsafe ADB volume mountpoint"
+[[ -d "$ADB_VOLUME_MOUNT" && ! -L "$ADB_VOLUME_MOUNT" ]] || fail "ADB volume mountpoint is missing or unsafe"
+LEGACY_ADB_PRIVATE="$TARGET/data/android-tv/.android/adbkey"
+LEGACY_ADB_PUBLIC="$TARGET/data/android-tv/.android/adbkey.pub"
+LEGACY_ADB_PRIVATE_PRESENT=false; [[ -e "$LEGACY_ADB_PRIVATE" || -L "$LEGACY_ADB_PRIVATE" ]] && LEGACY_ADB_PRIVATE_PRESENT=true
+LEGACY_ADB_PUBLIC_PRESENT=false; [[ -e "$LEGACY_ADB_PUBLIC" || -L "$LEGACY_ADB_PUBLIC" ]] && LEGACY_ADB_PUBLIC_PRESENT=true
+[[ "$LEGACY_ADB_PRIVATE_PRESENT" == "$LEGACY_ADB_PUBLIC_PRESENT" ]] || fail "Legacy ADB identity is incomplete"
+if [[ -z "$(find "$ADB_VOLUME_MOUNT" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+  for adb_identity in adbkey adbkey.pub; do
+    legacy_identity="$TARGET/data/android-tv/.android/$adb_identity"
+    if [[ -e "$legacy_identity" || -L "$legacy_identity" ]]; then
+      [[ -f "$legacy_identity" && ! -L "$legacy_identity" ]] || fail "Legacy ADB identity contains an unsafe $adb_identity"
+      install -m "$([[ "$adb_identity" == adbkey ]] && echo 0600 || echo 0644)" -o 10001 -g "$HUB_INSTALL_GROUP" "$legacy_identity" "$ADB_VOLUME_MOUNT/$adb_identity"
+    fi
+  done
+else
+  for adb_identity in adbkey adbkey.pub; do
+    volume_identity="$ADB_VOLUME_MOUNT/$adb_identity"
+    [[ -f "$volume_identity" && ! -L "$volume_identity" ]] || fail "Existing ADB volume contains an incomplete or unsafe identity"
+  done
+fi
+chown 10001:10001 "$ADB_VOLUME_MOUNT"
+chmod 0700 "$ADB_VOLUME_MOUNT"
 sed -i '/^HUB_TLS_HOST=/d;/^HUB_HTTPS_PORT=/d;/^HUB_HTTP_PORT=/d' "$TARGET/.env"
 CURRENT_BIND="$(sed -n 's/^HUB_BIND_ADDRESS=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -z "$CURRENT_BIND" ]]; then set_env_path HUB_BIND_ADDRESS "0.0.0.0"; fi
@@ -229,7 +274,9 @@ command -v python3 >/dev/null 2>&1 || { apt-get update && apt-get install -y pyt
 install -D -m 0644 "$TARGET/host-agent/classroom-control-hub-host-agent.service" /etc/systemd/system/classroom-hub-host-agent.service
 if [[ "$TARGET" != "/opt/classroom-hub" ]]; then sed -i "s#/opt/classroom-hub#$TARGET#g" /etc/systemd/system/classroom-hub-host-agent.service; fi
 sed -i "s#^Environment=HOST_SERVICES_DIR=.*#Environment=HOST_SERVICES_DIR=$SERVICES#" /etc/systemd/system/classroom-hub-host-agent.service
-python3 -m py_compile "$TARGET/host-agent/server.py" "$TARGET/host-agent/start.py"
+sed -i "s#^Environment=HOST_BACKUP_DIR=.*#Environment=HOST_BACKUP_DIR=$BACKUP_ROOT#" /etc/systemd/system/classroom-hub-host-agent.service
+sed -i "s#^Environment=DOCKER_VOLUMES_ROOT=.*#Environment=DOCKER_VOLUMES_ROOT=$DOCKER_VOLUMES_ROOT#" /etc/systemd/system/classroom-hub-host-agent.service
+python3 -m py_compile "$TARGET/host-agent/server.py" "$TARGET/host-agent/start.py" "$TARGET/host-agent/full_recovery.py"
 install -d -m 0750 /run/classroom-control-hub
 install -D -m 0755 "$TARGET/host-agent/update-runner.sh" /usr/local/libexec/classroom-control-hub/update-runner.sh
 install -D -m 0755 "$TARGET/host-agent/app-update-runner.sh" /usr/local/libexec/classroom-control-hub/app-update-runner.sh
@@ -319,7 +366,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>r.json()).then(j=>{if(!j.ok){console.error(JSON.stringify(j));process.exit(1)}})" || { echo "Maintenance-to-Host-Agent verification failed." >&2; exit 1; }
-docker compose exec -T maintenance-agent sh -lc 'test -w /managed/classroom-hub/data/android-tv/.android' || { echo "Android ADB key storage is not writable." >&2; exit 1; }
+docker compose exec -T maintenance-agent sh -lc 'test -r /managed/classroom-hub/data/android-tv/.android' || { echo "Android ADB key storage is not readable." >&2; exit 1; }
 docker compose exec -T maintenance-agent sh -lc 'test ! -e /managed/classroom-hub/data/android-tv/devices.json || test -r /managed/classroom-hub/data/android-tv/devices.json' || { echo "Managed Android display inventory is not readable." >&2; exit 1; }
 
 echo "Starting RoomGoblin backend (HTTP) ..."

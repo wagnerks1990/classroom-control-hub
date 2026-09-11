@@ -38,6 +38,7 @@ async function veyonComputers(){try{return await mainAppJson("GET","/api/v1/inte
 function cleanPort(value,fallback){const n=Number(value||fallback);if(!Number.isInteger(n)||n<1||n>65535)throw Error("Port must be between 1 and 65535");return n}
 function bounded(value,fallback,min,max){const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.trunc(n))):fallback}
 function managedPath(name){const value=path.join(SERVICES_ROOT,name);fs.mkdirSync(value,{recursive:true,mode:0o750});return value}
+function markRoomGoblinManaged(name){const marker=path.join(managedPath(name),".roomgoblin-managed");if(!fs.existsSync(marker))fs.writeFileSync(marker,"roomgoblin-managed-v1\n",{mode:0o660,flag:"wx"})}
 function cleanUrl(value,fallback){const raw=String(value||fallback).trim().replace(/\/$/,"");let u;try{u=new URL(raw)}catch{throw Error("Service URL must be a valid HTTP or HTTPS URL")}if(!["http:","https:"].includes(u.protocol)||u.username||u.password)throw Error("Service URL must use HTTP(S) without embedded credentials");return raw}
 
 async function saveMusicAssistantSettings(settings={}){
@@ -77,7 +78,7 @@ async function deployAddon(id,settings={},recreate=false){
   let resolved=settings||{};
   if(id!=="musicassistant"){const saved=await mainAppPut(id,settings);resolved=saved.resolved||resolved}
   if(exists&&!recreate)return {ok:true,id,adopted:true,managed:true,container:addon.container,image:addon.image,message:"Existing container adopted by RoomGoblin without recreation."};
-  let args=["run","-d","--network","host","--name",addon.container,"--restart","unless-stopped"];
+  let args=["run","-d","--network","host","--name",addon.container,"--restart","unless-stopped","--label","org.roomgoblin.deployment-ownership=roomgoblin"];
   if(id==="mosquitto"){
     const username=String(resolved.username||settings.username||"classroom-hub").replace(/[^A-Za-z0-9._-]/g,"");
     const password=String(resolved.password||settings.password||"");
@@ -97,6 +98,7 @@ async function deployAddon(id,settings={},recreate=false){
   args.push(addon.image);
   if(exists)await hostAgentRequest(["rm","-f",addon.container],30000);
   const result=await hostAgentRequest(args,180000);
+  markRoomGoblinManaged(addon.dataRoot);
   if(id==="musicassistant"){
     await mainAppPut("musicassistant",{url:cleanUrl(settings.url,MUSIC_ASSISTANT_URL),logLevel:String(settings.logLevel||"info")});
     const suppliedToken=String(settings.token||"").trim();

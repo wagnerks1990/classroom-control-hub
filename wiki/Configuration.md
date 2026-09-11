@@ -46,6 +46,25 @@ TRUST_PROXY_HOPS=0
 
 Restrict TCP/3000 to the trusted classroom/admin network. Caddy/TLS is intentionally deferred to a later reviewed release.
 
+Full Recovery has a stricter transport rule. Its passphrase may travel only
+through a direct loopback connection or HTTPS terminated by a same-host
+loopback reverse proxy. For that proxy, set `TRUST_PROXY_HOPS` to the exact hop
+count and prevent clients from reaching the backend listener directly. Leave it
+at `0` for direct deployments.
+
+Recovery-related host settings include:
+
+```env
+HOST_BACKUP_DIR=/opt/classroom-hub-backups
+RESTORE_MAX_EXPANDED_MB=4096
+RECOVERY_ENVELOPE_MAX_MB=256
+```
+
+`RECOVERY_ENVELOPE_MAX_MB` controls the buffered plaintext payload inside an
+encrypted `.rgbak`; it cannot exceed the hard 512 MiB ceiling. Full Recovery
+stages only within `${HOST_BACKUP_DIR}/recovery-staging`. The recovery
+passphrase is never a `.env` value and must not be persisted by RoomGoblin.
+
 ## Never commit production secrets
 
 Do not commit passwords, API tokens, MQTT credentials, Music Assistant tokens, Ant Media credentials, SSH/private keys, student/user data, production SQLite databases, `.env`, or backups containing runtime state.

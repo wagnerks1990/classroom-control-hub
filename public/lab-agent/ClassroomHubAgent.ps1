@@ -2,7 +2,7 @@
 param([string]$ConfigPath="$env:ProgramData\ClassroomControlHub\lab-agent.json")
 
 $ErrorActionPreference='Stop'
-$AgentVersion='1.0.0-alpha.79'
+$AgentVersion='1.0.0-alpha.80'
 $script:ExitForUpdate=$false
 $script:Socket=$null
 $script:NextHeartbeat=[DateTime]::UtcNow

@@ -22,6 +22,12 @@ function diagnosticBackupEntryAllowed(relativePath,isDirectory=false){
 function backupContainsSensitiveData(scope){return String(scope||"")!=="diagnostic"}
 
 const FULL_RECOVERY_SERVICE_ROOTS=Object.freeze(["govee2mqtt","mosquitto","music-assistant","nodered","veyon-webapi"]);
+const FULL_RECOVERY_SERVICE_SPECS=Object.freeze({
+  govee2mqtt:{container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72"},
+  mosquitto:{container:"mosquitto",image:"eclipse-mosquitto:2.0.22"},
+  "music-assistant":{container:"music-assistant-server",image:"ghcr.io/music-assistant/server:2.9.13"},
+  nodered:{container:"nodered",image:"nodered/node-red:4.1.14-22"}
+});
 const FULL_RECOVERY_EXCLUDED_SEGMENTS=new Set(["backups","cache","caches","file-trash","legacy","log","logs","tmp","convert-tmp","presentation-upload-tmp"]);
 const FULL_RECOVERY_DATA_FILES=new Set([
   "classroom-hub/data/classroom-control-hub.db",
@@ -41,18 +47,35 @@ const FULL_RECOVERY_SIGNING_FILES=new Set([
   "recovery-secrets/android-agent-signing/android-agent/RoomGoblin-Display-Agent.keystore",
   "recovery-secrets/android-agent-signing/android-agent/password"
 ]);
+const FULL_RECOVERY_VEYON_FILES=new Set([
+  "recovery-secrets/veyon/private.pem",
+  "recovery-secrets/veyon/key-name"
+]);
+const FULL_RECOVERY_REQUIRED_MODES=Object.freeze({
+  "classroom-hub/data/classroom-control-hub.db":"0660",
+  "classroom-hub/data/android-tv/devices.json":"0660",
+  "classroom-hub/data/android-tv/.android/adbkey":"0600",
+  "classroom-hub/data/android-tv/.android/adbkey.pub":"0644",
+  "recovery-secrets/classroom-hub-master.key":"0640",
+  "recovery-secrets/android-agent-signing/android-agent/RoomGoblin-Display-Agent.keystore":"0600",
+  "recovery-secrets/android-agent-signing/android-agent/password":"0600",
+  "recovery-secrets/veyon/private.pem":"0640",
+  "recovery-secrets/veyon/key-name":"0644"
+});
 
 function normalizedArchivePath(value){return String(value||"").replace(/\\/g,"/").replace(/^\.\//,"").replace(/\/$/,"")}
+function canonicalArchivePath(value){const raw=String(value||"");return raw===normalizedArchivePath(raw)&&!raw.startsWith("/")&&!raw.endsWith("/")&&!raw.includes("//")&&raw.split("/").every(part=>part&&part!=="."&&part!=="..")}
 
 // The portable export contains runtime state, never the application checkout or
 // host-local deployment configuration. Adding a new top-level path therefore
 // requires an explicit policy change and a matching recovery test.
 function fullRecoveryEntryAllowed(value,isDirectory=false){
-  const normalized=normalizedArchivePath(value),parts=normalized.split("/").filter(Boolean);
-  if(!normalized||normalized.startsWith("/")||parts.includes(".."))return false;
+  const raw=String(value||""),normalized=normalizedArchivePath(raw),parts=normalized.split("/").filter(Boolean);
+  if(!canonicalArchivePath(raw))return false;
   if(normalized==="backup-manifest.json")return !isDirectory;
   if(normalized==="recovery-secrets/classroom-hub-master.key")return !isDirectory;
   if(FULL_RECOVERY_SIGNING_FILES.has(normalized))return !isDirectory;
+  if(FULL_RECOVERY_VEYON_FILES.has(normalized))return !isDirectory;
   if(FULL_RECOVERY_DATA_FILES.has(normalized))return !isDirectory;
   if(isDirectory&&["classroom-hub","classroom-hub/data","classroom-hub/data/android-tv","classroom-hub/data/android-tv/.android",...FULL_RECOVERY_DATA_ROOTS].includes(normalized))return true;
   if(FULL_RECOVERY_DATA_ROOTS.some(root=>normalized.startsWith(`${root}/`)))return !parts.some(part=>FULL_RECOVERY_EXCLUDED_SEGMENTS.has(part.toLowerCase()));
@@ -63,12 +86,14 @@ function fullRecoveryEntryAllowed(value,isDirectory=false){
   if(isDirectory&&["services","recovery-secrets"].includes(normalized))return true;
   if(isDirectory&&parts[0]==="services"&&parts.length===2&&FULL_RECOVERY_SERVICE_ROOTS.includes(parts[1]))return true;
   if(isDirectory&&["recovery-secrets/android-agent-signing","recovery-secrets/android-agent-signing/android-agent"].includes(normalized))return true;
+  if(isDirectory&&normalized==="recovery-secrets/veyon")return true;
   return false;
 }
 
 function recoveryRole(name){
   if(name==="recovery-secrets/classroom-hub-master.key")return "master-key";
   if(FULL_RECOVERY_SIGNING_FILES.has(name))return "android-signing";
+  if(FULL_RECOVERY_VEYON_FILES.has(name))return "veyon-identity";
   if(name==="classroom-hub/data/classroom-control-hub.db")return "database";
   if(name==="classroom-hub/data/android-tv/devices.json")return "android-inventory";
   if(name==="classroom-hub/data/android-tv/.android/adbkey"||name==="classroom-hub/data/android-tv/.android/adbkey.pub")return "adb-trust";
@@ -81,16 +106,50 @@ function archiveInventory(entries){
   return entries.filter(entry=>!entry.isDirectory&&normalizedArchivePath(entry.entryName)!=="backup-manifest.json").map(entry=>{
     const name=normalizedArchivePath(entry.entryName),data=entry.getData();
     if(!fullRecoveryEntryAllowed(name,false))throw Error(`Unexpected portable recovery entry: ${name}`);
-    return {path:name,role:recoveryRole(name),size:data.length,sha256:crypto.createHash("sha256").update(data).digest("hex"),mode:"0600"};
+    const mode=FULL_RECOVERY_REQUIRED_MODES[name]||(name.startsWith("services/")?"0660":"0660");
+    return {path:name,role:recoveryRole(name),size:data.length,sha256:crypto.createHash("sha256").update(data).digest("hex"),mode};
   }).sort((a,b)=>a.path.localeCompare(b.path));
 }
 
+function topologyPolicy(pathName,type,role){
+  if(type==="file"){
+    if(pathName==="classroom-hub/data/android-tv/devices.json")return {uid:0,gid:10001,mode:"0660"};
+    if(pathName.startsWith("classroom-hub/data/android-tv/.android/"))return {uid:10001,gid:10001,mode:FULL_RECOVERY_REQUIRED_MODES[pathName]};
+    if(pathName==="recovery-secrets/classroom-hub-master.key")return {uid:0,gid:10001,mode:"0640"};
+    if(pathName.startsWith("recovery-secrets/android-agent-signing/"))return {uid:10001,gid:10001,mode:"0600"};
+    if(pathName==="recovery-secrets/veyon/private.pem")return {uid:0,gid:10001,mode:"0640"};
+    if(pathName==="recovery-secrets/veyon/key-name")return {uid:0,gid:0,mode:"0644"};
+    return {uid:10001,gid:10001,mode:"0660"};
+  }
+  if(pathName==="classroom-hub/data")return {uid:0,gid:10001,mode:"0770"};
+  if(pathName==="classroom-hub/data/android-tv")return {uid:0,gid:10001,mode:"02770"};
+  if(pathName.startsWith("classroom-hub/data/android-tv/.android"))return {uid:10001,gid:10001,mode:"0700"};
+  if(pathName==="recovery-secrets"||pathName==="recovery-secrets/veyon")return {uid:0,gid:10001,mode:"0750"};
+  if(pathName.startsWith("recovery-secrets/android-agent-signing"))return {uid:10001,gid:10001,mode:"0700"};
+  if(pathName==="services")return {uid:0,gid:10001,mode:"0770"};
+  return {uid:10001,gid:10001,mode:"0770"};
+}
+
+function recoveryTopology(files){
+  const paths=new Map();
+  for(const file of files){
+    let parent=file.path;
+    while(parent.includes("/")){parent=parent.slice(0,parent.lastIndexOf("/"));if(parent==="classroom-hub")break;paths.set(parent,{path:parent,type:"directory",role:parent.startsWith("services")?"service-state":parent.startsWith("recovery-secrets")?"recovery-secrets":"application-data",...topologyPolicy(parent,"directory")})}
+    paths.set(file.path,{path:file.path,type:"file",role:file.role,...topologyPolicy(file.path,"file",file.role)});
+  }
+  return [...paths.values()].sort((a,b)=>a.path.localeCompare(b.path));
+}
+
 function verifyArchiveInventory(entries,manifest){
-  if(!manifest||manifest.scope!=="full"||Number(manifest.version)<5)throw Error("Portable recovery archive requires a version 5 full manifest");
+  const manifestVersion=Number(manifest?.version);
+  if(!manifest||manifest.scope!=="full"||![5,6].includes(manifestVersion))throw Error("Portable recovery archive requires a supported full manifest");
+  if(manifestVersion===6&&Object.keys(manifest).sort().join(",")!=="applicationVersion,confidentiality,databaseSchemaVersion,files,integrityAlgorithm,managedServices,scope,topology,version")throw Error("Portable recovery archive manifest fields do not match the version 6 contract");
+  if(manifestVersion===6&&(manifest.confidentiality!=="scrypt-aes-256-gcm"||typeof manifest.applicationVersion!=="string"||manifest.applicationVersion.length<1||manifest.applicationVersion.length>100||!Number.isSafeInteger(manifest.databaseSchemaVersion)||manifest.databaseSchemaVersion<1||!Array.isArray(manifest.topology)))throw Error("Portable recovery archive contains invalid version 6 compatibility metadata");
   if(manifest.integrityAlgorithm!=="sha256"||!Array.isArray(manifest.files))throw Error("Portable recovery archive is missing its SHA-256 file inventory");
   const seen=new Set(),folded=new Set();
   for(const entry of entries){
     const name=normalizedArchivePath(entry.entryName),lower=name.toLowerCase();
+    if(!canonicalArchivePath(entry.entryName))throw Error(`Portable recovery archive contains a non-canonical entry: ${entry.entryName}`);
     if(seen.has(name)||folded.has(lower))throw Error(`Portable recovery archive contains a duplicate or case-colliding entry: ${name}`);
     seen.add(name);folded.add(lower);
     if(!fullRecoveryEntryAllowed(name,entry.isDirectory))throw Error(`Unexpected portable recovery entry: ${name}`);
@@ -99,7 +158,7 @@ function verifyArchiveInventory(entries,manifest){
   if(actual.length!==declared.length)throw Error("Portable recovery archive file set does not match its manifest");
   for(let i=0;i<actual.length;i++){
     const expected=declared[i]||{},observed=actual[i];
-    if(expected.path!==observed.path||expected.role!==observed.role||expected.mode!==observed.mode||Number(expected.size)!==observed.size||!/^([a-f0-9]{64})$/.test(String(expected.sha256||""))||!crypto.timingSafeEqual(Buffer.from(expected.sha256,"hex"),Buffer.from(observed.sha256,"hex"))){
+    if(!expected||Object.keys(expected).sort().join(",")!=="mode,path,role,sha256,size"||expected.path!==observed.path||expected.role!==observed.role||expected.mode!==observed.mode||Number(expected.size)!==observed.size||!/^([a-f0-9]{64})$/.test(String(expected.sha256||""))||!crypto.timingSafeEqual(Buffer.from(expected.sha256,"hex"),Buffer.from(observed.sha256,"hex"))){
       throw Error(`Portable recovery integrity check failed for ${observed.path}`);
     }
   }
@@ -107,6 +166,20 @@ function verifyArchiveInventory(entries,manifest){
   for(const required of ["classroom-hub/data/classroom-control-hub.db","recovery-secrets/classroom-hub-master.key"]){
     if(!actualPaths.has(required))throw Error(`Portable recovery archive is missing indispensable entry: ${required}`);
   }
+  if(manifestVersion===5)return actual;
+  const pair=(left,right,label)=>{if(actualPaths.has(left)!==actualPaths.has(right))throw Error(`Portable recovery archive contains an incomplete ${label} pair`)};
+  pair("classroom-hub/data/android-tv/.android/adbkey","classroom-hub/data/android-tv/.android/adbkey.pub","ADB trust");
+  pair("recovery-secrets/android-agent-signing/android-agent/RoomGoblin-Display-Agent.keystore","recovery-secrets/android-agent-signing/android-agent/password","Android signing identity");
+  pair("recovery-secrets/veyon/private.pem","recovery-secrets/veyon/key-name","Veyon identity");
+  if(!Array.isArray(manifest.managedServices))throw Error("Portable recovery archive is missing its managed-service plan");
+  const serviceIds=new Set();
+  for(const service of manifest.managedServices){
+    const spec=service&&FULL_RECOVERY_SERVICE_SPECS[service.id];
+    if(!spec||Object.keys(service).sort().join(",")!=="container,deploymentOwnership,enabled,id,image,running"||serviceIds.has(service.id)||service.container!==spec.container||service.image!==spec.image||typeof service.enabled!=="boolean"||typeof service.running!=="boolean"||(service.running&&!service.enabled)||service.deploymentOwnership!=="roomgoblin")throw Error("Portable recovery archive contains an invalid managed-service plan");
+    serviceIds.add(service.id);
+  }
+  const topology=recoveryTopology(actual);
+  if(JSON.stringify(manifest.topology)!==JSON.stringify(topology))throw Error("Portable recovery archive topology does not match the fixed ownership policy");
   return actual;
 }
 
@@ -144,4 +217,4 @@ function diagnosticSupportDocuments({createdAt,agentVersion,application,containe
   };
 }
 
-module.exports={DIAGNOSTIC_BACKUP_FILES,diagnosticBackupEntryAllowed,backupContainsSensitiveData,diagnosticSupportDocuments,FULL_RECOVERY_SERVICE_ROOTS,fullRecoveryEntryAllowed,archiveInventory,verifyArchiveInventory,parseMasterKey};
+module.exports={DIAGNOSTIC_BACKUP_FILES,diagnosticBackupEntryAllowed,backupContainsSensitiveData,diagnosticSupportDocuments,FULL_RECOVERY_SERVICE_ROOTS,FULL_RECOVERY_SERVICE_SPECS,FULL_RECOVERY_REQUIRED_MODES,fullRecoveryEntryAllowed,archiveInventory,recoveryTopology,verifyArchiveInventory,parseMasterKey};

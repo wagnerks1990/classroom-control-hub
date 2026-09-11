@@ -2,32 +2,32 @@
 
 ## Status
 
-This document defines the **target persistence architecture** for RoomGoblin. It is a migration and acceptance contract, not a statement that every item below is already implemented.
+This document defines both the implemented recovery architecture and the
+persistence rules that future features must follow.
 
-### Alpha.79 implementation boundary
+### Alpha.80 implementation boundary
 
-Alpha.79 implements the existing backup catalog, archive inspection/restore
-plans, sensitive-data confirmations, database-safe backup snapshots, and
-settings/data restore into an already running appliance. Its diagnostic archive
-is deliberately metadata-only and excludes runtime/private state. The current
-**Full Recovery** backup scope can capture protected recovery material, but that
-label does **not** mean the clean-host, one-export/one-import contract below has
-passed acceptance.
+Alpha.80 implements the single-export recovery contract for a clean, compatible
+RoomGoblin installation. **Full Recovery Export** produces one passphrase-
+encrypted and authenticated `.rgbak` bundle. **Import Full Recovery** validates
+and stages that bundle, then delegates the host-wide transaction to the native
+Host Agent. The transaction covers the active SQLite database, matching master
+key, RoomGoblin data/assets, Android inventory and ADB trust, Android signing
+identity, supported managed-service data, and bounded native Veyon recovery
+identity. It creates a complete safety snapshot and uses a durable journal to roll
+all changed recovery roots back when commit or verification fails.
 
-Alpha.79 does not yet implement:
+Android/Google TV inventory remains in the compatibility file
+`data/android-tv/devices.json` in alpha.80. That state is covered by the bundle
+and restored without changing stable device IDs or ADB identity. Moving it to
+normalized SQLite remains a future persistence improvement, not a prerequisite
+for the implemented recovery contract.
 
-- normalized SQLite storage for Android/Google TV inventory, which remains in
-  `data/android-tv/devices.json`;
-- a clean-install **Import Full Recovery** workflow;
-- automatic restoration/reconciliation of the master key, ADB trust material,
-  application assets, and supported managed-service state from one portable
-  bundle;
-- the full clean-host acceptance test defined near the end of this document.
-
-Until those items are implemented and validated, use the current documented
-installer, backup, and restore procedures and preserve all separately identified
-runtime state. Do not tell operators that the target disaster-recovery workflow
-is available merely because a backup is labeled **Full Recovery**.
+This feature does not restore source code, Docker images, arbitrary host files,
+host-specific network configuration, or externally owned/adopted services. A
+clean target must first have a compatible RoomGoblin release installed. Recovery
+reconstructs durable RoomGoblin state; the installed release supplies executable
+code and reviewed service definitions.
 
 The goal is deliberately simple:
 
@@ -51,7 +51,7 @@ A value belongs in SQLite when all of the following are true:
 
 ## Single-export recovery objective
 
-The supported disaster-recovery workflow should be:
+The supported disaster-recovery workflow is:
 
 ```text
 Existing RoomGoblin appliance
@@ -59,7 +59,7 @@ Existing RoomGoblin appliance
         |  Backup / Export
         v
 +----------------------------------+
-| roomgoblin-backup-<timestamp>.*  |
+| roomgoblin-full-<timestamp>.rgbak|
 | single portable recovery bundle  |
 +----------------------------------+
         |
@@ -304,7 +304,19 @@ Advanced/diagnostic backup classes may exist, but the user should never need to 
 
 ### Full Recovery Export
 
-The export produces one portable, versioned recovery bundle containing exactly the restorable state defined by this document.
+The export produces one portable, versioned `.rgbak` recovery bundle containing
+exactly the restorable state defined by this document. The plaintext ZIP payload
+exists only while the maintenance process constructs or validates the bounded
+bundle; the administrator downloads and stores the encrypted envelope, not a
+plaintext archive.
+
+To obtain a consistent external-service snapshot, export temporarily stops only
+running add-ons that carry RoomGoblin's ownership marker and exact pinned image,
+then restarts them in dependency-safe order. It never stops or copies adopted/
+external add-ons. Failure to quiesce or restart an owned add-on fails the export
+and removes the incomplete bundle; operators should expect a brief interruption
+to RoomGoblin-owned MQTT, lighting, automation, or audio services while a full
+export is created.
 
 The bundle should include a machine-readable manifest similar in concept to:
 
@@ -325,17 +337,67 @@ migration/compatibility requirements
 
 The actual manifest format may be JSON or another reviewed format. It must not contain plaintext secrets when metadata is sufficient.
 
-### Export security
+### `.rgbak` encryption and authentication
 
-Because a full recovery bundle contains enough information to reconstruct a working appliance, it is highly sensitive.
+Because a full recovery bundle contains enough information to reconstruct a
+working appliance, it is highly sensitive. Alpha.80 uses a passphrase-derived
+authenticated envelope:
 
-The implementation should support authenticated export and should strongly prefer encryption of the recovery bundle at rest. Encryption design must not create an unrecoverable dependency on the failed appliance itself.
+- AES-256-GCM provides encryption and authentication;
+- scrypt derives the encryption key with `N=32768`, `r=8`, and `p=1`;
+- each export uses a random 16-byte salt and 12-byte nonce;
+- the bounded canonical header is authenticated as additional data, so format,
+  KDF, cipher, and length changes are detected before extraction;
+- passphrases must contain at least 16 characters and at most 1024 UTF-8 bytes;
+- the implementation buffers at most 256 MiB by default and enforces an
+  absolute 512 MiB envelope limit.
 
-Checksums/authentication must detect corruption or tampering before restore mutates the new installation.
+The passphrase is not written to the bundle, database, recovery journal, or
+logs. Losing it makes the export unrecoverable. Store the passphrase separately
+from the `.rgbak` file in an approved password manager or offline recovery
+record. Never upload a recovery bundle to a support case.
+
+Passphrase submission is permitted only over a secure browser context: use the
+controller locally on the appliance (`localhost`/loopback), or use HTTPS
+terminated by a same-host loopback reverse proxy. The normal direct-HTTP trusted
+LAN mode is **not sufficient for transmitting a recovery passphrase**. Do not
+bypass this restriction merely because the network is private.
+
+For the same-host TLS proxy, set `TRUST_PROXY_HOPS` to the exact proxy hop count and firewall
+the backend listener so clients cannot reach port 3000 except through that
+proxy. Forwarded HTTPS headers are trustworthy only when direct backend access
+is blocked. Leave `TRUST_PROXY_HOPS=0` for direct/loopback deployments.
+
+AES-GCM authentication and the inner per-file SHA-256 inventory must both pass
+before host mutation. SHA-256 inventory alone is a corruption check, not proof
+of provenance; authenticity comes from possession of the independent recovery
+passphrase.
+
+### Capacity planning
+
+Full Recovery Export is intentionally bounded and buffered. Before exporting,
+ensure the aggregate allowlisted state fits beneath the configured 256 MiB
+default and that both the RoomGoblin data filesystem and host backup filesystem
+have enough free space for the export, staging copy, and safety snapshot. The
+512 MiB hard limit cannot be raised through configuration. Large replaceable
+media should be regenerated or managed outside RoomGoblin rather than weakening
+the recovery boundary.
 
 ## Import / restore product contract
 
-On a clean supported RoomGoblin installation, the administrator should be able to choose **Import Full Recovery**, select the single export, and have RoomGoblin perform the complete restoration.
+On a clean supported RoomGoblin installation, the administrator chooses
+**Import Full Recovery**, selects the single `.rgbak` export, provides its
+passphrase, reviews the plan, and explicitly starts the host transaction.
+
+Maintenance stages authenticated content beneath
+`/host-backups/recovery-staging` (host path
+`${HOST_BACKUP_DIR}/recovery-staging`). The Host Agent serializes update and
+recovery mutation with `/run/classroom-control-hub-appliance-mutation.lock` and
+records the
+durable transaction under `/var/lib/classroom-hub/full-recovery`. A restart or
+power interruption therefore resumes rollback instead of treating a partially
+committed appliance as healthy. Staging paths, archive paths, ownership, and
+modes are fixed by policy; bundle metadata cannot select arbitrary host paths.
 
 Restore should automatically:
 
@@ -353,18 +415,58 @@ Restore should automatically:
 12. regenerate host-specific bootstrap values when safer than restoring them;
 13. recreate/restart services using the current supported deployment model;
 14. run health, schema, secret-decryption, scheduler, integration, managed-display, and version-convergence checks;
-15. automatically roll back to the safety state if restore validation fails.
+15. automatically roll back every changed recovery root to the safety snapshot
+    if restore validation fails or an interrupted transaction is recovered.
 
 The import workflow should not ask the administrator which individual files to restore.
 
-## Restore acceptance test
+### Service ownership and restart rules
 
-A full recovery feature is not complete until this exact scenario passes:
+Recovery distinguishes RoomGoblin-owned services from services merely found on
+the host:
+
+- a Docker add-on is recreated only when its saved
+  `deploymentOwnership` is `roomgoblin` and its image matches the fixed reviewed
+  service identity;
+- an adopted/external container is never replaced; a same-name ownership or
+  image collision fails closed for operator review;
+- an owned service that was stopped when exported remains stopped after restore;
+- native Veyon recovery is limited to the reviewed Veyon roots exposed to the
+  maintenance container as `VEYON_RECOVERY_ROOT=/veyon-recovery`; it does not
+  grant arbitrary host-file restore access;
+- RoomGoblin core services are quiesced for commit, recreated from the installed
+  compatible release, and accepted only after database, scheduler, secret,
+  version, maintenance, Host Agent, asset, and managed-device checks pass.
+
+ADB private/public keys and the named
+`classroom-control-hub-android-adb` volume are reconciled as one trust identity.
+Recovery must prove the mounted ADB directory is writable and preserve existing
+pairing; it must not silently generate a new key and call the restore successful.
+Android signing keystore and password are restored as a matched identity or not
+at all. The master key is likewise committed with its matching database so every
+`secret_store` row can be decrypted before acceptance.
+
+Export snapshots the database path reported by the running application, even
+when the source uses a historical/custom filename. The portable bundle assigns
+that snapshot the canonical target identity
+`/app/data/classroom-control-hub.db`. Restore preserves the clean target's
+host-specific `.env` values while transactionally replacing only
+`DATABASE_FILE` with that canonical identity. It does not restore old listener,
+token, root-path or network settings from the source host.
+
+## Restore acceptance and operator drill
+
+The release gate and the operator's periodic disaster-recovery drill use this
+scenario. Perform it on an isolated supported host, never against the only live
+appliance:
 
 1. on a working appliance, create one Full Recovery Export;
 2. provision a clean supported Ubuntu host with no RoomGoblin persistent state;
 3. install a compatible RoomGoblin release using the supported installer;
-4. select Import Full Recovery and provide only that single export bundle;
+4. open the controller through loopback or HTTPS terminated by the same-host
+   proxy, select Import Full Recovery,
+   and provide only that single export bundle and its separately stored
+   passphrase;
 5. complete the restore without manually copying any database, key, JSON, media, ADB, or service-data file;
 6. verify `PRAGMA quick_check`;
 7. verify schema migration completion;
@@ -381,9 +483,41 @@ A full recovery feature is not complete until this exact scenario passes:
 18. verify Background Music recovery;
 19. verify media/presentation asset references resolve;
 20. verify managed integration containers/services can be recreated/adopted with their expected state;
-21. verify version convergence and health endpoints.
+21. verify version convergence and health endpoints;
+22. confirm RoomGoblin-owned running/stopped add-ons returned to their saved
+    lifecycle state and adopted/external services were not replaced;
+23. repeat with wrong passphrase, modified header/tag/ciphertext, truncated and
+    oversized bundles, unexpected paths/symlinks, unsafe ownership metadata,
+    service name/image collisions, insufficient disk, and injected failures at
+    each commit/restart/verification phase;
+24. interrupt a restore after mutation begins, restart the Host Agent, and prove
+    journal recovery restores the complete pre-restore safety snapshot.
 
 The restore is considered successful only when the new appliance is operational without manually reconstructing site configuration or hunting for additional backup files.
+
+Keep the source appliance and its previous off-host export until this drill has
+passed. After success, download a fresh `.rgbak`, verify that it can be inspected
+with its passphrase on the isolated target, record the release/schema and drill
+date, and retain at least one older known-good export according to local policy.
+An export that has never been test-imported is not a verified disaster-recovery
+plan.
+
+### Compatibility and rollback expectations
+
+Import must reject unsupported envelope, manifest, release, or schema
+combinations before mutation. The supported installer independently enforces
+the target host profile before recovery; architecture is not a portable v6
+manifest field. Alpha.80 recovery is supported on the same reviewed Ubuntu
+Server 24.04 LTS `amd64` appliance profile as the installer. Forward migration
+may run only through the installed release's normal database migrations;
+recovery does not downgrade a newer schema into older code.
+
+The pre-restore safety snapshot is local rollback state, not the portable
+off-host backup. Do not delete or prune it while the transaction journal exists.
+If automated rollback reports failure, leave the appliance isolated and stopped,
+preserve the journal, staging directory, safety snapshot, and Host Agent logs,
+then investigate before retrying. Never manually combine parts of two recovery
+transactions.
 
 ## Source-of-truth rules
 
