@@ -4,9 +4,13 @@
 
 This document defines the **target persistence architecture** for RoomGoblin. It is a migration and acceptance contract, not a statement that every item below is already implemented.
 
-The goal is simple:
+The goal is deliberately simple:
 
-> A fresh RoomGoblin installation restored from the application database, the matching master encryption key, and required binary/data assets should return to a fully functional operational state without re-entering site configuration by hand.
+> **One export. One import. Full recovery.**
+>
+> An administrator should be able to create a single RoomGoblin backup export, install RoomGoblin on a clean supported host, import that same export, and recover a fully functional system without manually re-entering site configuration.
+
+The export should contain **exactly the state required for a complete restore**: no arbitrary source tree copies, stale migration files, caches, temporary files, or replaceable application images.
 
 ## Core rule
 
@@ -20,16 +24,77 @@ A value belongs in SQLite when all of the following are true:
 - RoomGoblin can safely migrate, validate, version, and restore it;
 - it is not a large/binary artifact better represented by database metadata plus a filesystem object.
 
-## Recovery objective
+## Single-export recovery objective
 
-The supported disaster-recovery model should converge on four restore inputs:
+The supported disaster-recovery workflow should be:
+
+```text
+Existing RoomGoblin appliance
+        |
+        |  Backup / Export
+        v
++----------------------------------+
+| roomgoblin-backup-<timestamp>.*  |
+| single portable recovery bundle  |
++----------------------------------+
+        |
+        | copy/store safely
+        v
+Clean supported Ubuntu host
+        |
+        | install RoomGoblin
+        | Import / Restore
+        v
+Fully restored RoomGoblin appliance
+```
+
+The administrator should not need to know which database file, key file, JSON file, ADB file, media directory, or managed-service directory is required. RoomGoblin should determine that from the backup manifest and restore it safely.
+
+A successful full export must include the required contents of four logical categories **inside one recovery bundle**:
 
 1. **SQLite application database** — authoritative application configuration and durable state.
-2. **Master encryption key** — required to decrypt encrypted values in `secret_store`.
-3. **Data/assets archive** — uploaded media, presentation files, generated packages, certificates/files that are intentionally stored as files, and other large/binary artifacts.
-4. **Minimal deployment/bootstrap configuration** — enough host/container configuration to start RoomGoblin and point it at the restored database/key/assets.
+2. **Master encryption key and required protected recovery secrets** — required to decrypt encrypted application values and restore trusted appliance boundaries.
+3. **Required data/assets** — uploaded media, presentations, managed-device artifacts/trust material, and other non-replaceable files.
+4. **Recovery manifest** — version/schema information and the minimal deployment metadata required to reconstruct paths, ownership, and supported managed services.
 
-A recovery should not require copying arbitrary historical JSON configuration files back into place.
+These are logical categories, not separate files the administrator should have to manage manually.
+
+A recovery must not require copying arbitrary historical JSON configuration files back into place.
+
+## Exact-content principle
+
+A full RoomGoblin recovery export should contain what is **necessary and sufficient** to rebuild the installation.
+
+### Include
+
+Include state that cannot be regenerated without changing the restored system:
+
+- active SQLite database;
+- matching master encryption key;
+- required maintenance/bootstrap secrets when continuity requires them;
+- uploaded media and presentation assets;
+- non-regenerable application-managed files referenced by the database;
+- Android/Google TV ADB trust/key material required to preserve pairing;
+- managed-device deployment artifacts only when they cannot be safely regenerated from the restored release/configuration;
+- supported managed-service persistent data when RoomGoblin promises to restore that service's state;
+- a manifest containing backup format version, RoomGoblin release, database schema version, checksums, file roles, expected ownership/modes, and restore requirements.
+
+### Exclude
+
+Do not include replaceable or irrelevant state merely because it exists under the installation directory:
+
+- Git checkout/source files;
+- Docker images or container writable layers;
+- node modules/build caches;
+- temporary files;
+- stale retired JSON configuration after verified migration;
+- log files unless deliberately requested as diagnostics;
+- transient discovery caches that can be safely regenerated;
+- old backup archives inside a new backup archive;
+- unrelated host files;
+- generated artifacts that are guaranteed reproducible from the restored release and stored configuration.
+
+The backup implementation should maintain an explicit allowlist/manifest of restorable state rather than recursively archiving `/opt/classroom-hub`.
 
 ## Database-authoritative state
 
@@ -56,7 +121,7 @@ The following classes of state should be database-authoritative.
 - agent state that must persist across appliance replacement;
 - persistent-ADB policy metadata and stable device-management identity where safe.
 
-Raw ADB private key material may remain outside SQLite if required by external tooling, but RoomGoblin should store enough authoritative metadata to restore/reconcile the managed-device relationship. Secret material that can safely be encrypted should use `secret_store`.
+Raw ADB private key material may remain outside SQLite if required by external tooling, but it must be included automatically in a full recovery export when preserving device trust requires it. RoomGoblin should store enough authoritative metadata to restore/reconcile the managed-device relationship. Secret material that can safely be encrypted should use `secret_store`.
 
 ### Integrations
 
@@ -106,17 +171,16 @@ Keep large/binary content on disk and store metadata/references/checksums in the
 - uploaded media;
 - presentation files;
 - generated Android APK artifacts and metadata required for deployment;
-- thumbnails and generated media derivatives;
-- large exports/import packages;
-- backup archives.
+- thumbnails and generated media derivatives when they are not safely regenerable;
+- large exports/import packages.
 
-The backup system must include these files when a complete recovery backup is requested.
+The single full recovery export must include every non-regenerable file required for restored database references to work.
 
 ### External integration data directories
 
 RoomGoblin-managed third-party services may require their own persistent data directories beneath the managed-services root. Examples include Music Assistant, Mosquitto, and Govee2MQTT. These directories are external application state and are not expected to be converted into RoomGoblin SQLite rows.
 
-A full-appliance recovery must back up and restore them separately when required.
+If RoomGoblin's full-restore promise includes the service's application state, the required directory must be automatically captured inside the same recovery bundle. If a service can be cleanly recreated from RoomGoblin configuration without loss, the bundle may omit its regenerable files.
 
 ## State that must remain outside the database
 
@@ -132,7 +196,7 @@ Current compatibility path:
 /etc/classroom-control-hub/master.key
 ```
 
-The backup/restore system must clearly indicate that a database containing encrypted secrets is incomplete without the matching master key.
+The user should not need to back this file up separately. A **full recovery export must securely include it** (or an equivalent wrapped/encrypted recovery form) so the restored database can decrypt its secrets.
 
 ### Host/container bootstrap configuration
 
@@ -147,9 +211,11 @@ Keep host-bound values outside SQLite, including:
 - restore limits and host-side safety constraints;
 - settings required before SQLite can be opened.
 
+Most of these should not be blindly restored from an old machine. The export manifest should distinguish **portable application state** from **host-specific values that should use fresh-install defaults**. Only values required for functional continuity should be carried forward.
+
 ### Bootstrap/maintenance authentication boundary
 
-Secrets required before the application database is available, or required to authenticate the host/maintenance boundary, may remain deployment secrets. They must be included in a secure recovery mechanism when they are required for a rebuilt appliance.
+Secrets required before the application database is available, or required to authenticate the host/maintenance boundary, may remain deployment secrets. When continuity requires them, they must be protected inside the single full recovery export. When they are safe to regenerate, restore should generate new values and reconcile the restored application automatically.
 
 Long-term application credentials that are managed by RoomGoblin should prefer encrypted database storage.
 
@@ -183,7 +249,7 @@ Migration requirements:
 8. add restart/update/restore regression tests;
 9. ensure existing paired devices continue working without re-pairing.
 
-ADB trust material itself must be preserved independently and must not be destroyed by the migration.
+ADB trust material itself must be preserved independently by runtime storage, and the full recovery export must include the exact trust material required to keep supported devices paired.
 
 ### Priority 2 — integration environment fallbacks
 
@@ -205,61 +271,94 @@ For every legacy JSON import path:
 - retire the active legacy file;
 - keep rollback copies only as backups, not as competing sources of truth.
 
-## Backup classes
+## Backup product contract
 
-RoomGoblin backup UI/API should distinguish at least these concepts.
+The normal administrator-facing backup action should be a single **Full Recovery Export**.
 
-### Configuration backup
+Advanced/diagnostic backup classes may exist, but the user should never need to combine multiple backup types manually to recover an appliance.
 
-Contains:
+### Full Recovery Export
 
-- SQLite database;
-- matching master encryption key through a protected backup mechanism;
-- minimal metadata required to identify database/schema/version compatibility.
+The export produces one portable, versioned recovery bundle containing exactly the restorable state defined by this document.
 
-This restores configuration and encrypted application secrets but not large media or third-party service data.
+The bundle should include a machine-readable manifest similar in concept to:
 
-### Full RoomGoblin backup
+```text
+backup-format-version
+roomgoblin-version
+source-commit/release
+created-at
+database-schema-version
+database-file-role
+master-key-role
+asset inventory + checksums
+managed-device trust-material inventory
+managed-service state inventory
+ownership/mode requirements
+migration/compatibility requirements
+```
 
-Contains or references all data necessary to rebuild the RoomGoblin-controlled system:
+The actual manifest format may be JSON or another reviewed format. It must not contain plaintext secrets when metadata is sufficient.
 
-- SQLite database;
-- master encryption key;
-- RoomGoblin file assets;
-- managed-device package/artifact state needed for recovery;
-- required ADB trust/key material;
-- protected bootstrap/maintenance secrets when required;
-- a sanitized deployment manifest describing required host paths/listeners;
-- optionally, supported managed-service data directories.
+### Export security
 
-Backup archives must not expose plaintext secrets merely to make recovery convenient.
+Because a full recovery bundle contains enough information to reconstruct a working appliance, it is highly sensitive.
+
+The implementation should support authenticated export and should strongly prefer encryption of the recovery bundle at rest. Encryption design must not create an unrecoverable dependency on the failed appliance itself.
+
+Checksums/authentication must detect corruption or tampering before restore mutates the new installation.
+
+## Import / restore product contract
+
+On a clean supported RoomGoblin installation, the administrator should be able to choose **Import Full Recovery**, select the single export, and have RoomGoblin perform the complete restoration.
+
+Restore should automatically:
+
+1. inspect and authenticate/validate the bundle;
+2. verify backup format and RoomGoblin version compatibility;
+3. create a safety backup of any current state before mutation;
+4. stop affected services cleanly;
+5. restore the active SQLite database using SQLite-safe procedures;
+6. restore/reconcile the master encryption key;
+7. restore required application assets;
+8. restore/reconcile managed-device ADB trust material;
+9. restore supported managed-service state included in the bundle;
+10. apply correct ownership and permissions;
+11. run required database migrations;
+12. regenerate host-specific bootstrap values when safer than restoring them;
+13. recreate/restart services using the current supported deployment model;
+14. run health, schema, secret-decryption, scheduler, integration, managed-display, and version-convergence checks;
+15. automatically roll back to the safety state if restore validation fails.
+
+The import workflow should not ask the administrator which individual files to restore.
 
 ## Restore acceptance test
 
-A full recovery feature is not complete until this scenario passes:
+A full recovery feature is not complete until this exact scenario passes:
 
-1. start with a clean supported Ubuntu host;
-2. install the same or a compatible RoomGoblin release;
-3. restore the full RoomGoblin backup;
-4. restart/recreate all required services;
-5. verify `PRAGMA quick_check`;
-6. verify schema migration completion;
-7. verify the master key decrypts all expected `secret_store` entries;
-8. verify administrator/login state;
-9. verify site identity and school schedule;
-10. verify display definitions/groups/access state;
-11. verify automations/scenes;
-12. verify integration settings and encrypted credentials;
-13. verify managed Android/Google TV inventory without re-entering assignments;
-14. verify ADB/device trust recovery where supported;
-15. verify Veyon/lab inventory and credentials;
-16. verify Morning Announcements priority/recovery;
-17. verify Background Music recovery;
-18. verify media/presentation asset references resolve;
-19. verify managed integration containers can be adopted/reconciled without losing their persistent data;
-20. verify version convergence and health endpoints.
+1. on a working appliance, create one Full Recovery Export;
+2. provision a clean supported Ubuntu host with no RoomGoblin persistent state;
+3. install a compatible RoomGoblin release using the supported installer;
+4. select Import Full Recovery and provide only that single export bundle;
+5. complete the restore without manually copying any database, key, JSON, media, ADB, or service-data file;
+6. verify `PRAGMA quick_check`;
+7. verify schema migration completion;
+8. verify the restored master key decrypts all expected `secret_store` entries;
+9. verify administrator/login state;
+10. verify site identity and school schedule;
+11. verify display definitions/groups/access state;
+12. verify automations/scenes;
+13. verify integration settings and encrypted credentials;
+14. verify managed Android/Google TV inventory without re-entering assignments;
+15. verify supported previously paired managed devices recover without manual re-pairing when the underlying platform permits it;
+16. verify Veyon/lab inventory and credentials;
+17. verify Morning Announcements priority/recovery;
+18. verify Background Music recovery;
+19. verify media/presentation asset references resolve;
+20. verify managed integration containers/services can be recreated/adopted with their expected state;
+21. verify version convergence and health endpoints.
 
-The restore is considered successful only when the appliance is operational without manually reconstructing site configuration.
+The restore is considered successful only when the new appliance is operational without manually reconstructing site configuration or hunting for additional backup files.
 
 ## Source-of-truth rules
 
@@ -272,9 +371,11 @@ To prevent regression:
 5. Database migrations must preserve stable identifiers used by displays, agents, credentials, schedules, and integrations.
 6. Backup/restore code and runtime code must agree on the same active database identity.
 7. Secrets stored in SQLite must remain encrypted and require the external master key.
-8. Large/binary assets may stay on disk but must be represented in full-backup coverage.
+8. Large/binary assets may stay on disk but must be covered automatically by the single full recovery export when required.
 9. Upgrade and rollback paths must preserve database, keys, assets, managed-service data, and managed-device trust material.
 10. Tests must prove restored systems do not depend on stale `.env` integration values or retired JSON files.
+11. New persistent state must declare whether it is database-backed, regenerable, or included in the full recovery export.
+12. A new feature that creates non-regenerable persistent state is incomplete until the backup/restore contract covers it.
 
 ## Non-goals
 
@@ -283,6 +384,9 @@ This contract does not require:
 - storing the master key inside SQLite;
 - storing large media blobs directly in SQLite;
 - importing third-party service databases into RoomGoblin SQLite;
+- archiving the complete source checkout;
+- archiving Docker images that can be pulled again;
+- preserving stale caches/logs/temp files;
 - removing compatibility-sensitive paths/environment variable names before a safe migration exists;
 - changing stable device/enrollment identifiers for cosmetic rebranding.
 
@@ -292,10 +396,12 @@ Future changes that introduce new persistent application configuration should de
 
 When adding a new persistent file, contributors must classify it as one of:
 
-- binary/large asset;
-- external-service data;
+- binary/large non-regenerable asset;
+- external-service data required for full recovery;
 - host/bootstrap/security-boundary state;
-- temporary/cache data;
+- temporary/cache/regenerable data;
 - migration-only input.
 
 If it is none of those, it should normally be database-backed.
+
+Any non-regenerable state that remains outside SQLite must be added to the Full Recovery Export allowlist/manifest and covered by restore regression tests.
