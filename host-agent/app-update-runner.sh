@@ -234,8 +234,19 @@ if [[ "$ACTION" == revert && -n "$PREVIOUSHUBIMAGE" && -n "$PREVIOUSMAINTENANCEI
   activate_image_id "$PREVIOUSHUBIMAGE" classroom-hub
   activate_image_id "$PREVIOUSMAINTENANCEIMAGE" maintenance-agent
 else
-  write_state building "Building the application and maintenance images for $ACTUAL_VERSION." null
-  docker compose build --pull classroom-hub maintenance-agent
+  IMAGE_TAG="$TARGETREF"
+  HUB_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub:${IMAGE_TAG}"
+  MAINTENANCE_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub-maintenance:${IMAGE_TAG}"
+  write_state building "Pulling immutable CI-built images for $ACTUAL_VERSION." null
+  docker pull "$HUB_IMAGE"
+  docker pull "$MAINTENANCE_IMAGE"
+  if grep -q '^CLASSROOM_CONTROL_HUB_TAG=' .env; then
+    sed -i "s/^CLASSROOM_CONTROL_HUB_TAG=.*/CLASSROOM_CONTROL_HUB_TAG=${IMAGE_TAG}/" .env
+  else
+    printf 'CLASSROOM_CONTROL_HUB_TAG=%s\n' "$IMAGE_TAG" >> .env
+  fi
+  chmod 0600 .env
+  export CLASSROOM_CONTROL_HUB_TAG="$IMAGE_TAG"
 fi
 if [[ "$ACTION" == revert ]]; then
   write_state restoring "Restoring the matching pre-upgrade state before the older application starts." null

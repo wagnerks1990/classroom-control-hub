@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+INSTALL_MODE=pull
+case "${1:-}" in
+  "") ;;
+  --build-local) INSTALL_MODE=build-local ;;
+  --help|-h)
+    echo "Usage: sudo bash install.sh [--build-local]"
+    echo "Default: pull the exact CI-built sha-<commit> images from GHCR."
+    exit 0
+    ;;
+  *) echo "Unknown installer option: $1" >&2; exit 2 ;;
+esac
+
 # GitHub/bootstrap source retrieval remains HTTPS; this does not enable appliance TLS.
 # https://github.com/wagnerks1990/classroom-control-hub
 TARGET="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
@@ -262,12 +274,28 @@ docker run --rm --network host -v "$TARGET:/work:ro" -w /work node:22-bookworm-s
 docker run --rm --network host -v "$TARGET:/work:ro" -w /work node:22-bookworm-slim node tools/validate-controller.js public/controller/index.html
 python3 -m py_compile host-agent/server.py host-agent/start.py
 
-echo "Validating host-network listeners and building appliance components ..."
+echo "Validating host-network listeners ..."
 docker compose config --format json | python3 tools/validate-host-network.py
-docker compose build classroom-hub maintenance-agent
+if [[ "$INSTALL_MODE" == build-local ]]; then
+  echo "Development mode: building appliance images locally ..."
+  docker compose build classroom-hub maintenance-agent
+else
+  [[ -d "$TARGET/.git" ]] || fail "default image installation requires a Git checkout; use --build-local only for deliberate development builds"
+  [[ -z "$(git -C "$TARGET" status --porcelain --untracked-files=no)" ]] || fail "tracked source has local changes; refusing to pair it with a CI image"
+  SOURCE_COMMIT="$(git -C "$TARGET" rev-parse HEAD)"
+  [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "unable to resolve the source commit"
+  IMAGE_TAG="sha-${SOURCE_COMMIT}"
+  HUB_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub:${IMAGE_TAG}"
+  MAINT_IMAGE="ghcr.io/wagnerks1990/classroom-control-hub-maintenance:${IMAGE_TAG}"
+  echo "Pulling validated CI images for ${SOURCE_COMMIT} ..."
+  docker pull "$HUB_IMAGE" || fail "main image is unavailable; wait for Publish Main Images to finish or use --build-local for development"
+  docker pull "$MAINT_IMAGE" || fail "maintenance image is unavailable; wait for Publish Main Images to finish or use --build-local for development"
+  set_env_path CLASSROOM_CONTROL_HUB_TAG "$IMAGE_TAG"
+  export CLASSROOM_CONTROL_HUB_TAG="$IMAGE_TAG"
+fi
 
 echo "Starting maintenance layer ..."
-docker compose up -d --force-recreate maintenance-agent
+docker compose up -d --no-build --force-recreate maintenance-agent
 for _ in $(seq 1 30); do
   if docker compose exec -T maintenance-agent node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/host/agent/health',{headers:{'x-maintenance-token':process.env.MAINTENANCE_TOKEN}}).then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(j=>{if(!j.ok)process.exit(2)})" >/dev/null 2>&1; then break; fi
   sleep 1
@@ -277,7 +305,7 @@ docker compose exec -T maintenance-agent sh -lc 'test -w /managed/classroom-hub/
 docker compose exec -T maintenance-agent sh -lc 'test ! -e /managed/classroom-hub/data/android-tv/devices.json || test -r /managed/classroom-hub/data/android-tv/devices.json' || { echo "Managed Android display inventory is not readable." >&2; exit 1; }
 
 echo "Starting Classroom Control Hub backend (HTTP) ..."
-docker compose up -d --force-recreate --remove-orphans classroom-hub
+docker compose up -d --no-build --force-recreate --remove-orphans classroom-hub
 docker rm -f classroom-control-hub-tls >/dev/null 2>&1 || true
 
 HUB_HEALTH_URL="$(docker compose exec -T classroom-hub node -p "require('./src/network').localHttpUrl(process.env.PORT,process.env.BIND_ADDRESS)+'/health'")"
