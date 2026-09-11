@@ -28,7 +28,7 @@ const RESTORE_MAX_ARCHIVE_BYTES=Math.max(64*1024*1024,Number(process.env.RESTORE
 const BACKUP_DIR=path.join(HUB_ROOT,"data","backups");
 const MASTER_KEY_FILE=String(process.env.MASTER_KEY_FILE||"/run/secrets/classroom-control-hub-master-key");
 const SIGNING_ROOT=path.resolve(process.env.ANDROID_AGENT_SIGNING_ROOT||"/signing");
-const UPLOAD_DIR="/work/uploads";
+const UPLOAD_DIR=path.resolve(process.env.MAINTENANCE_WORK_DIR||"/work/uploads");
 fs.mkdirSync(BACKUP_DIR,{recursive:true,mode:0o700});fs.mkdirSync(UPLOAD_DIR,{recursive:true,mode:0o700});
 for(const dir of [BACKUP_DIR,UPLOAD_DIR])try{fs.chmodSync(dir,0o700)}catch{}
 app.use(express.json({limit:"8mb"}));
