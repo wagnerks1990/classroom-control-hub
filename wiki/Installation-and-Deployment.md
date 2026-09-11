@@ -75,6 +75,11 @@ sudo cp .env.example .env
 sudo bash install.sh
 ```
 
+The supported production installer pulls the exact `sha-<commit>` main and
+maintenance images published after GitHub validation. It does not compile Gradle,
+JitPack, or Node dependencies on the appliance. `sudo bash install.sh --build-local`
+is an explicit development-only escape hatch.
+
 The installer fills blank appliance secrets automatically, preserves the old master key when present, repairs the shared data-root ownership model, restarts the Host Agent, removes obsolete TLS settings/Caddy containers, starts the HTTP-only application, and verifies component convergence.
 
 ## Runtime filesystem invariants
