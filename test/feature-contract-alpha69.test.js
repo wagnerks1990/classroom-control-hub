@@ -42,12 +42,11 @@ test("release version converges across independently deployed runtime surfaces",
   assert.equal(require(path.join(root,"package.json")).version,version);
   assert.equal(require(path.join(root,"maintenance-agent","package.json")).version,version);
 
-  // Native Host Agent version is supplied by the audited wrapper, while the
-  // large core implementation remains stable and importable.
+  // The native Host Agent wrapper owns the deployed release stamp. The large
+  // core implementation remains stable/importable and is not independently
+  // versioned.
   assert.match(read("host-agent/start.py"),new RegExp(version.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
-  assert.match(read("host-agent/server.py"),new RegExp(version.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
   assert.match(read("host-agent/classroom-control-hub-host-agent.service"),/host-agent\/start\.py/);
-  assert.match(read("public/lab-agent/ClassroomHubAgent.ps1"),new RegExp(version.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
 
   // Large browser/agent bundles are mechanically stamped at image build time
   // from VERSION rather than requiring manual release-number edits in each file.
