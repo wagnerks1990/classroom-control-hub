@@ -57,6 +57,14 @@ function ensureSigningIdentity(){
   if(password.length<32)throw Error("Android agent signing password is invalid");
   return password;
 }
+function signApk(unsignedCopy,signedTemp,password){
+  // apksigner treats each file: password source as a consumable stream. Reusing
+  // one single-line password file for both --ks-pass and --key-pass causes the
+  // second read to hit EOF. Use two ephemeral environment-backed sources instead;
+  // this also keeps the password out of argv and avoids weakening file permissions.
+  const env={...process.env,CLASSROOM_HUB_APK_KS_PASS:password,CLASSROOM_HUB_APK_KEY_PASS:password};
+  command("apksigner",["sign","--ks",KEYSTORE,"--ks-key-alias",KEY_ALIAS,"--ks-pass","env:CLASSROOM_HUB_APK_KS_PASS","--key-pass","env:CLASSROOM_HUB_APK_KEY_PASS","--out",signedTemp,unsignedCopy],{env});
+}
 function ensureCurrentArtifact(){
   if(!fs.existsSync(BUNDLE_APK)||!fs.existsSync(BUNDLE_META))throw Error("Maintenance image does not contain the current Android agent build artifact");
   const bundle=json(BUNDLE_META,"Bundled Android agent");
@@ -81,7 +89,7 @@ function ensureCurrentArtifact(){
   const signedTemp=path.join(ROOT,`.ClassroomHub-Display-Agent.signed.${process.pid}.apk`);
   try{
     fs.copyFileSync(BUNDLE_APK,unsignedCopy);fs.chmodSync(unsignedCopy,0o600);
-    command("apksigner",["sign","--ks",KEYSTORE,"--ks-key-alias",KEY_ALIAS,"--ks-pass",`file:${PASSWORD_FILE}`,"--key-pass",`file:${PASSWORD_FILE}`,"--out",signedTemp,unsignedCopy]);
+    signApk(unsignedCopy,signedTemp,password);
     command("apksigner",["verify","--verbose",signedTemp]);
     const signedSha=sha256(signedTemp),signerSha=signerDigest(signedTemp);
     fs.chmodSync(signedTemp,0o660);

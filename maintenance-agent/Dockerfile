@@ -4,6 +4,11 @@ ARG ANDROID_COMMANDLINE_TOOLS=11076708
 ARG GRADLE_VERSION=8.9
 ENV ANDROID_HOME=/opt/android-sdk
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
+# The release APK includes native ADB/Conscrypt libraries and Android's zipflinger
+# can exceed Gradle's small default heap during :app:packageRelease. Keep the
+# build deterministic on GitHub-hosted runners by giving the single-use Gradle
+# JVM enough heap while limiting worker concurrency so total memory stays bounded.
+ENV GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx3072m\ -XX:MaxMetaspaceSize=512m\ -Dfile.encoding=UTF-8 -Dorg.gradle.workers.max=2"
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl unzip ca-certificates \
@@ -22,7 +27,7 @@ RUN apt-get update \
 ENV PATH=/opt/gradle/bin:/opt/android-sdk/build-tools/35.0.0:/opt/android-sdk/cmdline-tools/latest/bin:$PATH
 WORKDIR /android-agent
 COPY agents/android-tv ./
-RUN gradle :app:assembleRelease --no-daemon --stacktrace \
+RUN gradle :app:assembleRelease --no-daemon --stacktrace --max-workers=2 \
  && test -s app/build/outputs/apk/release/app-release-unsigned.apk \
  && BADGING="$(aapt dump badging app/build/outputs/apk/release/app-release-unsigned.apk | head -n1)" \
  && printf '%s\n' "$BADGING" | grep -Fq "package: name='org.classroomhub.display'" \

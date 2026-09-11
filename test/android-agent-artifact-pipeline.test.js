@@ -11,7 +11,9 @@ test("maintenance image builds the current Android agent from repository source"
   const docker=read("maintenance-agent/Dockerfile");
   assert.match(docker,/FROM eclipse-temurin:17-jdk-jammy AS android-agent-build/);
   assert.match(docker,/COPY agents\/android-tv/);
-  assert.match(docker,/gradle :app:assembleRelease/);
+  assert.match(docker,/GRADLE_OPTS=.*-Xmx3072m/);
+  assert.match(docker,/org\.gradle\.workers\.max=2/);
+  assert.match(docker,/gradle :app:assembleRelease --no-daemon --stacktrace --max-workers=2/);
   assert.match(docker,/app-release-unsigned\.apk/);
   assert.match(docker,/aapt dump badging/);
   assert.match(docker,/COPY --from=android-agent-build .*agent-release-unsigned\.apk/);
@@ -30,6 +32,15 @@ test("maintenance compose build sees Android source and keeps persistent signing
   assert.match(compose,/cap_drop:\n\s+- ALL/);
 });
 
+test("hardened host-network smoke mirrors the production Android signing boundary",()=>{
+  const smoke=read("tools/smoke-host-network.sh");
+  assert.match(smoke,/mkdir -p [^\n]*\$work\/signing/);
+  assert.match(smoke,/chmod 0700 [^\n]*\$work\/signing/);
+  assert.match(smoke,/--group-add 10001/);
+  assert.match(smoke,/-v "\$work\/signing:\/signing"/);
+  assert.doesNotMatch(smoke,/chmod (?:0777|777) [^\n]*signing/);
+});
+
 test("maintenance startup signs, verifies and stages the image-matched APK",()=>{
   const extension=read("maintenance-agent/android-tv-agent-artifact.js");
   assert.match(extension,/ensureCurrentArtifact\(\);/);
@@ -43,6 +54,16 @@ test("maintenance startup signs, verifies and stages the image-matched APK",()=>
   assert.doesNotMatch(extension,/console\.(?:log|warn|error)[^\n]*password/i);
   const syntax=spawnSync(process.execPath,["--check",path.join(__dirname,"..","maintenance-agent/android-tv-agent-artifact.js")],{encoding:"utf8"});
   assert.equal(syntax.status,0,syntax.stderr||syntax.stdout);
+});
+
+test("apksigner receives independent environment-backed store and key passwords",()=>{
+  const extension=read("maintenance-agent/android-tv-agent-artifact.js");
+  assert.match(extension,/CLASSROOM_HUB_APK_KS_PASS:password/);
+  assert.match(extension,/CLASSROOM_HUB_APK_KEY_PASS:password/);
+  assert.match(extension,/"--ks-pass","env:CLASSROOM_HUB_APK_KS_PASS"/);
+  assert.match(extension,/"--key-pass","env:CLASSROOM_HUB_APK_KEY_PASS"/);
+  assert.doesNotMatch(extension,/"--ks-pass",`file:\$\{PASSWORD_FILE\}`/);
+  assert.doesNotMatch(extension,/"--key-pass",`file:\$\{PASSWORD_FILE\}`/);
 });
 
 test("artifact API and install flow reject stale artifacts and handle one-time signature transition",()=>{
