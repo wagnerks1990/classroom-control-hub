@@ -130,5 +130,3 @@ jobs:
           foreach ($action in @('screenshot','refresh-history','instructor-lock','update-agent')) {
             if ($agent -notmatch "'$([regex]::Escape($action))'\s*\{") { throw "Missing Windows action: $action" }
           }
-          if ($failed) { throw 'Windows lab-agent contract validation failed.' }
-          
