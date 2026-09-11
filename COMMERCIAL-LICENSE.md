@@ -1,21 +1,9 @@
-# Commercial Licensing
+# Licensing Notice
 
-Classroom Control Hub is available for educational and other noncommercial use
-under the PolyForm Noncommercial License 1.0.0.
+RoomGoblin is licensed under the [MIT License](LICENSE).
 
-A separate written commercial license is required before using Classroom
-Control Hub primarily for commercial advantage or monetary compensation. This
-includes, without limitation:
+The previous PolyForm Noncommercial licensing model and separate commercial-license requirement have been retired. The MIT License permits commercial and noncommercial use, copying, modification, distribution, sublicensing, and sale, subject to the copyright and license notice requirements stated in `LICENSE`.
 
-- selling or licensing the software or a modified version;
-- offering it as a paid hosted or managed service;
-- bundling it into a commercial appliance or product;
-- using it as a material component of a competing commercial product; or
-- charging customers for access to the software itself.
+No separate commercial license from the copyright holder is required for use of the software under the MIT License.
 
-Commercial support, installation, integration, or distribution arrangements
-may be available directly from the copyright holder. Contact
-[Kyle Wagner](https://github.com/wagnerks1990) to discuss written permission.
-
-This document is informational and does not itself grant a commercial license
-or alter the terms in [LICENSE](LICENSE).
+Copyright © 2026 [Kyle Wagner](https://github.com/wagnerks1990).
