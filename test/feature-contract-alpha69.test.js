@@ -94,9 +94,13 @@ test("generated browser action arguments are encoded before entering inline hand
     .filter(file=>file.endsWith(".js")||file.endsWith(".html"))
     .map(file=>`public/controller/${file}`);
   const unsafe=/\bon(?:click|change|input|submit|load|error)\s*=\s*["'][^"']*\$\{(?!inlineJsArg\(|jsArg\()[^}]*(?:\.(?:id|name|url|username|storedName)|esc\(|String\()/gi;
+  const quotedInterpolation=/\bon(?:click|change|input|submit|load|error)\s*=\s*"[^"\n]*'\$\{[^}]+\}'/gi;
   for(const file of files){
     unsafe.lastIndex=0;
-    assert.equal(unsafe.test(read(file)),false,`${file} interpolates unencoded runtime data into an inline event handler`);
+    quotedInterpolation.lastIndex=0;
+    const source=read(file);
+    assert.equal(unsafe.test(source),false,`${file} interpolates unencoded runtime data into an inline event handler`);
+    assert.equal(quotedInterpolation.test(source),false,`${file} quotes a template interpolation directly inside an inline event handler`);
   }
   const controller=read("public/controller/app.js"),lab=read("public/controller/lab.html");
   assert.match(controller,/function inlineJsArg\(v\)\{return `decodeInlineValue\('\$\{encodeInlineValue\(v\)\}'\)`\}/);
