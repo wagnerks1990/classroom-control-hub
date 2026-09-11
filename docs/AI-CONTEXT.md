@@ -10,6 +10,10 @@ This document gives AI assistants a compact operational model of Classroom Contr
 
 Classroom Control Hub is a centralized classroom/lab control platform. It coordinates browser displays, scheduled automations, AV routing, lighting, Morning Announcements, Background Music, class schedules, school-cycle rules, Veyon lab management, diagnostics, backup/recovery, Docker integrations, Android/Google TV managed displays, and host-management functions.
 
+Production installers and semantic-release updates pull exact CI-built GHCR
+images. Do not reintroduce appliance-local builds as the default. Local compilation
+is available only through the explicit `install.sh --build-local` development path.
+
 ## Runtime architecture
 
 ```text
