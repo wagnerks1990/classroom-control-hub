@@ -1,10 +1,16 @@
 # AI and Contributor Operating Contract
 
+## RoomGoblin identity and rebrand contract
+
+The current product is **RoomGoblin — Classroom & Lab Management Hub**. The canonical tagline is **Run the room. Manage the lab.** Read `docs/brand/AI-BRAND-CONTEXT.md` and `docs/ROOMGOBLIN-REBRAND.md` before changing product naming, logos, colors, setup copy, installer copy, managed-device presentation, or documentation.
+
+New user-facing copy must say **RoomGoblin**. Do **not** perform blind source-wide renames of legacy compatibility identifiers. Existing deployments depend on names such as `/opt/classroom-hub`, `CLASSROOM_HUB_*`, `org.classroomhub.display`, `classroom-control-hub*` service/container/image/socket identifiers, persisted storage keys, API contracts, device IDs, enrollment credentials, and ADB trust material. Change one of those only with a separately reviewed migration, rollback path, data-preservation checks, and managed-device compatibility tests.
+
 ## Host-network deployment contract
 
-The Linux Hub and maintenance containers, plus reviewed managed add-on templates, now use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
+The Linux RoomGoblin appliance and maintenance containers, plus reviewed managed add-on templates, use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
 
-This file is the authoritative project context for AI coding assistants and human contributors working on Classroom Control Hub.
+This file is the authoritative project context for AI coding assistants and human contributors working on RoomGoblin.
 
 ## Source of truth
 
@@ -13,17 +19,18 @@ Use the repository on `main` as the source of truth. Read this file before chang
 1. `VERSION` and `CHANGELOG.md`
 2. `README.md`
 3. `docs/AI-CONTEXT.md`
-4. the relevant document under `docs/`
-5. implementation source
-6. `wiki/` as the Git-tracked mirror of the GitHub Wiki
+4. `docs/brand/AI-BRAND-CONTEXT.md`
+5. the relevant document under `docs/`
+6. implementation source
+7. `wiki/` as the Git-tracked mirror of the GitHub Wiki
 
 Do not infer production configuration from public defaults. Site-specific configuration belongs in runtime `.env`, persistent data, mounted secrets, or encrypted application storage.
 
 ## Current baseline
 
-The current review baseline is `1.0.0-alpha.74`.
+The current review baseline is `1.0.0-alpha.75`.
 
-Verified live-test/recovery behaviors at this baseline include:
+Verified live-test/recovery behaviors inherited by this baseline include:
 
 - direct HTTP appliance mode with Caddy/TLS intentionally deferred;
 - SQLite database path reconciliation after alpha.70 left competing database filenames;
@@ -40,7 +47,8 @@ Verified live-test/recovery behaviors at this baseline include:
 - Morning Announcements highest-priority display/audio lock;
 - post-announcement failsafe scheduler resync;
 - Background Music recovery after priority audio;
-- class timer continuation rules and display/client version convergence.
+- class timer continuation rules and display/client version convergence;
+- compatibility-safe RoomGoblin presentation defaults while legacy deployment/device identifiers remain stable.
 
 When a later `VERSION` exists, it supersedes this baseline, but these behavioral invariants must remain covered unless a release deliberately changes them.
 
@@ -66,7 +74,9 @@ service: classroom-hub       container: classroom-control-hub
 service: maintenance-agent   container: classroom-control-hub-maintenance
 ```
 
-Optional Hub-managed add-ons include:
+These identifiers are intentionally legacy-compatible internals, not the current product name.
+
+Optional RoomGoblin-managed add-ons include:
 
 ```text
 mosquitto                 eclipse-mosquitto:2.0.22
@@ -185,9 +195,9 @@ For behavior changes, add targeted regression checks and document what was actua
 
 ## Documentation contract
 
-Changes that alter architecture, configuration, installation, operations, recovery, APIs, or user-visible behavior must update the corresponding file in `docs/` and, when relevant, the matching page in `wiki/`.
+Changes that alter architecture, configuration, installation, operations, recovery, APIs, branding, or user-visible behavior must update the corresponding file in `docs/` and, when relevant, the matching page in `wiki/`.
 
-`wiki/` is the repository mirror of the GitHub Wiki. Keep it synchronized with the actual Wiki after documentation changes.
+`wiki/` is the repository mirror of the GitHub Wiki. Keep it synchronized with the actual Wiki after documentation changes. Branding changes must also update `docs/brand/AI-BRAND-CONTEXT.md` when they change how future assistants should work.
 
 ## Security
 

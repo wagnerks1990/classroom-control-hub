@@ -1,0 +1,8 @@
+:root{--rg-goblin-teal:#0F766E;--rg-electric-green:#22C55E;--rg-slate-navy:#1E293B;--rg-learning-amber:#F59E0B;--rg-cloud-gray:#E5E7EB;--rg-mint-glow:#D1FAE5;--rg-ink:#F8FAFC;--rg-deep-navy:#0B1320;--brand-primary:var(--rg-goblin-teal);--brand-accent:var(--rg-electric-green);--brand-background:var(--rg-deep-navy);--brand-surface:var(--rg-slate-navy);--brand-text:var(--rg-ink)}
+html[data-product="roomgoblin"] body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+html[data-product="roomgoblin"] h1,html[data-product="roomgoblin"] h2,html[data-product="roomgoblin"] h3,html[data-product="roomgoblin"] .brand{font-family:Poppins,Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+html[data-product="roomgoblin"] .brandWrap .logo{border-radius:14px;background:#fff;box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+html[data-product="roomgoblin"] .brandWrap .logo img{object-fit:contain}
+html[data-product="roomgoblin"] nav button.active{border-color:rgba(34,197,94,.50);background:linear-gradient(180deg,rgba(15,118,110,.34),rgba(34,197,94,.10))}
+html[data-product="roomgoblin"] .primary,html[data-product="roomgoblin"] .on{border-color:rgba(34,197,94,.52)!important;background:linear-gradient(180deg,rgba(15,118,110,.50),rgba(34,197,94,.14))!important}
+html[data-product="roomgoblin"] a{color:#6EE7B7}html[data-product="roomgoblin"] code{color:var(--rg-mint-glow)}html[data-product="roomgoblin"] :focus-visible{outline-color:var(--rg-electric-green)!important}

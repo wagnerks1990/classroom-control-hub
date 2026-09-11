@@ -1,11 +1,14 @@
-# Classroom Control Hub Wiki
+# RoomGoblin Wiki
 
-Classroom Control Hub is a centralized classroom automation and control platform for displays, AV routing, lighting, media, live announcements, Background Music, schedules, lab infrastructure, and appliance integration management.
+**RoomGoblin — Classroom & Lab Management Hub** is a centralized classroom and lab management platform for displays, AV routing, lighting, media, live announcements, Background Music, schedules, lab infrastructure, managed displays, and appliance integration management.
 
-> **Status:** `1.0.0-alpha.74` — stable URL display access and clean-worktree updates.
+*Run the room. Manage the lab.*
+
+> **Status:** `1.0.0-alpha.75` — alpha software; RoomGoblin branding is being introduced while preserving the deployed compatibility contract.
 
 ## Start here
 
+- [RoomGoblin Brand and Compatibility](RoomGoblin-Brand-and-Compatibility)
 - [Architecture](Architecture)
 - [Installation and Deployment](Installation-and-Deployment)
 - [Configuration](Configuration)
@@ -38,20 +41,23 @@ Alpha.71 includes:
 
 ## Project principles
 
-1. Site-specific configuration stays outside the application source.
-2. Persistent runtime data must survive container replacement and Git upgrades.
-3. The configured active SQLite database must never silently switch to a stale alternate file during recreation.
-4. Built-in authorization profiles must remain complete; explicit profiles fail closed.
-5. Morning Announcements are a priority system and may preempt normal display/audio automation.
-6. When announcements end, current scheduler state is re-evaluated rather than restoring stale display snapshots.
-7. Background Music is independent of visual automation and yields to priority audio.
-8. Classroom schedules, cycle days, delays, half days, remote days, and closures are first-class scheduling inputs.
-9. Host-level management remains separated from the main web container through the authenticated Host Agent.
-10. Existing Docker services can be adopted without recreation; new container creation remains limited to reviewed supported integration templates.
-11. Optional/slow hardware integrations must not block the initial controller Overview screen.
-12. Integration health is independent; one failed integration must not falsely mark unrelated integrations offline.
+1. RoomGoblin is the canonical current product name; legacy Classroom Control Hub identifiers remain only where compatibility or history requires them.
+2. Site-specific configuration stays outside the application source.
+3. Persistent runtime data must survive container replacement and Git upgrades.
+4. The configured active SQLite database must never silently switch to a stale alternate file during recreation.
+5. Built-in authorization profiles must remain complete; explicit profiles fail closed.
+6. Morning Announcements are a priority system and may preempt normal display/audio automation.
+7. When announcements end, current scheduler state is re-evaluated rather than restoring stale display snapshots.
+8. Background Music is independent of visual automation and yields to priority audio.
+9. Classroom schedules, cycle days, delays, half days, remote days, and closures are first-class scheduling inputs.
+10. Host-level management remains separated from the main web container through the authenticated Host Agent.
+11. Existing Docker services can be adopted without recreation; new container creation remains limited to reviewed supported integration templates.
+12. Optional/slow hardware integrations must not block the initial controller Overview screen.
+13. Integration health is independent; one failed integration must not falsely mark unrelated integrations offline.
 
 ## Deployment model
+
+The following internal names are retained intentionally for upgrade compatibility:
 
 ```text
 Ubuntu host
@@ -75,4 +81,4 @@ music-assistant-server     ghcr.io/music-assistant/server:2.9.13
 
 Source repository: https://github.com/wagnerks1990/classroom-control-hub
 
-The repository `docs/` directory is the canonical technical documentation set. `wiki/` is the Git-tracked mirror of this GitHub Wiki. AI coding assistants should read `AGENTS.md` and `docs/AI-CONTEXT.md` before modifying the project.
+The repository `docs/` directory is the canonical technical documentation set. `wiki/` is the Git-tracked mirror of this GitHub Wiki. AI coding assistants should read `AGENTS.md`, `docs/AI-CONTEXT.md`, and `docs/brand/AI-BRAND-CONTEXT.md` before modifying the project.

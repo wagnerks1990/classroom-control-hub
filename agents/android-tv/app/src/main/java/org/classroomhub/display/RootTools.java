@@ -36,7 +36,7 @@ final class RootTools {
 
     static JSONObject run(Context context,String command) throws Exception {
         SharedPreferences prefs=HubStorage.prefs(context);
-        if(!prefs.getBoolean("allow_root_tools",false))throw new SecurityException("Root tools are disabled by Classroom Hub policy");
+        if(!prefs.getBoolean("allow_root_tools",false))throw new SecurityException("Root tools are disabled by RoomGoblin policy");
         if(command==null||command.trim().isEmpty()||command.length()>4096)throw new IllegalArgumentException("Invalid root command");
         Process p=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
         BufferedReader reader=new BufferedReader(new InputStreamReader(p.getInputStream()));StringBuilder out=new StringBuilder();String line;

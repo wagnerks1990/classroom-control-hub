@@ -61,7 +61,7 @@ object NativeSendspinManager {
                 prefs.edit().putString(PREF_CLIENT_ID, clientId).apply()
             }
             val name = prefs.getString(PREF_NAME, "")?.trim().takeUnless { it.isNullOrEmpty() }
-                ?: "Classroom Hub ${Build.MODEL}"
+                ?: "RoomGoblin ${Build.MODEL}"
             val preferences = ClientPreferences(
                 supportedFormats = listOf(AudioFormat("pcm", 2, 48_000, 16)),
                 artworkChannels = emptyList(),
