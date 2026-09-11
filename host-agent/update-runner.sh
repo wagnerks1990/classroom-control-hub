@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 STATE_DIR=/var/lib/classroom-hub
 STATE_FILE="$STATE_DIR/update-status.json"
-LOCK_FILE=/run/classroom-control-hub-host-update.lock
+LOCK_FILE=/run/classroom-control-hub-appliance-mutation.lock
 HUB_ROOT="${CLASSROOM_HUB_DIR:-/opt/classroom-hub}"
 mkdir -p "$STATE_DIR"
 write_state(){

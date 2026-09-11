@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.0.0-alpha.80 - 2026-09-11
+
+### Single-export full recovery
+
+- Added passphrase-encrypted, authenticated `.rgbak` Full Recovery Export and
+  clean-install Import Full Recovery orchestration for the active database and
+  master key, application assets, Android inventory/ADB trust and signing
+  identity, allowlisted managed-service state, and bounded native Veyon identity.
+- Defined the recovery envelope as AES-256-GCM with per-export random salt and
+  nonce, scrypt `N=32768/r=8/p=1`, authenticated canonical metadata, bounded
+  input, and explicit passphrase length rules. Recovery secrets are no longer
+  exported as a plaintext portable ZIP.
+- Restricted passphrase-bearing browser operations to loopback or HTTPS so the
+  temporary direct-HTTP LAN deployment cannot expose a recovery passphrase in
+  transit.
+- Added host-owned staging, a shared update/recovery mutation lock, complete
+  safety snapshots, durable transaction journaling, interrupted-restore
+  recovery, atomic per-root replacement, verification, and all-state rollback.
+- Snapshotted the application-reported active database, normalized its target
+  identity to `/app/data/classroom-control-hub.db`, reconciled the target
+  `DATABASE_FILE`, and required successful SQLite integrity/schema checks plus
+  decryption of every `secret_store` row before accepting the recovered
+  database/master-key pair.
+- Restored the named ADB volume as part of the ADB trust identity, preserved
+  managed-device assignments without re-pairing, and treated Android signing
+  keystore/password as one indivisible identity.
+- Recreated only explicitly RoomGoblin-owned services with fixed reviewed image
+  identities, preserved their saved running/stopped state, and failed closed on
+  adopted/external ownership or same-name collisions.
+- Added bounded native Veyon identity recovery without exposing an arbitrary
+  host-filesystem restore surface.
+- Added corruption, authentication, path/type/mode/ownership, capacity,
+  lifecycle, restart, rollback, and interruption regression coverage plus an
+  operator disaster-recovery drill.
+
 ## 1.0.0-alpha.79 - 2026-09-11
 
 ### Production readiness

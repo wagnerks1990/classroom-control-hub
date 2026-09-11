@@ -141,7 +141,8 @@ test("application updater force-recreates maintenance so new persistent mounts a
   assert.match(compose,/classroom-hub-android-adb:\/managed\/classroom-hub\/data\/android-tv\/\.android/);
   assert.match(runner,/docker compose up -d --no-build --force-recreate --remove-orphans maintenance-agent classroom-hub/);
   assert.match(runner,/adb_storage_check\(\)/);
-  assert.match(runner,/test -w \/managed\/classroom-hub\/data\/android-tv\/\.android/);
+  assert.match(runner,/docker volume inspect classroom-control-hub-android-adb/);
+  assert.match(runner,/test -r \/managed\/classroom-hub\/data\/android-tv\/\.android/);
 });
 
 test("installer never changes tracked updater modes in the production checkout", () => {

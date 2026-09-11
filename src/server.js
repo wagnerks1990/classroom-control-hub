@@ -23,6 +23,7 @@ const AdmZip = require("adm-zip");
 const {ClassroomHubStorage,keyForFile} = require("./storage");
 const {applicationVersion}=require("./version");
 const {secureTokenEqual,capabilitiesFor,hasCapability:profileHasCapability}=require("./security");
+const {recoveryTransportAllowed,validRecoveryId,boundedRecoveryStatus}=require("./recovery-transport-policy");
 const {defaultSchoolScheduleProfile,legacySchoolScheduleProfile,normalizeSchoolScheduleProfile,effectiveTimesForRule,groupForCycleDay,validTime}=require("./school-schedule");
 
 // -----------------------------------------------------------------------------
@@ -4397,11 +4398,12 @@ app.use((req,res,next)=>{
     if(!req.path.startsWith("/api/"))return;
     const isFramebuffer=req.path.includes("/api/v1/veyon/computers/")&&req.path.endsWith("/framebuffer");
     const transientFramebuffer=isFramebuffer&&[409,429,502,503,504].includes(res.statusCode);
+    const auditPath=req.path.startsWith("/api/v1/recovery-status/")?"/api/v1/recovery-status/:recoveryId":req.path;
     const event={
       kind:transientFramebuffer?"veyon.framebuffer.unavailable":(res.statusCode>=400?"api.error":"api.request"),
       severity:transientFramebuffer?"warning":(res.statusCode>=400?"error":"info"),
       method:req.method,
-      path:req.path,
+      path:auditPath,
       status:res.statusCode,
       durationMs:Date.now()-started,
       remote:clientAddress(req)||null,
@@ -4497,6 +4499,44 @@ async function maintenanceAgentApi(method,pathName,body=null,timeoutMs=30000){
   if(!MAINTENANCE_TOKEN)throw Error("Maintenance agent is not configured");const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{const response=await fetch(MAINTENANCE_URL+pathName,{method,headers:{"x-maintenance-token":MAINTENANCE_TOKEN,...(body==null?{}:{"content-type":"application/json"})},body:body==null?undefined:JSON.stringify(body),signal:controller.signal});const text=await response.text();let value;try{value=JSON.parse(text||"{}")}catch{value={error:text}}if(!response.ok)throw Error(value.error||`Maintenance agent HTTP ${response.status}`);return value}finally{clearTimeout(timer)}
 }
+
+function fullRecoveryTransportRequired(req){
+  const pathName=String(req.path||"");
+  if(req.method==="POST"&&pathName==="/backup/create")return req.body?.scope==="full";
+  if(req.method==="POST"&&pathName==="/backup/import")return true;
+  if(req.method==="POST"&&pathName.endsWith("/restore-plan"))return req.body?.passphrase!==undefined;
+  if(req.method==="POST"&&pathName.endsWith("/restore"))return req.body?.mode==="full-recovery";
+  if(req.method==="GET"&&/\/backup\/[^/]+\.rgbak$/i.test(pathName))return true;
+  return false;
+}
+function requireFullRecoveryTransport(req,res,next){
+  if(!fullRecoveryTransportRequired(req))return next();
+  const policy=recoveryTransportAllowed(req,{trustProxyHops:TRUST_PROXY_HOPS});
+  if(policy.allowed)return next();
+  audit({kind:"security.recovery.transport-blocked",remote:clientAddress(req),method:req.method,path:req.path});
+  return res.status(426).json({ok:false,error:"Encrypted full recovery requires HTTPS or a browser running directly on the RoomGoblin host."});
+}
+
+app.get("/api/v1/admin/recovery-transport",requireAdmin,(req,res)=>{
+  const policy=recoveryTransportAllowed(req,{trustProxyHops:TRUST_PROXY_HOPS});
+  res.setHeader("Cache-Control","no-store");
+  res.json({ok:true,allowed:policy.allowed,encrypted:policy.encrypted,loopback:policy.loopback,minimumPassphraseLength:16});
+});
+
+// A completed restore can invalidate the administrator session or briefly restart
+// the main service. Possession of the high-entropy recovery id grants access only
+// to this deliberately bounded status projection; the id is redacted from audits.
+app.get("/api/v1/recovery-status/:recoveryId",async(req,res)=>{
+  const recoveryId=String(req.params.recoveryId||"");
+  res.setHeader("Cache-Control","no-store, max-age=0");
+  if(!validRecoveryId(recoveryId))return res.status(404).json({ok:false,error:"Recovery status not found"});
+  try{
+    const upstream=await maintenanceAgentApi("GET","/recovery/full/job",null,10000);
+    const status=boundedRecoveryStatus(upstream,recoveryId);
+    if(!status)return res.status(404).json({ok:false,error:"Recovery status not found"});
+    return res.json(status);
+  }catch{return res.status(503).json({ok:false,error:"Recovery status is temporarily unavailable"})}
+});
 function recordUpdateJob(job){if(!job?.phase)return;const history=dbStore.getPreference("updates.history",[])||[],key=[job.updatedAt,job.phase,job.targetCommit].join(":");if(history.some(x=>x.key===key))return;history.unshift({key,at:job.updatedAt||new Date().toISOString(),phase:job.phase,ok:job.ok??null,message:job.message||"",action:job.action||"",targetRef:job.targetRef||"",previousVersion:job.previousVersion||"",activeVersion:job.activeVersion||"",backupName:job.backupName||"",rollback:job.rollback??false});dbStore.setPreference("updates.history",history.slice(0,100))}
 app.get("/api/v1/admin/app-updates/settings",requireAdmin,(_req,res)=>res.json({ok:true,settings:updatePolicy(),tokenConfigured:dbStore.hasSecret("github.update.token"),currentVersion:APPLICATION_VERSION,history:dbStore.getPreference("updates.history",[])||[]}));
 app.put("/api/v1/admin/app-updates/settings",requireAdmin,(req,res)=>{try{const current=updatePolicy(),repository=String(req.body?.repository||current.repository).trim(),channel=String(req.body?.channel||current.channel);if(!validUpdateRepository(repository))throw Error(`Updates are restricted to the trusted repository ${TRUSTED_UPDATE_REPOSITORY}`);if(!["alpha","beta","stable"].includes(channel))throw Error("Invalid release channel");const next={...current,repository:TRUSTED_UPDATE_REPOSITORY,channel,automatic:req.body?.automatic===true,checkIntervalHours:Math.max(1,Math.min(168,Number(req.body?.checkIntervalHours)||24)),maintenanceStart:String(req.body?.maintenanceStart||current.maintenanceStart),maintenanceEnd:String(req.body?.maintenanceEnd||current.maintenanceEnd)};if(!validTime(next.maintenanceStart)||!validTime(next.maintenanceEnd))throw Error("Maintenance window times must use valid HH:MM values");dbStore.setPreference("updates.policy",next);if(req.body?.clearToken===true)dbStore.deleteSecret("github.update.token");else if(req.body?.token)dbStore.putSecret("github.update.token",String(req.body.token),{type:"github-release-read-token",repository:TRUSTED_UPDATE_REPOSITORY});audit({kind:"admin.updates.settings",repository:TRUSTED_UPDATE_REPOSITORY,channel,automatic:next.automatic,tokenCleared:req.body?.clearToken===true});res.json({ok:true,settings:updatePolicy(),tokenConfigured:dbStore.hasSecret("github.update.token")})}catch(e){res.status(400).json({ok:false,error:e.message})}});
@@ -4510,14 +4550,18 @@ async function automaticUpdateTick(){const policy=updatePolicy();if(!policy.auto
 const automaticUpdateTimer=setInterval(()=>automaticUpdateTick(),15*60*1000);automaticUpdateTimer.unref();setTimeout(()=>automaticUpdateTick(),60*1000).unref();
 async function synchronizeUpdateJob(){try{recordUpdateJob(await maintenanceAgentApi("GET","/app-updates/job"))}catch{}}
 const updateJobSyncTimer=setInterval(()=>synchronizeUpdateJob(),60*1000);updateJobSyncTimer.unref();setTimeout(()=>synchronizeUpdateJob(),15*1000).unref();
-app.use("/api/v1/maintenance", requireAdmin, (req,res)=>{
+app.use("/api/v1/maintenance", requireAdmin, requireFullRecoveryTransport, (req,res)=>{
   if(!MAINTENANCE_PROXY_ENABLED)return res.status(503).json({ok:false,error:"Privileged maintenance proxy is disabled during stabilization"});
   if(!MAINTENANCE_TOKEN)return res.status(503).json({ok:false,error:"Maintenance agent is not configured"});
+  // This callback is exclusively for the native Host Agent during its locked
+  // recovery transaction. Never expose it through the administrator proxy.
+  if(req.path==="/recovery/reconcile-services")return res.status(404).json({ok:false,error:"Not found"});
   let target;
   try{target=new URL(MAINTENANCE_URL + req.originalUrl.replace(/^\/api\/v1\/maintenance/,""))}
   catch(err){return res.status(500).json({ok:false,error:`Invalid maintenance URL: ${err.message}`})}
   const headers={...req.headers,host:target.host,"x-maintenance-token":MAINTENANCE_TOKEN};
   delete headers["content-length"];
+  delete headers.cookie;
   delete headers["x-control-token"];
   let buffered=null;
   const contentType=String(req.headers["content-type"]||"");

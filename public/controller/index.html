@@ -118,6 +118,9 @@ button:disabled{cursor:not-allowed;opacity:.5;filter:saturate(.35)}
 .danger,.off{color:#ffdcdc!important;border-color:rgba(220,98,98,.48)!important;background:var(--dangerBg)!important}
 .muted{color:var(--muted);font-size:13px}
 .status{font-size:13px}.ok{color:#77dfa4}.bad{color:#ff9696}
+.recoveryForm{display:grid;gap:10px;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:14px;background:rgba(0,0,0,.18)}
+.recoveryForm label{display:grid;gap:5px;font-size:13px;font-weight:700}.recoveryForm input{width:100%}
+.recoveryStatus{min-height:48px;padding:10px;border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.28);white-space:pre-wrap}
 .pill{
   display:inline-block;padding:4px 9px;border-radius:999px;
   border:1px solid var(--border);background:rgba(0,0,0,.28);
@@ -269,7 +272,7 @@ nav button{min-width:135px}
       </div>
       <div>
         <div class="brand" id="brandProductName">Room<span class="green">Goblin</span></div>
-        <div class="ver"><span id="brandSite">RoomGoblin</span> • <span id="brandVersion">v1.0.0-alpha.79</span></div>
+        <div class="ver"><span id="brandSite">RoomGoblin</span> • <span id="brandVersion">v1.0.0-alpha.80</span></div>
         <div class="brandStatus">
           <div id="brandDateTime">Loading date/time…</div>
           <div id="brandCycle">Loading school cycle…</div>
@@ -1113,12 +1116,32 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   <div class="grid2" style="align-items:start">
     <div class="panel">
       <h2 class="sectionTitle">Full Recovery Export</h2>
-      <div>A single portable archive containing the current SQLite database, RoomGoblin data and assets, managed-service state, and protected recovery secrets such as the encryption master key.</div>
-      <div class="bad" style="margin-top:8px"><b>Highly sensitive:</b> this export can reconstruct the appliance. Store it encrypted, restrict access, and never attach it to a support ticket.</div>
-      <div class="toolbar" style="margin:12px 0"><button class="primary" onclick="createFullRecoveryExport()">Create & Download Full Recovery Export</button><button onclick="loadManagedBackups()">Refresh Backup List</button></div>
+      <div>A single encrypted <code>.rgbak</code> bundle containing the current SQLite database, RoomGoblin data and assets, managed-service state, and protected recovery secrets such as the encryption master key.</div>
+      <div class="bad" style="margin-top:8px"><b>Protect the passphrase:</b> RoomGoblin cannot recover it. Full recovery is available only over HTTPS or from a browser running directly on this server.</div>
+      <form id="fullRecoveryExportForm" class="recoveryForm" onsubmit="createFullRecoveryExport(event)" autocomplete="off">
+        <label>Encryption passphrase <input id="fullRecoveryExportPassphrase" type="password" minlength="16" maxlength="1024" autocomplete="new-password" required aria-describedby="fullRecoveryExportHelp"></label>
+        <label>Confirm passphrase <input id="fullRecoveryExportConfirm" type="password" minlength="16" maxlength="1024" autocomplete="new-password" required></label>
+        <div id="fullRecoveryExportHelp" class="muted">Use at least 16 characters. The passphrase is used only for this request and is never saved by the browser.</div>
+        <div class="toolbar"><button id="fullRecoveryExportButton" class="primary" type="submit">Create &amp; Download Encrypted Recovery Bundle</button><button type="button" onclick="loadManagedBackups()">Refresh Backup List</button></div>
+      </form>
+      <h3 class="sectionTitle" style="margin-top:18px">Import a Full Recovery Bundle</h3>
+      <form id="fullRecoveryImportForm" class="recoveryForm" onsubmit="importFullRecoveryBundle(event)" autocomplete="off">
+        <label>Encrypted recovery bundle <input id="fullRecoveryImportFile" type="file" accept=".rgbak,application/octet-stream" required></label>
+        <label>Bundle passphrase <input id="fullRecoveryImportPassphrase" type="password" minlength="16" maxlength="1024" autocomplete="off" required></label>
+        <button id="fullRecoveryImportButton" class="primary" type="submit">Import &amp; Verify Bundle</button>
+      </form>
+      <div id="fullRecoveryRestorePanel" class="recoveryForm" hidden>
+        <div><b id="fullRecoveryRestoreName">No bundle selected</b></div>
+        <div id="fullRecoveryPlan" class="muted">Unlock a bundle to verify its recovery plan.</div>
+        <label>Bundle passphrase <input id="fullRecoveryRestorePassphrase" type="password" minlength="16" maxlength="1024" autocomplete="off"></label>
+        <button id="fullRecoveryVerifyButton" type="button" onclick="verifySelectedFullRecovery()">Unlock &amp; Verify Recovery Plan</button>
+        <label>Type <code>RESTORE_FULL_RECOVERY</code> to confirm <input id="fullRecoveryConfirmation" type="text" autocomplete="off" spellcheck="false"></label>
+        <button id="fullRecoveryRestoreButton" class="danger" type="button" onclick="startFullRecovery()">Start Full Recovery</button>
+      </div>
+      <div id="fullRecoveryStatus" class="recoveryStatus muted" role="status" aria-live="polite" aria-atomic="true" style="margin-top:12px">No full recovery operation is running.</div>
       <details class="advanced" style="margin:10px 0"><summary>Advanced and support exports</summary><div class="muted" style="margin:8px 0">These narrower exports are optional. A complete appliance recovery must not require combining them.</div><div class="toolbar"><select id="backupScope"><option value="configuration">Settings — database snapshot</option><option value="quick">Application files — no database/runtime data</option><option value="operational" selected>Operational — database, current data, managed services</option><option value="diagnostic">Support Diagnostic — metadata only</option></select><button onclick="createManagedBackup()">Create Selected Export</button></div></details>
       <h3 class="sectionTitle" style="margin-top:18px">Restore a Server-Stored Backup</h3>
-      <div class="muted">The restore actions below apply only to archives already listed on this appliance and currently restore the database or RoomGoblin application data. Browser upload/import and complete clean-host restoration of recovery secrets and managed-service state are not implemented in this controller yet.</div>
+      <div class="muted">Legacy ZIP backups retain their database/data restore actions. Encrypted <code>.rgbak</code> bundles must be unlocked with their passphrase before full recovery can begin.</div>
       <div id="managedBackups" class="scroll">Loading…</div>
     </div>
     <div class="panel">
@@ -1146,7 +1169,7 @@ curl -s http://localhost:3000/api/v1/veyon/connections | jq</pre>
   </div>
 </section>
 <div class="footerBrand" data-kyle-attribution="true">
-  <span><b id="footerSiteName">RoomGoblin</b> • <span id="footerProductName">RoomGoblin</span> v1.0.0-alpha.79</span>
+  <span><b id="footerSiteName">RoomGoblin</b> • <span id="footerProductName">RoomGoblin</span> v1.0.0-alpha.80</span>
   <span>CLASSROOM READY</span>
   <span>Built by <a href="https://github.com/wagnerks1990" target="_blank" rel="author noopener noreferrer">Kyle Wagner</a></span>
 </div>

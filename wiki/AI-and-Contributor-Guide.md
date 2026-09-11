@@ -14,11 +14,15 @@ AI coding assistants and contributors should treat the GitHub repository `main` 
 
 ## Current baseline
 
-The current production-readiness review baseline is `1.0.0-alpha.79`.
+The current production-readiness review baseline is `1.0.0-alpha.80`.
 
 Critical invariants:
 
-- The appliance is temporarily HTTP-only and restricted to a trusted classroom/admin LAN; Caddy/TLS is intentionally deferred.
+- The appliance is temporarily HTTP-only for ordinary administration and restricted to a trusted classroom/admin LAN; Caddy/TLS is intentionally deferred. Full Recovery passphrases require loopback or HTTPS terminated by a same-host loopback reverse proxy.
+- Full Recovery uses one AES-256-GCM `.rgbak` envelope with scrypt `N=32768/r=8/p=1`, random salt/nonce, authenticated canonical metadata and bounded payloads.
+- Maintenance stages only authenticated allowlisted state; the Host Agent owns final paths/permissions, takes a complete safety snapshot, journals the transaction durably and rolls every changed root back after failure or interruption.
+- Database/master key, ADB trust/named volume and Android signing identity are indivisible recovery sets; every encrypted database secret must decrypt before acceptance.
+- Only explicit RoomGoblin-owned service state with its fixed reviewed image identity may be recreated. Adopted/external collisions fail closed and owned stopped services remain stopped.
 - `DATABASE_FILE` is authoritative. Installer migrations take SQLite-safe backups of every database, stop the app before active-database canonicalization, validate with `PRAGMA quick_check`, and preserve the prior file for rollback.
 - Explicit access profiles fail closed. Built-in profiles with missing/empty capability arrays are repaired without overwriting valid custom lists; Administrator resolves to `capabilities:["*"]`.
 - Passwords are opaque strings; punctuation such as `!` and `#` must survive browser/API/scrypt paths and shell troubleshooting must quote credentials safely.

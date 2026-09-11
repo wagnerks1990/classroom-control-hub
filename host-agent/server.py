@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-import hmac, json, os, re, shutil, socketserver, subprocess, threading, urllib.parse
+import hmac, json, os, re, shutil, socketserver, subprocess, threading, urllib.parse, sys
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, timezone
 
-VERSION = "1.0.0-alpha.79"
+VERSION = "1.0.0-alpha.80"
 SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-control-hub/host-agent.sock")
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
 
@@ -134,6 +134,13 @@ SERVICES_ROOT=Path(os.environ.get('HOST_SERVICES_DIR',os.environ.get('CLASSROOM_
 DOCKER_NAME_RE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
 MANAGED_CONTAINERS={'classroom-control-hub','classroom-control-hub-maintenance','classroom-control-hub-tls','mosquitto','govee2mqtt','music-assistant-server','nodered','portainer'}
 MANAGED_IMAGES={'eclipse-mosquitto:2.0.22','ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72','nodered/node-red:4.1.14-22','ghcr.io/music-assistant/server:2.9.13'}
+
+# Imported after the path/environment constants above are resolved so the
+# manager and existing Host Agent share exactly the same roots and runner.
+_HOST_AGENT_DIR=str(Path(__file__).resolve().parent)
+if _HOST_AGENT_DIR not in sys.path: sys.path.insert(0,_HOST_AGENT_DIR)
+from full_recovery import FullRecoveryManager
+FULL_RECOVERY = FullRecoveryManager(run, hub_root=HUB_ROOT, services_root=SERVICES_ROOT)
 
 def normalize_restored_data(body):
     if str(body.get('confirm') or '')!='NORMALIZE_RESTORED_DATA': raise RuntimeError('Explicit NORMALIZE_RESTORED_DATA confirmation required')
@@ -408,6 +415,7 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/updates': return self.send_json(200,{"ok":True,**update_details(),"job":update_job_status(False)})
             if path=='/updates/job': return self.send_json(200,{"ok":True,**update_job_status(True)})
             if path=='/app-updates/job': return self.send_json(200,{"ok":True,**app_update_job_status(True)})
+            if path=='/recovery/full/job': return self.send_json(200,{"ok":True,**FULL_RECOVERY.status()})
             if path=='/cleanup/migration-snapshots':
                 items=migration_snapshots(); return self.send_json(200,{"ok":True,"items":items,"count":len(items)})
             return self.send_json(404,{"ok":False,"error":"Not found"})
@@ -431,6 +439,11 @@ class Handler(BaseHTTPRequestHandler):
                 body=self.body(); return self.send_json(200,managed_docker(body.get('args'),str(body.get('cwd') or '')))
             if path=='/recovery/normalize-data':
                 return self.send_json(200,normalize_restored_data(self.body()))
+            if path=='/recovery/full/start':
+                result=FULL_RECOVERY.start(self.body())
+                try: self.send_json(202,result)
+                finally: FULL_RECOVERY.release_handoff(result['recoveryId'])
+                return
             if path=='/cleanup/migration-retention':
                 body=self.body()
                 if str(body.get('confirm') or '')!='PRUNE_MIGRATIONS': return self.send_json(400,{"ok":False,"error":"Explicit PRUNE_MIGRATIONS confirmation required"})
@@ -471,6 +484,7 @@ class UnixHTTPServer(socketserver.UnixStreamServer):
     allow_reuse_address=True
 
 if __name__=='__main__':
+    FULL_RECOVERY.startup_recover()
     Path(SOCKET_PATH).parent.mkdir(parents=True,exist_ok=True)
     try: os.unlink(SOCKET_PATH)
     except FileNotFoundError: pass

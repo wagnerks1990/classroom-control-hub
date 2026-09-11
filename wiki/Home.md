@@ -4,7 +4,7 @@
 
 *Run the room. Manage the lab.*
 
-> **Status:** `1.0.0-alpha.79` — alpha software; production deployment remains limited to reviewed, backed-up `amd64` installations on trusted networks.
+> **Status:** `1.0.0-alpha.80` — alpha software; production deployment remains limited to reviewed, backed-up `amd64` installations. Recovery passphrases require loopback or HTTPS through a same-host proxy even when ordinary administration uses trusted-LAN HTTP.
 
 ## Start here
 
@@ -22,7 +22,18 @@
 
 ## Current verified baseline
 
-Alpha.79 retains the recovery invariants established in alpha.71 and adds:
+Alpha.80 retains the recovery invariants established in alpha.71/alpha.79 and adds:
+
+- one passphrase-encrypted/authenticated `.rgbak` Full Recovery Export and
+  clean-host import for the database/key, assets, Android/ADB/signing identity,
+  allowlisted service state, and bounded native Veyon identity;
+- host-owned staging, complete safety snapshots, a shared update/recovery lock,
+  durable transaction journaling, full verification and all-state rollback;
+- strict RoomGoblin-owned versus adopted/external service reconciliation; and
+- clean-host, corruption/authentication, ownership, lifecycle, capacity,
+  restart and interruption recovery gates.
+
+Alpha.79 added:
 
 - canonical RoomGoblin source and GHCR publication with dual-published legacy image aliases;
 - full validation-matrix gating before immutable images publish;

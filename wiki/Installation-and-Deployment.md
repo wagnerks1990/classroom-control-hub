@@ -57,6 +57,32 @@ The HTTPS command above is only for securely downloading the bootstrap from GitH
 
 The bootstrap generates unique appliance credentials, verifies the running components, and prints the first-time administrator setup URL. It refuses to replace an existing deployment by default; use the controller's update/revert workflow for an installed appliance.
 
+## Clean-host full recovery
+
+Install a compatible release normally, establish administrator access, then use
+**Infrastructure & Recovery → Import Full Recovery** to restore one encrypted
+`.rgbak`. Submit its separately stored 16-character-or-longer passphrase only
+through loopback or HTTPS terminated by a same-host loopback reverse proxy; never through the temporary
+direct-HTTP LAN URL.
+
+For the same-host TLS proxy, configure its exact `TRUST_PROXY_HOPS` value and firewall
+direct client access to port 3000. Otherwise a client could bypass the proxy and
+forge forwarded transport headers. Leave the value at `0` for direct/loopback
+deployments.
+
+The operation stages beneath `${HOST_BACKUP_DIR}/recovery-staging`, serializes
+against application updates, takes a complete safety snapshot and maintains a
+durable Host Agent journal until commit and verification finish. Preserve this
+state after any failure so automatic rollback can complete. RoomGoblin restores
+only its owned service state and never replaces adopted/external services.
+
+Before declaring success, verify database/schema/secret health, login and site
+identity, schedules/displays/automations, Morning Announcements and Background
+Music recovery, assets, Android inventory and ADB trust without re-pairing,
+Android signing identity, Veyon/lab state, owned service lifecycle, and version
+convergence. See [Database-First Recovery](Database-First-Recovery) for limits,
+the full operator drill and rollback rules.
+
 Custom roots can be supplied when required; keep them separate and beneath `/opt`:
 
 ```bash

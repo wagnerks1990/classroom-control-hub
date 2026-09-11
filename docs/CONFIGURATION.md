@@ -267,12 +267,24 @@ internal API so the main application remains the only database writer.
   restored database to become healthy (default `60000`).
 - `RESTORE_MAX_EXPANDED_MB` limits the expanded size of an accepted recovery
   archive (default `4096`).
+- `RECOVERY_ENVELOPE_MAX_MB` bounds the buffered plaintext payload inside an
+  encrypted Full Recovery `.rgbak` (default `256`; hard maximum `512`).
+- `HOST_BACKUP_DIR` owns clean-host recovery staging beneath its fixed
+  `recovery-staging/` child (default root `/opt/classroom-hub-backups`).
 
-Every restore first creates a `pre-restore` operational backup. The selected
-archive is validated before data changes, its SQLite snapshot must pass
-`PRAGMA quick_check`, and the application must become healthy after restart.
-If verification fails, the agent automatically restores the pre-restore backup
-and reports whether rollback completed successfully.
+Full Recovery passphrase requests require a direct loopback client or HTTPS
+terminated by a same-host loopback reverse proxy. For the proxy case,
+`TRUST_PROXY_HOPS` must equal its exact hop count and clients must not reach the
+backend listener directly. Leave `TRUST_PROXY_HOPS=0` for direct deployments.
+The passphrase is memory-only and is not a configurable or stored application
+secret.
+
+Legacy database/data ZIP restores create a `pre-restore` operational backup.
+Full Recovery instead uses a complete host-owned safety snapshot and durable
+transaction journal covering every affected root. Both workflows validate the
+selected archive before mutation, require the SQLite snapshot to pass
+`PRAGMA quick_check`, and require application health after restart. A failed
+Full Recovery rolls every changed root back rather than mixing the two states.
 
 ## Public-repository checklist
 

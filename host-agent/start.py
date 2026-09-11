@@ -3,7 +3,7 @@ import os, threading
 from pathlib import Path
 import server as core
 
-core.VERSION='1.0.0-alpha.79'
+core.VERSION='1.0.0-alpha.80'
 
 # Supported first-class add-ons. Existing containers outside this set can still
 # be adopted for inspect/log/start/stop/restart; creation and removal remain
@@ -41,6 +41,7 @@ def managed_docker(args,cwd=''):
 core.managed_docker=managed_docker
 
 if __name__=='__main__':
+    core.FULL_RECOVERY.startup_recover()
     Path(core.SOCKET_PATH).parent.mkdir(parents=True,exist_ok=True)
     try: os.unlink(core.SOCKET_PATH)
     except FileNotFoundError: pass

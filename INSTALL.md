@@ -130,6 +130,72 @@ curl -fsS http://127.0.0.1:3000/health
 
 Take a backup first. Do not overwrite local `.env`, databases, data, uploads, backups, private keys, or master-key material.
 
+## Clean-host full recovery
+
+Alpha.80 can restore a compatible clean installation from one encrypted Full
+Recovery Export (`.rgbak`). Install RoomGoblin normally on a clean Ubuntu Server
+24.04 LTS `amd64` host, complete the bootstrap far enough to authenticate as an
+administrator, and then use **Infrastructure & Recovery → Import Full
+Recovery**.
+
+Recovery passphrases may be submitted only from a loopback browser session or
+through HTTPS terminated by a same-host loopback reverse proxy. The appliance's normal direct HTTP LAN
+URL is not an acceptable transport for the passphrase. Use a passphrase of at
+least 16 characters (maximum 1024 UTF-8 bytes), keep it separate from the
+`.rgbak`, and confirm that the bundle fits the 256 MiB default/512 MiB absolute
+buffer limit.
+
+When using the same-host TLS proxy, set `TRUST_PROXY_HOPS` to its exact hop count and
+firewall port 3000 so no client can bypass the proxy and forge forwarded
+transport headers. Keep `TRUST_PROXY_HOPS=0` for loopback/direct deployments.
+
+Before importing:
+
+1. Verify the target is the intended recovery host and uses a compatible release.
+2. Keep the source appliance stopped or isolated to avoid two controllers using
+   the same device credentials and ADB identity.
+3. Ensure the RoomGoblin data root and `${HOST_BACKUP_DIR}` have enough free
+   space for staging plus a complete safety snapshot.
+4. Record externally owned/adopted services. Recovery never replaces them; a
+   same-name/image ownership collision fails closed.
+5. Keep the source export and its passphrase until the restored appliance passes
+   the full operator drill.
+
+The maintenance service authenticates and stages the bundle at
+`${HOST_BACKUP_DIR}/recovery-staging`. The native Host Agent serializes the
+operation with `/run/classroom-control-hub-appliance-mutation.lock`, stores its
+durable journal under `/var/lib/classroom-hub/full-recovery`, snapshots all affected
+state, and rolls back on commit or verification failure. Do not delete staging,
+journal, or safety-snapshot files while recovery is active or failed.
+
+The exporter snapshots whichever SQLite path the running application reports.
+The clean target keeps its host-specific `.env` configuration, but recovery
+transactionally normalizes `DATABASE_FILE` and the restored snapshot to
+`/app/data/classroom-control-hub.db`; source-host listener, token, network and
+root-path settings are not copied.
+
+After the UI reports success, verify:
+
+```bash
+cd /opt/classroom-hub
+cat VERSION
+sudo systemctl status classroom-hub-host-agent.service --no-pager -l
+sudo docker compose ps
+curl -fsS http://127.0.0.1:3000/health
+curl -fsS http://127.0.0.1:3010/health
+sudo test -w /var/lib/docker/volumes/classroom-control-hub-android-adb/_data \
+  && echo "ADB recovery volume writable"
+```
+
+The maintenance health endpoint may require the installed maintenance token on
+deployments that protect all routes. Use the controller's recovery status for
+the authoritative transaction result; do not paste tokens into shell history.
+Then verify login, site/schedule state, displays, Morning Announcements priority
+and scheduler recovery, Background Music reconciliation, media, managed Android
+devices without re-pairing, encrypted integrations, native Veyon, and
+RoomGoblin-owned service lifecycle state. Detailed acceptance and failure
+handling are in [Database-First Recovery](docs/DATABASE-FIRST-RECOVERY.md).
+
 ## Required runtime permissions
 
 Verify:

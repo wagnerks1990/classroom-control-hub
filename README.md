@@ -23,7 +23,7 @@ Do not rename these merely for cosmetic consistency. A future internal-identifie
 
 The Linux RoomGoblin appliance and maintenance containers, plus reviewed managed add-on templates, use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
 
-> **Status:** `1.0.0-alpha.79` — alpha software. Production deployment remains limited to reviewed, backed-up installations on trusted networks.
+> **Status:** `1.0.0-alpha.80` — alpha software. Production deployment remains limited to reviewed, backed-up `amd64` installations. Normal administration may use the trusted-LAN HTTP deployment; recovery passphrases require loopback or HTTPS through a same-host proxy.
 
 ## What it does
 
@@ -138,6 +138,28 @@ curl -fsS http://127.0.0.1:3000/health
 
 Back up production state before upgrades and never overwrite the local `.env`, database, data, uploads, backups, or secrets with repository examples.
 
+## Single-export full recovery
+
+Alpha.80 adds the clean-host **one export, one import** recovery contract. A Full
+Recovery Export is a passphrase-encrypted, authenticated `.rgbak` bundle that
+contains the active SQLite database and master key, RoomGoblin assets, Android
+inventory/ADB trust and signing identity, and allowlisted managed-service state.
+The native Host Agent stages and journals the restore, takes a complete safety
+snapshot, quiesces affected services, validates the recovered appliance, and
+rolls back all changed state on failure.
+
+Creating the export briefly quiesces only verified RoomGoblin-owned add-ons so
+their saved data is consistent, then restores their running state. Adopted or
+external services are not stopped or copied.
+
+Create or import a Full Recovery bundle only from a browser connected through
+loopback or HTTPS terminated by a same-host loopback reverse proxy. Direct HTTP over the LAN remains an
+accepted temporary mode for ordinary administration, but it must not carry a
+recovery passphrase. Store the `.rgbak` and its 16-character-or-longer
+passphrase separately. See
+[`docs/DATABASE-FIRST-RECOVERY.md`](docs/DATABASE-FIRST-RECOVERY.md) for exact
+contents, ownership/adoption rules, limits, recovery drill, and failure handling.
+
 ## Alpha.71 recovery changes
 
 Alpha.71 includes the live-test fixes found while recovering alpha.70:
@@ -218,7 +240,7 @@ Start with:
 - [`GITHUB-MIGRATION.md`](GITHUB-MIGRATION.md) — Git migration and update workflow
 - [`docs/README.md`](docs/README.md) — documentation index
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — current HTTP-only deployment model
-- [`docs/DATABASE-FIRST-RECOVERY.md`](docs/DATABASE-FIRST-RECOVERY.md) — future one-export recovery acceptance contract and current implementation boundary
+- [`docs/DATABASE-FIRST-RECOVERY.md`](docs/DATABASE-FIRST-RECOVERY.md) — encrypted single-export recovery, host transaction/rollback, service ownership rules, and operator drill
 - [`docs/ROOMGOBLIN-REBRAND.md`](docs/ROOMGOBLIN-REBRAND.md) — rebrand scope and compatibility contract
 - [`docs/brand/BRAND-GUIDE.md`](docs/brand/BRAND-GUIDE.md) — authoritative visual and verbal identity
 - [`docs/brand/AI-BRAND-CONTEXT.md`](docs/brand/AI-BRAND-CONTEXT.md) — machine/assistant branding rules
