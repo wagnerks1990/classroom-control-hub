@@ -19,7 +19,7 @@ public class DeviceAdminActivationActivity extends Activity {
             Intent intent=new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN,admin);
             intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                "Classroom Hub uses Device Administrator only for managed display sleep and lock controls.");
+                "RoomGoblin uses Device Administrator only for managed display sleep and lock controls.");
             startActivityForResult(intent,REQUEST_ADMIN);
         }catch(Exception primary){
             try{
