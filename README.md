@@ -127,6 +127,20 @@ curl -fsS http://127.0.0.1:3000/health
 
 Back up production state before upgrades and never overwrite the local `.env`, database, data, uploads, backups, or secrets with repository examples.
 
+## Alpha.71 recovery changes
+
+Alpha.71 includes the live-test fixes found while recovering alpha.70:
+
+- installer takes SQLite-safe snapshots of every `data/*.db` before migration;
+- an explicitly configured active database is preserved and database filename reconciliation is verified before container recreation;
+- built-in access profiles with missing/empty capability arrays are repaired at startup without overwriting valid custom capability lists;
+- Administrator remains `capabilities:["*"]`;
+- punctuation-heavy passwords are regression-tested through setup/login/scrypt paths;
+- maintenance startup health checks the Host Agent directly instead of waiting on the main application;
+- missing maintenance secrets, old master-key location, and shared data-root ownership are reconciled by the installer;
+- setup receiver IDs remain editable, duplicate IDs are rejected, and display groups are pruned when receivers are removed;
+- existing supported integration containers can be adopted without recreation.
+
 ## Development deployment
 
 ```bash
@@ -190,7 +204,9 @@ Legacy agent filenames, scheduled-task identifiers, and enrollment contracts are
 Start with:
 
 - [`INSTALL.md`](INSTALL.md) — install/migration quick guide
+- [`GITHUB-MIGRATION.md`](GITHUB-MIGRATION.md) — Git migration and update workflow
 - [`docs/README.md`](docs/README.md) — documentation index
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — current HTTP-only deployment model
 - [`docs/ROOMGOBLIN-REBRAND.md`](docs/ROOMGOBLIN-REBRAND.md) — rebrand scope and compatibility contract
 - [`docs/brand/BRAND-GUIDE.md`](docs/brand/BRAND-GUIDE.md) — authoritative visual and verbal identity
 - [`docs/brand/AI-BRAND-CONTEXT.md`](docs/brand/AI-BRAND-CONTEXT.md) — machine/assistant branding rules
@@ -213,7 +229,7 @@ ghcr.io/wagnerks1990/classroom-control-hub
 ghcr.io/wagnerks1990/classroom-control-hub-maintenance
 ```
 
-They remain intentionally unchanged during the compatibility-safe brand transition. A future image rename requires dual-publish/migration support rather than silently abandoning the existing image names.
+The `alpha` tag tracks alpha builds. `latest` is intentionally reserved for a future stable RoomGoblin release. The image identifiers remain intentionally unchanged during the compatibility-safe brand transition. A future image rename requires dual-publish/migration support rather than silently abandoning the existing image names.
 
 ## Project maturity
 
