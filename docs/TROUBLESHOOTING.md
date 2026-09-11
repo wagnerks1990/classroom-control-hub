@@ -112,6 +112,17 @@ Expected interpretation:
 
 Two confirmed OFFLINE checks are required before automatically ending an active Morning Announcements session.
 
+If both HLS candidates time out, verify the running container received the gateway
+configuration, not merely that the host `.env` contains it:
+
+```bash
+docker compose exec -T classroom-hub sh -lc \\
+  'test -n "$DISPLAY_GATEWAY_OVERRIDES" && test -n "$DISPLAY_GATEWAY_ALLOWED_HOSTS"'
+```
+
+After correcting the protected `.env`, recreate the Hub with
+`docker compose up -d --force-recreate classroom-hub` and run **Check Stream Now** again.
+
 ## Morning Announcements end but classroom automation does not return
 
 Current behavior should perform a failsafe scheduler resync after the announcement lock is released. It should:
