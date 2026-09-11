@@ -47,22 +47,43 @@ export CLASSROOM_CONTROL_HUB_TAG="$TAG"
 echo "Deploying immutable CI images ..."
 docker compose up -d --no-build --force-recreate --remove-orphans maintenance-agent classroom-hub
 
+HEALTH_FILE="$(mktemp /tmp/roomgoblin-health.XXXXXX.json)"
+trap 'rm -f "$HEALTH_FILE"' EXIT
+health_ok=0
 for _ in $(seq 1 90); do
-  if curl -fsS http://127.0.0.1:${HUB_PORT:-3000}/health >/tmp/roomgoblin-health.json 2>/dev/null; then
+  if curl -fsS "http://127.0.0.1:${HUB_PORT:-3000}/health" >"$HEALTH_FILE" 2>/dev/null; then
+    health_ok=1
     break
   fi
   sleep 2
 done
 
-python3 - "$VERSION" </tmp/roomgoblin-health.json <<'PY'
-import json,sys
-expected=sys.argv[1]
-j=json.load(sys.stdin)
-if not j.get('ok'):
-    raise SystemExit('health endpoint is not ok')
-if j.get('version') != expected:
-    raise SystemExit(f"version mismatch: expected={expected} actual={j.get('version')}")
-print(f"RoomGoblin healthy: {j.get('version')}")
+(( health_ok == 1 )) || fail "health endpoint did not become available within 180 seconds"
+[[ -s "$HEALTH_FILE" ]] || fail "health endpoint returned an empty response"
+
+python3 - "$VERSION" "$HEALTH_FILE" <<'PY'
+import json
+import sys
+
+expected = sys.argv[1]
+health_file = sys.argv[2]
+
+try:
+    with open(health_file, encoding="utf-8") as f:
+        health = json.load(f)
+except (OSError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"invalid health response: {exc}") from exc
+
+if not health.get("ok"):
+    raise SystemExit("health endpoint is not ok")
+if not health.get("ready"):
+    raise SystemExit("health endpoint is not ready")
+if health.get("version") != expected:
+    raise SystemExit(
+        f"version mismatch: expected={expected} actual={health.get('version')}"
+    )
+
+print(f"RoomGoblin healthy: {health.get('version')}")
 PY
 
 docker compose ps
