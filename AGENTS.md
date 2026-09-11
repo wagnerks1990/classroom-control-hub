@@ -28,7 +28,7 @@ Do not infer production configuration from public defaults. Site-specific config
 
 ## Current baseline
 
-The current review baseline is `1.0.0-alpha.77`.
+The current review baseline is `1.0.0-alpha.78`.
 
 Verified live-test/recovery behaviors inherited by this baseline include:
 

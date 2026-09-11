@@ -248,7 +248,7 @@ Authenticated maintenance mutations share an appliance-wide limit of 30 requests
 
 ## Display merge review boundaries (2026-09-09)
 
-PR #27 retains one logical layout owner and adds `public/display/security.mjs` for receiver URL/proxy/identify validation. Never return a rejected raw URL from a catch block. External media is an explicit HTTP(S) signage feature, not permission to load javascript/data/file schemes or to navigate the top-level receiver. Keep external frames isolated, proxy paths same-Hub and identify resources bounded. See `docs/DISPLAY-LAYOUT-CONTRACT.md` for behavior and browser verification. Renderer revision: `single-fit-20260909-4`, released with alpha.72.
+PR #27 retains one logical layout owner and adds `public/display/security.mjs` for receiver URL/proxy/identify validation. Never return a rejected raw URL from a catch block. External media is an explicit HTTP(S) signage feature, not permission to load javascript/data/file schemes or to navigate the top-level receiver. Keep external frames isolated, proxy paths same-Hub and identify resources bounded. See `docs/DISPLAY-LAYOUT-CONTRACT.md` for behavior and browser verification. Renderer revision: `single-fit-20260911-5`, released with alpha.78.
 
 ## Host installer group prerequisite
 

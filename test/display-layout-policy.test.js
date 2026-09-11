@@ -10,7 +10,7 @@ const indexPath = path.join(root, 'public', 'display', 'index.html');
 
 test('display renderer keeps auto-grow close to configured scene sizes', async () => {
   const layout = await import(pathToFileURL(layoutPath).href + `?t=${Date.now()}`);
-  assert.equal(layout.LAYOUT_REVISION, 'single-fit-20260909-4');
+  assert.equal(layout.LAYOUT_REVISION, 'single-fit-20260911-5');
   assert.equal(layout.AUTO_GROW_FACTOR, 1.10);
   assert.deepEqual(layout.FONT_CAPS, { title: 118, subtitle: 82, body: 120, timer: 132 });
 
@@ -32,6 +32,17 @@ test('configured font size can never override hard rendered containment', () => 
     'pathological content must remain bounded after fallback scaling');
 });
 
+test('containment-critical styles are enforced by the layout owner', () => {
+  const source = fs.readFileSync(layoutPath, 'utf8');
+  assert.match(source, /function establishStructuralStyles\(nodes\)/);
+  assert.match(source, /el\.style\.maxHeight = 'none'/,
+    'a stale stylesheet must not leave fitted children height-constrained');
+  assert.match(source, /el\.style\.flex = '0 0 auto'/,
+    'a stale stylesheet must not let flexbox compress overflowing text');
+  assert.match(source, /timerOverlay\.style/,
+    'timer geometry must also survive a missing companion stylesheet');
+});
+
 test('timer overlay remains a compact box inside its reserved region', () => {
   const source = fs.readFileSync(layoutPath, 'utf8');
   assert.match(source, /timerOverlay\.style\.width = 'max-content'/,
@@ -43,8 +54,8 @@ test('timer overlay remains a compact box inside its reserved region', () => {
 test('receiver cache key and build identity are release-stamped at image build', () => {
   const source = fs.readFileSync(indexPath, 'utf8');
   const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
-  assert.match(source, /layout\.mjs\?v=single-fit-20260909-4/);
-  assert.match(source, /layout\.css\?v=single-fit-20260909-4/);
+  assert.match(source, /layout\.mjs\?v=single-fit-20260911-5/);
+  assert.match(source, /layout\.css\?v=single-fit-20260911-5/);
   assert.match(source, /DISPLAY_BUILD='\d+\.\d+\.\d+-alpha\.\d+'/);
   assert.match(dockerfile,/RELEASE_VERSION="\$\(cat VERSION\)"/);
   assert.ok(dockerfile.includes('public/display/index.html'),

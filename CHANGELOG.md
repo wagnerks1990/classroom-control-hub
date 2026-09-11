@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.0-alpha.78 - 2026-09-11
+
+- Fixed multiline title and body clipping when a managed TV loaded the current
+  display module with a missing or stale companion layout stylesheet.
+- Made the single layout engine enforce its containment-critical natural-height,
+  non-shrinking child styles and timer geometry directly before measurement.
+- Added the captured Schoology club-selection announcement as a browser regression
+  fixture and verified it remains contained when the layout stylesheet is withheld.
+- Bumped the display renderer/cache revision to `single-fit-20260911-5`.
+
 ## 1.0.0-alpha.76 - 2026-09-11
 
 - Fixed Morning Announcements live detection by passing protected Managed Display Gateway configuration into the Hub container.
