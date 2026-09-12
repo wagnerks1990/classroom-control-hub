@@ -2,6 +2,9 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
+const os=require("node:os");
+const path=require("node:path");
+const {spawnSync}=require("node:child_process");
 
 test("production installer pulls commit-matched CI images by default",()=>{
   const source=fs.readFileSync("install.sh","utf8");
@@ -9,6 +12,8 @@ test("production installer pulls commit-matched CI images by default",()=>{
   assert.match(source,/IMAGE_TAG="sha-\$\{SOURCE_COMMIT\}"/);
   assert.match(source,/docker pull "\$HUB_IMAGE"/);
   assert.match(source,/docker pull "\$MAINT_IMAGE"/);
+  assert.match(source,/roomgoblin_verify_image_revision "\$HUB_IMAGE" "\$SOURCE_COMMIT"/);
+  assert.match(source,/roomgoblin_verify_image_revision "\$MAINT_IMAGE" "\$SOURCE_COMMIT"/);
   assert.ok(source.indexOf('docker pull "$HUB_IMAGE"')<source.indexOf('Creating pre-migration backup'),"images must be available before backup or migration mutations");
   assert.match(source,/--build-local/);
   assert.match(source,/docker compose up -d --no-build/);
@@ -19,6 +24,8 @@ test("web-managed releases pull matching immutable images",()=>{
   assert.match(source,/IMAGE_TAG="\$TARGETREF"/);
   assert.match(source,/docker pull "\$HUB_IMAGE"/);
   assert.match(source,/docker pull "\$MAINTENANCE_IMAGE"/);
+  assert.match(source,/roomgoblin_verify_image_revision "\$HUB_IMAGE" "\$RESOLVED"/);
+  assert.match(source,/roomgoblin_verify_image_revision "\$MAINTENANCE_IMAGE" "\$RESOLVED"/);
   assert.doesNotMatch(source,/docker compose build --pull classroom-hub maintenance-agent/);
 });
 
@@ -27,10 +34,24 @@ test("validated main images publish under canonical and legacy aliases",()=>{
   for(const image of ["roomgoblin","roomgoblin-maintenance","classroom-control-hub","classroom-control-hub-maintenance"])
     assert.match(main,new RegExp(`ghcr\\.io/wagnerks1990/${image}`));
   const releases=fs.readFileSync(".github/workflows/docker-publish.yml","utf8");
+  assert.match(main,/org\.opencontainers\.image\.revision=\$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
   assert.match(releases,/ghcr\.io\/\$\{\{ github\.repository \}\}/);
   assert.match(releases,/ghcr\.io\/wagnerks1990\/classroom-control-hub/);
   assert.match(releases,/ghcr\.io\/\$\{\{ github\.repository \}\}-maintenance/);
   assert.match(releases,/ghcr\.io\/wagnerks1990\/classroom-control-hub-maintenance/);
+});
+
+test("image identity rejects a correct-version image built from another commit",t=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),"roomgoblin-image-identity-"));
+  t.after(()=>fs.rmSync(temp,{recursive:true,force:true}));
+  const fakeDocker=path.join(temp,"docker");
+  fs.writeFileSync(fakeDocker,"#!/bin/sh\nprintf '%s\\n' \"$FAKE_IMAGE_REVISION\"\n");
+  fs.chmodSync(fakeDocker,0o755);
+  const expected="a".repeat(40),run=revision=>spawnSync("bash",["-c",`. deploy/image-identity.sh; roomgoblin_verify_image_revision ghcr.io/wagnerks1990/roomgoblin:v1.0.0-alpha.80 ${expected}`],{encoding:"utf8",env:{...process.env,PATH:`${temp}:${process.env.PATH}`,FAKE_IMAGE_REVISION:revision}});
+  assert.equal(run(expected).status,0);
+  const wrong=run("b".repeat(40));
+  assert.notEqual(wrong.status,0);
+  assert.match(wrong.stderr,/source revision mismatch/);
 });
 
 test("main image publication waits for all independent validation jobs",()=>{
@@ -85,4 +106,13 @@ test("application rollback persists images and restores the prior image tag",()=
   assert.match(source,/set_request_fields "rollbackHubImage=/);
   assert.match(source,/set_image_tag "\$CURRENT_IMAGE_TAG"/);
   assert.match(source,/set_image_tag "\$PREVIOUSIMAGETAG"/);
+});
+
+test("installer and web updater preserve an explicit trusted-proxy hop count",()=>{
+  const installer=fs.readFileSync("install.sh","utf8");
+  const updater=fs.readFileSync("host-agent/app-update-runner.sh","utf8");
+  for(const source of [installer,updater]){
+    assert.match(source,/TRUST_PROXY_HOPS must be an integer between 0 and 8/);
+    assert.doesNotMatch(source,/sed -i ['"]s\/\^TRUST_PROXY_HOPS=.*TRUST_PROXY_HOPS=0/);
+  }
 });

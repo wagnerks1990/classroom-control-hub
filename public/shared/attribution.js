@@ -17,6 +17,7 @@ if(location.pathname==="/controller/display.html"&&!document.querySelector('scri
   window.__CLASSROOM_HUB_MORNING_STREAM_STABILITY__=true;
   const events=[];
   const stream={active:false,key:"",state:"idle",lastEvent:null,lastEventAt:null,lastPlayerUpdate:null,lastError:null,reassertionsSuppressed:0,takeoverClearsSuppressed:0,player:null};
+  function safeTelemetryUrl(value){try{const u=new URL(String(value||""),location.origin);return `${u.origin}${u.pathname}`}catch{return ""}}
   function record(kind,detail={}){
     const item={at:new Date().toISOString(),kind,...detail};
     events.push(item);if(events.length>60)events.shift();
@@ -32,7 +33,7 @@ if(location.pathname==="/controller/display.html"&&!document.querySelector('scri
       const media=message?.state?.media;
       if(media?.contentKind==="morning-announcements"){
         stream.active=true;stream.key=mediaKey(media);stream.state="playing-or-connecting";
-        record("receiver-state-restored",{url:String(media.url||"")});
+        record("receiver-state-restored",{url:safeTelemetryUrl(media.url)});
       }
       return {suppress:false};
     }
@@ -60,7 +61,7 @@ if(location.pathname==="/controller/display.html"&&!document.querySelector('scri
         return {suppress:true};
       }
       stream.active=true;stream.key=key;stream.state="starting";
-      record("announcement-stream-command",{url:String(payload.url||""),volume:Number(payload.volume??1)});
+      record("announcement-stream-command",{url:safeTelemetryUrl(payload.url),volume:Number(payload.volume??1)});
     }
     return {suppress:false};
   }
@@ -90,7 +91,8 @@ if(location.pathname==="/controller/display.html"&&!document.querySelector('scri
       try{
         const message=JSON.parse(data);
         if(message?.type==="heartbeat"&&message.meta){
-          message.meta.stream={...stream,events:events.slice(-12)};
+          const {key:_privateMediaKey,...publicStream}=stream;
+          message.meta.stream={...publicStream,player:stream.player?{...stream.player,url:safeTelemetryUrl(stream.player.url),source:safeTelemetryUrl(stream.player.source)}:null,events:events.slice(-12)};
           data=JSON.stringify(message);
         }
       }catch{}
@@ -102,7 +104,7 @@ if(location.pathname==="/controller/display.html"&&!document.querySelector('scri
     if(event.origin!==location.origin)return;
     const data=event.data||{};
     if(data.type!=="classroom-hub.antmedia.telemetry")return;
-    const update=data.telemetry||{};
+    const raw=data.telemetry||{},update={...raw,url:safeTelemetryUrl(raw.url),source:safeTelemetryUrl(raw.source)};
     stream.player={...(stream.player||{}),...update};
     stream.lastPlayerUpdate=new Date().toISOString();
     if(update.state)stream.state=String(update.state);

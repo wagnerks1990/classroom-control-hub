@@ -82,6 +82,14 @@ restore.
 Native Veyon recovery is restricted to the reviewed
 `VEYON_RECOVERY_ROOT=/veyon-recovery` mount. Recovery does not create a generic
 root filesystem-write API.
+Only a complete, non-empty private-key/key-name pair is portable. The empty
+installer bind placeholder is treated as unconfigured, and native
+`/opt/services/veyon-webapi` runtime files are excluded because they are not
+RoomGoblin-owned Docker service state.
+
+After a host restart, the authenticated Host Agent socket remains available for
+maintenance health while interrupted recovery is resolved. Mutations remain
+locked with `423` until rollback or committed cleanup finishes.
 
 ADB private/public keys and the named
 `classroom-control-hub-android-adb` volume are one identity and must remain

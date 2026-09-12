@@ -20,6 +20,8 @@ Package: `org.roomgoblin.display`.
 
 Managed Displays reports package/running state and supports installation, configuration, launch, screenshots and administrator remote shell. The tested Onn successfully installs the APK, loads the assigned RoomGoblin display URL fullscreen, and automatically restores the agent/content after reboot.
 
+The package-scoped configuration receiver is available to the ADB shell but is guarded by Android's platform `DUMP` permission, so another installed app cannot replace RoomGoblin's device token, display URL, persistent-ADB policy, or root-tools policy. Each APK is signature-checked against the appliance's protected `/signing/android-agent` keystore immediately before use.
+
 The UI can show **Starting…** after ADB returns because Android may make the debug transport available slightly before it allows the kiosk activity to run.
 
 ## Persistent ADB
@@ -35,6 +37,8 @@ Use persistent ADB only on trusted device-management networks. Do not expose ADB
 Managed Displays performs active status refresh while visible and faster bounded polling during reboot. The background policy interval and browser refresh interval are separate. Recovery should show **Recovering…** rather than a stale Online badge, then **Starting…** while the kiosk comes back.
 
 The Hub also attempts agent launch as soon as ADB recovers when the assigned profile requires launch-on-boot, reducing the wait for the normal policy cycle.
+
+Successful probes save the device's Android ID. When DHCP or the randomized ADB port changes, only an already-authorized mDNS endpoint with the same Android ID can replace the stored address. A shared firmware/build fingerprint is not accepted as device identity.
 
 ## Power behavior
 

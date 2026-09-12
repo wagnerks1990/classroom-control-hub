@@ -72,7 +72,18 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-        <receiver android:name=".ConfigReceiver" android:enabled="true" android:exported="true">
+        <!--
+          Configuration is delivered by the reviewed `adb shell am broadcast`
+          path. Android's shell UID holds the platform DUMP permission; ordinary
+          third-party applications do not. Keep this exported for ADB while
+          preventing another installed app from taking over the agent token,
+          display URL, persistent-ADB policy, or optional root-tools policy.
+        -->
+        <receiver
+            android:name=".ConfigReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
             <intent-filter><action android:name="org.roomgoblin.display.CONFIGURE" /></intent-filter>
         </receiver>
     </application>

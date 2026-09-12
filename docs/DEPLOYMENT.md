@@ -26,6 +26,11 @@ HUB_PORT=3000
 TRUST_PROXY_HOPS=0
 ```
 
+Installer reruns and web-managed updates preserve an explicitly configured,
+validated `TRUST_PROXY_HOPS` value. They default it to `0` only when absent. A
+same-host HTTPS proxy deployment must retain its exact hop count and firewall
+direct backend access.
+
 Use the appliance only on a trusted classroom/admin LAN or behind network controls that restrict access. Do not expose this HTTP-only deployment directly to the public Internet.
 
 ## Requirements
@@ -104,6 +109,10 @@ The installer:
 7. removes obsolete TLS environment settings and the legacy Caddy container;
 8. pulls the exact commit-matched images already built and validated by GitHub Actions, then starts maintenance plus the main HTTP application;
 9. verifies backend, maintenance, and Host Agent version convergence.
+
+Each pulled image must report an `org.opencontainers.image.revision` OCI label
+equal to the selected Git commit. A matching application version with a
+different or missing revision is rejected.
 
 Production installation does not compile application or Android dependencies on
 the appliance. Deliberate developer testing may opt in with `sudo bash install.sh

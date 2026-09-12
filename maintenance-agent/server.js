@@ -84,7 +84,7 @@ async function mainAppRequest(method,pathName,body=null,timeoutMs=30000){
 }
 async function mainAppStatus(){return mainAppRequest("GET","/api/v1/internal/maintenance/status",null,10000)}
 async function dockerContainers(){const r=await run("docker",["ps","-a","--format","{{json .}}"],{timeout:10000});return r.stdout.split(/\r?\n/).filter(Boolean).map(x=>{try{return JSON.parse(x)}catch{return {raw:x}}})}
-async function componentHealth(){let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}return {version:"1.0.0-alpha.80",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null}}
+async function componentHealth(){let docker=false,hostAgent=null,application=null;try{await run("docker",["info","--format","{{.ServerVersion}}"],{timeout:5000});docker=true}catch{}try{hostAgent=await hostAgentRequest("GET","/health")}catch(e){hostAgent={ok:false,error:e.message}}try{application=await mainAppStatus()}catch(e){application={ok:false,error:e.message}}return {version:"1.0.0-alpha.81",docker,hostAgent,roots:{hub:fs.existsSync(HUB_ROOT),services:fs.existsSync(Classroom_ROOT)},shellEnabled:false,application,database:application?.database||null}}
 app.get("/health",async(_req,res)=>{const state=await componentHealth(),ready=state.docker&&state.hostAgent?.ok&&state.roots.hub;res.status(ready?200:503).json({ok:ready,alive:true,ready,...state})});
 app.get("/ready",async(_req,res)=>{const state=await componentHealth(),ready=state.docker&&state.hostAgent?.ok&&state.roots.hub;res.status(ready?200:503).json({ok:ready,alive:true,ready,...state})});
 app.get("/system",async(_req,res)=>{
@@ -255,6 +255,14 @@ async function managedServicesManifest(){
 }
 async function managedContainerRunning(service){const result=await run("docker",["inspect",service.container],{timeout:10000}),inspect=JSON.parse(result.stdout)[0];if(!inspect||inspect.Config?.Image!==service.image||inspect.Config?.Labels?.["org.roomgoblin.deployment-ownership"]!=="roomgoblin")throw Error(`Managed-service identity changed during export: ${service.container}`);return inspect.State?.Running===true}
 function requiredIdentityFile(file,label){if(!fs.existsSync(file))return null;const stat=fs.lstatSync(file);if(stat.isSymbolicLink()||!stat.isFile()||stat.size<1)throw Error(`${label} must be a non-empty regular file`);return file}
+function optionalVeyonPrivateFile(file){
+  if(!fs.existsSync(file))return null;
+  const stat=fs.lstatSync(file);
+  if(stat.isSymbolicLink()||!stat.isFile())throw Error("Veyon private key must be a regular file");
+  // The installer creates an empty bind-mount placeholder when native Veyon is
+  // not configured. It is deployment plumbing, not a partial identity.
+  return stat.size===0?null:file;
+}
 async function validateRecoveryIdentities({adbRoot,signingRoot,veyonRoot}){
   const adbPrivate=requiredIdentityFile(path.join(adbRoot,"adbkey"),"ADB private key"),adbPublic=requiredIdentityFile(path.join(adbRoot,"adbkey.pub"),"ADB public key");
   if(!!adbPrivate!==!!adbPublic)throw Error("Recovery contains an incomplete ADB trust identity");
@@ -265,9 +273,21 @@ async function validateRecoveryIdentities({adbRoot,signingRoot,veyonRoot}){
   const keystore=requiredIdentityFile(path.join(signingRoot,"android-agent","RoomGoblin-Display-Agent.keystore"),"Android signing keystore"),passwordFile=requiredIdentityFile(path.join(signingRoot,"android-agent","password"),"Android signing password");
   if(!!keystore!==!!passwordFile)throw Error("Recovery contains an incomplete Android signing identity");
   if(keystore){const password=fs.readFileSync(passwordFile,"utf8").trim();if(password.length<32)throw Error("Android signing password is invalid");await run("keytool",["-list","-keystore",keystore,"-storepass:env","ROOMGOBLIN_RECOVERY_KEYSTORE_PASSWORD"],{timeout:30000,maxBuffer:1024*1024,env:{ROOMGOBLIN_RECOVERY_KEYSTORE_PASSWORD:password}})}
-  const veyonPrivate=requiredIdentityFile(path.join(veyonRoot,"private.pem"),"Veyon private key"),veyonNameFile=requiredIdentityFile(path.join(veyonRoot,"key-name"),"Veyon key name");
+  const veyonPrivate=optionalVeyonPrivateFile(path.join(veyonRoot,"private.pem")),veyonNameFile=requiredIdentityFile(path.join(veyonRoot,"key-name"),"Veyon key name");
   if(!!veyonPrivate!==!!veyonNameFile)throw Error("Recovery contains an incomplete Veyon identity");
   if(veyonPrivate){try{crypto.createPrivateKey(fs.readFileSync(veyonPrivate))}catch{throw Error("Veyon private key is not a valid private-key encoding")}const keyName=fs.readFileSync(veyonNameFile,"utf8").trim();if(!/^[A-Za-z0-9._-]{1,64}$/.test(keyName))throw Error("Veyon key name is outside the safe recovery policy")}
+}
+function stableSnapshotFile(source,destination,label,{allowEmpty=false,maxBytes=64*1024*1024}={}){
+  const before=fs.lstatSync(source);
+  if(before.isSymbolicLink()||!before.isFile()||(!allowEmpty&&before.size<1)||before.size>maxBytes)throw Error(`${label} is outside the safe snapshot policy`);
+  const contents=fs.readFileSync(source),after=fs.lstatSync(source);
+  if(after.isSymbolicLink()||!after.isFile()||before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size||before.mtimeMs!==after.mtimeMs||contents.length!==after.size)throw Error(`${label} changed while the recovery snapshot was being created`);
+  fs.mkdirSync(path.dirname(destination),{recursive:true,mode:0o700});fs.writeFileSync(destination,contents,{mode:0o600});
+  return contents;
+}
+function verifyStableSnapshotFile(source,snapshot,label){
+  const current=fs.readFileSync(source),captured=fs.readFileSync(snapshot);
+  if(current.length!==captured.length||!crypto.timingSafeEqual(current,captured))throw Error(`${label} changed while the recovery identity set was being created`);
 }
 function backupFilter(scope){
   const skipDirs=new Set(["node_modules",".git","convert-tmp","presentation-upload-tmp"]);
@@ -299,11 +319,15 @@ function backupFilter(scope){
   }
 }
 async function createFullRecoveryExport(req,res){
-  let dbSnapshot="",dest="",quiesced=[];const priority={mosquitto:1,"music-assistant":2,nodered:3,govee2mqtt:4};
+  let dbSnapshot="",dest="",identitySnapshotRoot="",mainFreezeToken="",hostFreezeToken="",quiesced=[];const priority={mosquitto:1,"music-assistant":2,nodered:3,govee2mqtt:4};
   if(!req.fullExportMutationLock){if(fullExportMutationLocked)return res.status(423).json({ok:false,error:"A Full Recovery Export is already active"});fullExportMutationLocked=true}
   try{
     if(req.body?.confirmSensitiveData!==true||req.body?.confirmSecrets!==true)return res.status(400).json({ok:false,error:"Full Recovery Export requires both sensitive-data and protected-secret confirmation."});
     const passphrase=String(req.body?.passphrase||"");
+    const hostFreeze=await hostAgentRequest("POST","/recovery/export/freeze",{confirm:"FREEZE_FULL_EXPORT"},10000);hostFreezeToken=String(hostFreeze.freezeToken||"");
+    if(!hostFreezeToken)throw Error("Host Agent did not provide a Full Recovery Export freeze token");
+    const mainFreeze=await mainAppRequest("POST","/api/v1/internal/maintenance/export-freeze",{confirm:"FREEZE_FULL_EXPORT"},45000);mainFreezeToken=String(mainFreeze.freezeToken||"");
+    if(!mainFreezeToken)throw Error("Main application did not provide a Full Recovery Export freeze token");
     const active=await activeDatabaseSource();
     if(!fs.existsSync(MASTER_KEY_FILE)||!fs.statSync(MASTER_KEY_FILE).isFile())throw Error("Full Recovery Export requires the matching master encryption key");
     const adbPrivate=path.join(HUB_ROOT,"data","android-tv",".android","adbkey"),adbPublic=`${adbPrivate}.pub`;
@@ -315,9 +339,18 @@ async function createFullRecoveryExport(req,res){
     }
     const signingKeystore=path.join(SIGNING_ROOT,"android-agent","RoomGoblin-Display-Agent.keystore"),signingPassword=path.join(SIGNING_ROOT,"android-agent","password");
     if(fs.existsSync(signingKeystore)!==fs.existsSync(signingPassword))throw Error("Full Recovery Export found an incomplete Android signing identity");
-    const veyonPrivate=path.join(VEYON_RECOVERY_ROOT,"private.pem"),veyonName=path.join(VEYON_RECOVERY_ROOT,"key-name");
-    if(fs.existsSync(veyonPrivate)!==fs.existsSync(veyonName))throw Error("Full Recovery Export found an incomplete Veyon identity");
-    await validateRecoveryIdentities({adbRoot:path.dirname(adbPrivate),signingRoot:SIGNING_ROOT,veyonRoot:VEYON_RECOVERY_ROOT});
+    const veyonPrivate=optionalVeyonPrivateFile(path.join(VEYON_RECOVERY_ROOT,"private.pem")),veyonName=requiredIdentityFile(path.join(VEYON_RECOVERY_ROOT,"key-name"),"Veyon key name");
+    if(!!veyonPrivate!==!!veyonName)throw Error("Full Recovery Export found an incomplete Veyon identity");
+    identitySnapshotRoot=fs.mkdtempSync(path.join(UPLOAD_DIR,"full-export-identities-"));
+    const snapshotMaster=path.join(identitySnapshotRoot,"master.key"),snapshotAdb=path.join(identitySnapshotRoot,"adb"),snapshotSigning=path.join(identitySnapshotRoot,"signing"),snapshotVeyon=path.join(identitySnapshotRoot,"veyon");
+    stableSnapshotFile(MASTER_KEY_FILE,snapshotMaster,"RoomGoblin master key",{maxBytes:4096});
+    const snapshots=[];
+    if(fs.existsSync(adbPrivate)){snapshots.push([adbPrivate,path.join(snapshotAdb,"adbkey"),"ADB private key"],[adbPublic,path.join(snapshotAdb,"adbkey.pub"),"ADB public key"])}
+    if(fs.existsSync(signingKeystore)){snapshots.push([signingKeystore,path.join(snapshotSigning,"android-agent","RoomGoblin-Display-Agent.keystore"),"Android signing keystore"],[signingPassword,path.join(snapshotSigning,"android-agent","password"),"Android signing password"])}
+    if(veyonPrivate){snapshots.push([veyonPrivate,path.join(snapshotVeyon,"private.pem"),"Veyon private key"],[veyonName,path.join(snapshotVeyon,"key-name"),"Veyon key name"])}
+    for(const [source,snapshot,label] of snapshots)stableSnapshotFile(source,snapshot,label);
+    for(const [source,snapshot,label] of snapshots)verifyStableSnapshotFile(source,snapshot,label);
+    await validateRecoveryIdentities({adbRoot:snapshotAdb,signingRoot:snapshotSigning,veyonRoot:snapshotVeyon});
     dbSnapshot=path.join(UPLOAD_DIR,`db-backup-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.db`);
     await run("sqlite3",[active.source,`.backup '${dbSnapshot.replace(/'/g,"''")}'`],{timeout:60000});
     if(!fs.existsSync(dbSnapshot))throw Error("Full Recovery Export requires a consistent RoomGoblin database snapshot");
@@ -326,20 +359,20 @@ async function createFullRecoveryExport(req,res){
     const managedServices=await managedServicesManifest(),ownedServices=new Set(managedServices.map(service=>service.id));
     quiesced=managedServices.filter(item=>item.running).sort((a,b)=>(priority[b.id]||0)-(priority[a.id]||0));
     for(const service of quiesced){await run("docker",["stop",service.container],{timeout:30000});if(await managedContainerRunning(service))throw Error(`Managed service did not stop for a consistent export: ${service.container}`)}
-    const activeName=path.basename(active.source),zip=new AdmZip(),filter=(full,rel,ent)=>{if([activeName,`${activeName}-wal`,`${activeName}-shm`,"classroom-control-hub.db","classroom-control-hub.db-wal","classroom-control-hub.db-shm"].includes(path.posix.basename(rel))&&path.posix.dirname(rel)==="classroom-hub/data")return false;if(rel.startsWith("services/")){const id=rel.split("/")[1];if(!ownedServices.has(id))return false}return backupFilter("full")(full,rel,ent)};
-    let sourceBytes=fs.statSync(dbSnapshot).size+fs.statSync(MASTER_KEY_FILE).size;
+    const activeName=path.basename(active.source),zip=new AdmZip(),filter=(full,rel,ent)=>{if([activeName,`${activeName}-wal`,`${activeName}-shm`,"classroom-control-hub.db","classroom-control-hub.db-wal","classroom-control-hub.db-shm"].includes(path.posix.basename(rel))&&path.posix.dirname(rel)==="classroom-hub/data")return false;if(["classroom-hub/data/android-tv/.android/adbkey","classroom-hub/data/android-tv/.android/adbkey.pub"].includes(rel))return false;if(rel.startsWith("services/")){const id=rel.split("/")[1];if(!ownedServices.has(id))return false}return backupFilter("full")(full,rel,ent)};
+    let sourceBytes=fs.statSync(dbSnapshot).size+fs.statSync(snapshotMaster).size;
     sourceBytes+=recoverySourceBytes(path.join(HUB_ROOT,"data"),"classroom-hub/data",filter)+recoverySourceBytes(Classroom_ROOT,"services",filter);
-    if(fs.existsSync(signingKeystore))sourceBytes+=recoverySourceBytes(SIGNING_ROOT,"recovery-secrets/android-agent-signing",filter);
-    if(fs.existsSync(veyonPrivate))sourceBytes+=fs.statSync(veyonPrivate).size+fs.statSync(veyonName).size;
+    for(const [,snapshot] of snapshots)sourceBytes+=fs.statSync(snapshot).size;
     if(sourceBytes+1024*1024>RECOVERY_ENVELOPE_MAX_BYTES)throw Error("Full Recovery Export exceeds the configured encrypted-envelope limit");
     copyIntoZip(zip,path.join(HUB_ROOT,"data"),"classroom-hub/data",filter);
     zip.addLocalFile(dbSnapshot,"classroom-hub/data","classroom-control-hub.db");
     copyIntoZip(zip,Classroom_ROOT,"services",filter);
-    zip.addFile("recovery-secrets/classroom-hub-master.key",parseMasterKey(fs.readFileSync(MASTER_KEY_FILE)),"",0o600);
-    if(fs.existsSync(signingKeystore))copyIntoZip(zip,SIGNING_ROOT,"recovery-secrets/android-agent-signing",filter);
-    if(fs.existsSync(veyonPrivate)){
-      zip.addLocalFile(veyonPrivate,"recovery-secrets/veyon","private.pem");
-      zip.addLocalFile(veyonName,"recovery-secrets/veyon","key-name");
+    zip.addFile("recovery-secrets/classroom-hub-master.key",parseMasterKey(fs.readFileSync(snapshotMaster)),"",0o600);
+    if(fs.existsSync(path.join(snapshotAdb,"adbkey"))){zip.addLocalFile(path.join(snapshotAdb,"adbkey"),"classroom-hub/data/android-tv/.android","adbkey");zip.addLocalFile(path.join(snapshotAdb,"adbkey.pub"),"classroom-hub/data/android-tv/.android","adbkey.pub")}
+    if(fs.existsSync(path.join(snapshotSigning,"android-agent","RoomGoblin-Display-Agent.keystore")))copyIntoZip(zip,snapshotSigning,"recovery-secrets/android-agent-signing",filter);
+    if(veyonPrivate){
+      zip.addLocalFile(path.join(snapshotVeyon,"private.pem"),"recovery-secrets/veyon","private.pem");
+      zip.addLocalFile(path.join(snapshotVeyon,"key-name"),"recovery-secrets/veyon","key-name");
     }
     const files=archiveInventory(zip.getEntries()),createdAt=new Date().toISOString();
     const manifest={version:6,scope:"full",confidentiality:"scrypt-aes-256-gcm",integrityAlgorithm:"sha256",applicationVersion:applicationVersion(),databaseSchemaVersion:active.schemaVersion,files,topology:recoveryTopology(files),managedServices};
@@ -349,8 +382,19 @@ async function createFullRecoveryExport(req,res){
     const stamp=createdAt.replace(/[:.]/g,"-"),name=`roomgoblin-full-recovery-${stamp}.rgbak`;dest=path.join(BACKUP_DIR,name);
     writePrivateBufferAtomic(encrypted,dest);
     for(const service of [...quiesced].sort((a,b)=>(priority[a.id]||0)-(priority[b.id]||0))){await run("docker",["start",service.container],{timeout:30000});if(!await managedContainerRunning(service))throw Error(`Managed service did not return to its prior running state: ${service.container}`)}quiesced=[];
+    if(dbSnapshot){fs.rmSync(dbSnapshot,{force:true});dbSnapshot=""}if(identitySnapshotRoot){fs.rmSync(identitySnapshotRoot,{recursive:true,force:true});identitySnapshotRoot=""}
+    await mainAppRequest("POST","/api/v1/internal/maintenance/export-thaw",{freezeToken:mainFreezeToken},30000);mainFreezeToken="";
+    await hostAgentRequest("POST","/recovery/export/thaw",{freezeToken:hostFreezeToken},10000);hostFreezeToken="";
+    fullExportMutationLocked=false;
     res.json({ok:true,name,size:encrypted.length,sha256:sha256File(dest),download:`/backup/${encodeURIComponent(name)}`,containsSecrets:true,containsSensitiveData:true,encrypted:true,authenticated:true});
-  }catch(e){if(dest)fs.rmSync(dest,{force:true});res.status(400).json({ok:false,error:e.message})}finally{for(const service of [...quiesced].sort((a,b)=>(priority[a.id]||0)-(priority[b.id]||0)))try{await run("docker",["start",service.container],{timeout:30000})}catch{}if(dbSnapshot)fs.rmSync(dbSnapshot,{force:true});fullExportMutationLocked=false}
+  }catch(e){
+    if(dest)fs.rmSync(dest,{force:true});
+    for(const service of [...quiesced].sort((a,b)=>(priority[a.id]||0)-(priority[b.id]||0)))try{await run("docker",["start",service.container],{timeout:30000})}catch{}quiesced=[];
+    if(mainFreezeToken)try{await mainAppRequest("POST","/api/v1/internal/maintenance/export-thaw",{freezeToken:mainFreezeToken},30000);mainFreezeToken=""}catch{}
+    if(hostFreezeToken)try{await hostAgentRequest("POST","/recovery/export/thaw",{freezeToken:hostFreezeToken},10000);hostFreezeToken=""}catch{}
+    if(dbSnapshot){fs.rmSync(dbSnapshot,{force:true});dbSnapshot=""}if(identitySnapshotRoot){fs.rmSync(identitySnapshotRoot,{recursive:true,force:true});identitySnapshotRoot=""}
+    if(!res.headersSent)res.status(400).json({ok:false,error:e.message});
+  }finally{for(const service of [...quiesced].sort((a,b)=>(priority[a.id]||0)-(priority[b.id]||0)))try{await run("docker",["start",service.container],{timeout:30000})}catch{}if(mainFreezeToken)try{await mainAppRequest("POST","/api/v1/internal/maintenance/export-thaw",{freezeToken:mainFreezeToken},30000);mainFreezeToken=""}catch{}if(hostFreezeToken)try{await hostAgentRequest("POST","/recovery/export/thaw",{freezeToken:hostFreezeToken},10000);hostFreezeToken=""}catch{}if(dbSnapshot)fs.rmSync(dbSnapshot,{force:true});if(identitySnapshotRoot)fs.rmSync(identitySnapshotRoot,{recursive:true,force:true});fullExportMutationLocked=false}
 }
 app.post("/backup/create",async(req,res)=>{let dbSnapshot="";try{
   const scope=["configuration","quick","operational","diagnostic","full"].includes(req.body?.scope)?req.body.scope:"operational";
@@ -364,7 +408,7 @@ app.post("/backup/create",async(req,res)=>{let dbSnapshot="";try{
   if(scope==="diagnostic"){
     let application=null;try{application=await mainAppStatus()}catch{application={ok:false}}
     let containers=[];try{containers=await dockerContainers()}catch{}
-    const documents=diagnosticSupportDocuments({createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.80",application,containers,system:{platform:os.platform(),architecture:os.arch(),cpuCount:os.cpus().length,memoryBytes:os.totalmem()}});
+    const documents=diagnosticSupportDocuments({createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.81",application,containers,system:{platform:os.platform(),architecture:os.arch(),cpuCount:os.cpus().length,memoryBytes:os.totalmem()}});
     zip.addFile("summary.json",Buffer.from(JSON.stringify(documents.summary,null,2)));
     zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(documents.containers,null,2)));
   }else copyIntoZip(zip,HUB_ROOT,"classroom-hub",filter);
@@ -624,7 +668,7 @@ app.get("/diagnostics/bundle",async(_req,res)=>{try{
   const stamp=new Date().toISOString().replace(/[:.]/g,"-"),name=`classroom-hub-diagnostics-${stamp}.zip`,dest=path.join(BACKUP_DIR,name),zip=new AdmZip();
   let application=null;try{application=await mainAppStatus()}catch{application={ok:false}}
   let containers=[];try{containers=await dockerContainers()}catch{}
-  const documents=diagnosticSupportDocuments({createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.80",application,containers,system:{platform:os.platform(),architecture:os.arch(),cpuCount:os.cpus().length,memoryBytes:os.totalmem()}});
+  const documents=diagnosticSupportDocuments({createdAt:new Date().toISOString(),agentVersion:"1.0.0-alpha.81",application,containers,system:{platform:os.platform(),architecture:os.arch(),cpuCount:os.cpus().length,memoryBytes:os.totalmem()}});
   zip.addFile("summary.json",Buffer.from(JSON.stringify(documents.summary,null,2)));
   zip.addFile("docker/containers.json",Buffer.from(JSON.stringify(documents.containers,null,2)));
   writeZipAtomic(zip,dest);res.download(dest,name);

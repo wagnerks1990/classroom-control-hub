@@ -42,6 +42,8 @@ A feature being present in this experimental build does **not** mean it will rem
 
 The service listens on the configured LAN port, default `8765`, and requires the per-device `x-classroom-hub-agent-token` header. The token is generated and retained by the Hub maintenance service and is provisioned to the app through the existing trusted ADB configuration operation.
 
+The configuration broadcast remains exported only for the Android shell bootstrap and is guarded by the platform `android.permission.DUMP` permission. Ordinary installed applications cannot invoke it. The HTTP listener uses a fixed maximum of eight client workers, a sixteen-client queue, five-second socket timeouts, bounded headers and a 64 KiB request-body ceiling so unauthenticated slow clients cannot create an unbounded thread pool.
+
 Current endpoints inside the agent are:
 
 - `GET /v1/status`

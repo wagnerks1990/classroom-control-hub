@@ -59,13 +59,33 @@ jobs:
           python -m py_compile host-agent/server.py host-agent/start.py host-agent/full_recovery.py
           python -m unittest host-agent/test_full_recovery.py
       - name: Validate installer shell syntax
-        run: bash -n install.sh deploy/bootstrap.sh deploy/host-group.sh host-agent/update-runner.sh host-agent/app-update-runner.sh host-agent/sync-veyon-key.sh
+        run: |
+          set -euo pipefail
+          while IFS= read -r script; do
+            bash -n "$script"
+          done < <(git ls-files '*.sh')
       - name: Validate Compose configuration
         run: docker compose config --format json | python3 tools/validate-host-network.py
       - name: Build main container
         run: docker build -t classroom-control-hub:test .
       - name: Build maintenance container
         run: docker build -f maintenance-agent/Dockerfile -t classroom-control-hub-maintenance:test .
+      - name: Scan main image for high-severity vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: classroom-control-hub:test
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - name: Scan maintenance image for high-severity vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: classroom-control-hub-maintenance:test
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
       - name: Host-network container smoke test
         run: bash tools/smoke-host-network.sh
       - name: Verify image release stamping

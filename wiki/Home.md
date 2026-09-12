@@ -4,7 +4,7 @@
 
 *Run the room. Manage the lab.*
 
-> **Status:** `1.0.0-alpha.80` — alpha software; production deployment remains limited to reviewed, backed-up `amd64` installations. Recovery passphrases require loopback or HTTPS through a same-host proxy even when ordinary administration uses trusted-LAN HTTP.
+> **Status:** `1.0.0-alpha.81` — alpha software; production deployment remains limited to reviewed, backed-up `amd64` installations. Recovery passphrases require loopback or HTTPS through a same-host proxy even when ordinary administration uses trusted-LAN HTTP.
 
 ## Start here
 

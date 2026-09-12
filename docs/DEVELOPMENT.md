@@ -73,6 +73,21 @@ Do not reintroduce migration-era `/opt/classroom-control-hub` assumptions into d
 
 ## Validation
 
+The `Security gates` workflow performs a full-history Gitleaks scan and blocks
+pull requests that introduce dependencies with moderate-or-higher known
+vulnerabilities. Both actions are pinned to full reviewed commit SHAs. The
+validated-main and tagged-release publication gates require this workflow to
+pass. Main validation also scans both built runtime images and blocks fixable
+high/critical vulnerabilities. Dependabot separately monitors the two npm
+graphs, GitHub Actions, and the Android Agent Gradle build.
+
+Every tracked shell script is syntax checked; adding a new `.sh` file therefore
+does not require manually extending a workflow filename list.
+
+The directly downloaded Gradle 8.9 distribution is verified against Gradle's
+published SHA-256 checksum in both Android CI and the maintenance image build.
+Do not update the distribution or checksum independently.
+
 Before committing a release candidate, run the checks represented by `.github/workflows/validate.yml`.
 
 ```bash
@@ -103,7 +118,7 @@ Tests must verify the stamping/wrapper contracts so releases do not rely on manu
 
 ## Current known-good baseline
 
-At the time this document was updated, `1.0.0-alpha.80` is the production-readiness review baseline. It retains stable URL display access as the default, keeps individual credentials optional, prevents supported installs from modifying tracked source modes, aligns immutable image publication and rollback with the canonical RoomGoblin repository, and adds authenticated encrypted single-export full recovery with journaled all-state rollback.
+At the time this document was updated, `1.0.0-alpha.81` is the production-readiness review baseline. It retains stable URL display access as the default, keeps individual credentials optional, prevents supported installs from modifying tracked source modes, binds immutable images to their trusted revision, and makes encrypted single-export recovery a writer-frozen point-in-time transaction with stable identity snapshots and all-state rollback.
 
 A newer `VERSION` supersedes the version number, but existing behavioral invariants remain unless deliberately changed and documented.
 

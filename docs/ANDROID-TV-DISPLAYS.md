@@ -67,13 +67,15 @@ The agent can become runnable slightly after ADB itself returns. Managed Display
 
 Agent source is in `agents/android-tv/`; package ID is `org.roomgoblin.display`.
 
-The agent is Leanback-compatible, immersive, keeps the screen awake while active, stores its assigned display URL, suppresses accidental Back exit, accepts package-scoped configuration, and participates in persistent-ADB boot recovery.
+The agent is Leanback-compatible, immersive, keeps the screen awake while active, stores its assigned display URL, suppresses accidental Back exit, accepts package-scoped configuration, and participates in persistent-ADB boot recovery. The exported configuration receiver requires Android's platform `DUMP` permission. The ADB shell UID retains the reviewed `adb shell am broadcast` bootstrap path, while ordinary installed apps cannot overwrite the display URL, Device Agent token, persistent-ADB policy, or root-tools policy.
 
 Managed Displays reports **Not installed**, **Installed · stopped**, **Starting**, **Running**, or **Unavailable**. Agent status probes use Android-compatible shell quoting. Remote Shell uses the same quoted remote-script path so pipelines and compound shell commands are preserved correctly.
 
 The boot implementation stores the persistent-ADB policy in device-protected storage so it is available at `LOCKED_BOOT_COMPLETED`. Kiosk activity launch remains best-effort because Android/OEM firmware controls when foreground UI may start. The Hub supplies a second recovery layer: as soon as ADB reconnects, it verifies the assigned device and can accelerate agent launch rather than waiting for the normal policy interval.
 
-For test installation place the APK at `data/android-tv/RoomGoblin-Display-Agent.apk` and use **Install Agent**. Production deployments should use a signed release APK.
+Production installs use the current maintenance-image APK signed by the appliance's persistent identity under `/signing/android-agent`. Before each install, RoomGoblin verifies the APK signature and independently matches its certificate digest to the protected keystore; the group-writable staged metadata is not trusted as signing authority. A complete identity written by an older alpha directly under `/signing` is moved into the recovery-compatible nested layout without generating a replacement.
+
+Enrollment records retain the device's Android ID after the first successful probe. If DHCP changes the address or Android changes the randomized wireless-debugging port, RoomGoblin enumerates only already-authorized mDNS endpoints, probes them, and accepts only the endpoint whose Android ID matches the saved identity. Build fingerprints are not used for this decision because identical devices share them.
 
 ## Persistent ADB
 

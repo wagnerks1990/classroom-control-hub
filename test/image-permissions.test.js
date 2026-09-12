@@ -12,7 +12,7 @@ test("image normalizes packaged modes and verifies readability after dropping ro
   const normalize = dockerfile.indexOf("RUN chmod 0755 /app");
   const user = dockerfile.indexOf("USER 10001:10001");
   const verify = dockerfile.indexOf("RUN node tools/verify-image-permissions.js");
-  assert.ok(normalize > dockerfile.indexOf("RUN npx esbuild"));
+  assert.ok(normalize > dockerfile.indexOf("COPY --from=browser-build"));
   assert.ok(user > normalize && verify > user);
   assert.match(dockerfile, /find \/app\/src \/app\/public \/app\/config \/app\/tools -type d -exec chmod 0755/);
   assert.match(dockerfile, /find \/app\/src \/app\/public \/app\/config \/app\/tools -type f -exec chmod 0644/);

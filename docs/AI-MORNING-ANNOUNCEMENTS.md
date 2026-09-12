@@ -23,6 +23,8 @@ Current deployment intent is 15-second health checks and about 90 seconds of sus
 
 This is a defense-in-depth guard, not permission to keep a server-side periodic reassert forever. Prefer fixing the lifecycle owner rather than expanding interception to unrelated commands.
 
+The server owns the hard priority boundary. It serializes announcement start/stop transitions and rechecks the lock at every automation display delivery, including work that already passed an earlier check and then awaited a delay or network operation. Only display targets owned by the active announcement are deferred; lighting and other non-display work continues. If post-release display reconciliation fails, retain the Background Music priority hold and retry before resuming.
+
 ## HLS player
 
 `public/antmedia-player/index.html` is the integrated Morning Announcements player. It emits same-origin telemetry to the parent receiver and performs bounded in-place recovery for network/media failures.
@@ -42,6 +44,11 @@ Preserve these observable surfaces:
 - Morning Announcements start/stop/probe-transition events when server lifecycle code is changed.
 
 Telemetry should include enough information to distinguish upstream liveness, gateway/network failure, HLS playlist/segment failure, decode/media failure, receiver WebSocket loss, player stall, and recovery. Never include credentials, cookies, access tokens, enrollment tokens, or secrets.
+Player and receiver telemetry may retain only the URL origin and pathname. Strip
+the query string and fragment before `postMessage`, diagnostics events, or display
+heartbeat metadata, and never expose the receiver's internal full-URL comparison
+key. The manual display controller must load the saved stream URL without writing
+configuration during page initialization and must fail closed when no URL exists.
 
 ## Future replacement monitoring
 

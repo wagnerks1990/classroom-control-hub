@@ -22,7 +22,9 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
       - name: Install Gradle 8.9
         run: |
+          set -euo pipefail
           curl -fsSL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o "$RUNNER_TEMP/gradle.zip"
+          echo 'd725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  '"$RUNNER_TEMP/gradle.zip" | sha256sum -c -
           unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
       - name: Build debug APK

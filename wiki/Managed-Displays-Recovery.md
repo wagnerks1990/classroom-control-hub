@@ -24,6 +24,10 @@ devices.json                           root:10001  0660
 
 An unreadable `devices.json` must be treated as an error. It must never be silently converted into `0 devices`.
 
+The staged Android APK and JSON metadata are not a trust anchor because they live in the writable managed-data tree. Before every readiness response or installation, maintenance validates the APK signer against the protected `/signing/android-agent` keystore. The nested identity is the same pair exported by Full Recovery; complete older identities at the direct `/signing` root migrate without regeneration.
+
+Each successful probe records the device's Android ID. When DHCP or the randomized ADB port changes, recovery accepts an already-authorized mDNS endpoint only when that ID matches; a common firmware/build fingerprint is never sufficient.
+
 If an appliance is already affected:
 
 ```bash

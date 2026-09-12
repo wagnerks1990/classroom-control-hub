@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.0.0-alpha.81 - 2026-09-12
+
+### Production hardening
+
+- Made Full Recovery Export a single point-in-time appliance transaction. The
+  Host Agent now holds the shared mutation lock while the Hub blocks and drains
+  HTTP, WebSocket, scheduler, announcement, presentation, Background Music,
+  update, MQTT, and retention writers before database selection. One-use tokens,
+  bounded leases, queued audit writes, and `finally` cleanup prevent a failed or
+  interrupted export from leaving the appliance frozen.
+- Stable-copied and revalidated the master key, ADB trust pair, Android signing
+  identity, and native Veyon identity before archiving. Clean hosts no longer
+  treat the installer's empty Veyon bind placeholder as a configured identity,
+  and retired Veyon proxy-container state is excluded from the portable contract.
+- Started the Host Agent socket before interrupted-recovery reconciliation so
+  Compose health checks cannot deadlock rollback. Preserved explicit trusted
+  proxy configuration and bound pulled images to the expected Git revision via
+  OCI metadata.
+- Rechecked Morning Announcements priority at every display delivery, kept
+  non-display automation steps running, retried failed release reconciliation
+  before resuming Background Music, and tracked the player that actually owns
+  Background Music playback across configuration or manual overrides.
+- Encrypted the Morning Announcements URL at rest, scrubbed legacy plaintext,
+  and deeply redacted URL credentials from controller/preview/status/audit and
+  diagnostic projections while retaining the full URL only for the intended
+  physical display. MQTT logs now emit endpoint-only information.
+- Protected the Android configuration receiver with the platform DUMP
+  permission, verified the installed APK's real signer against the protected
+  keystore, installed from a private verified snapshot, repaired legacy signing
+  layout migration, bound mDNS recovery to Android ID, and bounded Device Agent
+  workers, queues, headers, bodies, and socket timeouts.
+- Fixed saved announcement URL loading, fail-closed blank playback, query-safe
+  client telemetry, masked Veyon credential entry, the manual direct-media
+  policy control, and programmatic names for controller/setup form controls.
+
+### Verification and supply chain
+
+- Added Gradle dependency updates, full-history secret scanning, pull-request
+  dependency review, blocking high/critical fixable image scans, verified Gradle
+  distribution download integrity, complete tracked-shell syntax validation,
+  and exact managed-integration catalog parity checks.
+- Moved the esbuild browser bundler into a disposable build stage and removed
+  npm/npx from the final Hub and maintenance runtime images so build tooling and
+  its advisory surface are not shipped on the appliance.
+- Expanded the regression suite to 296 tests covering recovery freeze/thaw,
+  identity consistency, secret projections and migration, Android trust and
+  resource limits, accessibility, controller behavior, and release policy.
+
 ## 1.0.0-alpha.80 - 2026-09-11
 
 ### Single-export full recovery

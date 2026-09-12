@@ -45,7 +45,7 @@ import {createDisplayLayout,fitElement,bounded} from '/display/layout.mjs?v=sing
 import {authorizeMediaUrl,musicAssistantProxyUrl,identifyDuration,setDisplayGatewayHosts} from '/display/security.mjs?v=single-fit-20260909-4';
 import {wsUrl,getDisplayId} from '/shared/common.js';
 import {SendspinPlayer} from '/display/sendspin.bundle.js';
-const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,DISPLAY_BUILD='1.0.0-alpha.80';
+const LOGICAL_WIDTH=1920,LOGICAL_HEIGHT=1080,DISPLAY_BUILD='1.0.0-alpha.81';
 const id=getDisplayId(),preview=new URLSearchParams(location.search).get('preview')==='1';
 const displayAuth=(()=>{try{const p=new URLSearchParams(location.hash.slice(1)),legacy=p.get('displayToken'),enrollmentToken=p.get('enrollmentToken')||'';if(legacy)localStorage.setItem('classroom-hub-display-token',legacy);if(legacy||enrollmentToken)history.replaceState(null,'',location.pathname+location.search);return {legacyToken:localStorage.getItem('classroom-hub-display-token')||'',credential:localStorage.getItem(`classroom-hub-display-credential:${id}`)||'',enrollmentToken,assetAccessToken:''}}catch{return {legacyToken:'',credential:'',enrollmentToken:'',assetAccessToken:''}}})();
 function authorizeAssetUrl(value){return authorizeMediaUrl(value,location.origin,displayAuth.assetAccessToken)}

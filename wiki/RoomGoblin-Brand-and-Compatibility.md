@@ -10,6 +10,10 @@ The built-in interface uses Goblin Teal `#0F766E`, Electric Green `#22C55E`, Sla
 
 Canonical runtime assets are stored in `public/brand/`. Full rules are maintained in `docs/brand/BRAND-GUIDE.md` and `docs/brand/AI-BRAND-CONTEXT.md`.
 
+Accessibility is part of the UI contract: state is never communicated by color
+alone, and every form input, select, and textarea has a programmatic accessible
+name. Placeholder text or a visually adjacent label is not sufficient.
+
 ## Android app transition
 
 Starting with `1.0.0-alpha.77`, the RoomGoblin Display Agent uses `org.roomgoblin.display`. If `org.classroomhub.display` is installed, uninstall the old Android app and install the new RoomGoblin version instead of attempting an in-place update. Android treats the two package IDs as separate apps.

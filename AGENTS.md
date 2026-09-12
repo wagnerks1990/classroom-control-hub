@@ -28,7 +28,7 @@ Do not infer production configuration from public defaults. Site-specific config
 
 ## Current baseline
 
-The current review baseline is `1.0.0-alpha.80`.
+The current review baseline is `1.0.0-alpha.81`.
 
 Verified live-test/recovery behaviors inherited by this baseline include:
 
@@ -40,7 +40,7 @@ Verified live-test/recovery behaviors inherited by this baseline include:
 - maintenance-token, master-key, Host Agent, data-root ownership, scheduler and database readiness recovery;
 - maintenance startup health that checks the Host Agent directly instead of waiting on the main application;
 - appliance-wide Docker discovery and lifecycle control for existing containers;
-- optional managed integrations for Mosquitto, Govee2MQTT, Music Assistant and Veyon WebAPI with adopt-without-recreate and managed deploy/recreate paths;
+- optional managed Docker integrations for Mosquitto, Govee2MQTT, Music Assistant and Node-RED with adopt-without-recreate and managed deploy/recreate paths; native Veyon services remain host-managed;
 - setup receiver IDs remain editable and display groups are pruned when receivers are removed;
 - Ant Media Morning Announcements live detection through HLS;
 - local HLS playback with working announcement volume/mute control;
@@ -52,6 +52,10 @@ Verified live-test/recovery behaviors inherited by this baseline include:
 - passphrase-encrypted/authenticated single-export full recovery with host-owned
   staging, complete safety snapshots, durable journal recovery and all-state
   rollback.
+- Full Recovery Export is one cooperative point-in-time transaction: acquire the
+  Host Agent appliance lock and one-use Hub writer freeze before database
+  selection, drain active writers, snapshot/revalidate identity files, and thaw
+  on every outcome. Do not regress to independently walking live roots.
 
 When a later `VERSION` exists, it supersedes this baseline, but these behavioral invariants must remain covered unless a release deliberately changes them.
 
@@ -156,6 +160,15 @@ Commit the active database and master key as one identity, then require
 signing keystore/password as another indivisible identity. Do not regenerate
 either identity and report success. Native Veyon recovery is bounded to the
 configured `VEYON_RECOVERY_ROOT=/veyon-recovery` mount.
+The zero-byte `private.pem` created for the optional Compose bind is only an
+unconfigured placeholder, not a recoverable identity. Native
+`/opt/services/veyon-webapi` runtime files are not RoomGoblin-owned Docker state
+and remain outside the portable managed-service archive.
+
+On Host Agent restart, bind and serve the authenticated Unix socket before
+resolving an interrupted recovery, while rejecting mutations with `423`.
+Maintenance health depends on that socket, so core Compose reconciliation must
+not run before the socket can answer health requests.
 
 Only a service whose saved `deploymentOwnership` is `roomgoblin` and whose
 image matches the fixed reviewed identity may be recreated. Never replace an
@@ -165,6 +178,11 @@ Preserve the saved running/stopped state of owned services.
 ## Version convergence
 
 A release is not complete until every user-visible/runtime version surface agrees. `VERSION` is the primary release value. The main image stamps controller, display, and Windows-agent runtime surfaces during the build; the maintenance image stamps its embedded runtime diagnostic version from package metadata; the Host Agent wrapper reports the release version while retaining the audited core implementation.
+
+Published production images must carry
+`org.opencontainers.image.revision=<exact Git commit>`. Install and web-update
+paths compare that label with the selected trusted commit before deployment;
+matching version text is not sufficient source identity.
 
 Run repository validation and search for unintended stale current-baseline version strings before release.
 
@@ -230,6 +248,14 @@ docker build -t classroom-control-hub-maintenance:test maintenance-agent
 npm test
 ```
 
+The independent `Security gates` workflow scans full Git history for secrets
+and reviews pull-request dependency changes at moderate severity or higher.
+The main validation also blocks on high/critical fixable vulnerabilities in
+both built runtime images. Release and validated-main image publication must
+wait for these gates. Keep third-party actions pinned to reviewed full commit
+SHAs. Dependabot covers both Node dependency graphs, GitHub Actions, and the
+Android Agent Gradle graph.
+
 For behavior changes, add targeted regression checks and document what was actually verified. Never claim production testing that was not performed.
 
 ## Documentation contract
@@ -253,3 +279,11 @@ Resolve host GID 10001 before backup/data/secret mutation. The group inside the 
 ### Sendspin transport ownership
 
 The backend's dedicated Sendspin relay is in `src/music-assistant-sendspin.js`. It uses the configured audio port (normally 8927), not the API/web-player socket on 8095; the API token never enters raw audio frames. Keep the browser on the existing ticketed same-Hub proxy and preserve the single display-layout engine. Do not reintroduce PR #22's patch scripts or direct-browser/auto-fit experiments. See [Sendspin architecture and selective review](docs/MUSIC-ASSISTANT-SENDSPIN.md).
+
+### Managed Android trust boundaries
+
+The exported Android configuration receiver is an ADB bootstrap surface, not a general inter-app API. Keep it guarded by the platform `android.permission.DUMP` permission so `adb shell am broadcast` remains compatible while ordinary apps cannot replace the display URL, Device Agent token, persistent-ADB policy, or root-tools policy.
+
+Treat the staged APK and its JSON metadata as mutable application data. Before every install or artifact-ready response, verify the APK signature and compare its certificate digest with the protected keystore identity under `/signing/android-agent`; metadata alone is never signing authority. Preserve the one-time complete-pair migration from the older direct `/signing` layout.
+
+Wireless ADB endpoint recovery must bind a changed mDNS address to the saved per-device Android ID. A firmware/build fingerprint is shared by devices of the same model and must never authorize reassignment. Device Agent HTTP work must remain bounded by fixed worker, queue, header, body, and socket-timeout limits.

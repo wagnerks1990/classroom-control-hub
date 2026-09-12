@@ -5,10 +5,12 @@ const video=document.getElementById('player'),status=document.getElementById('st
 const params=new URLSearchParams(location.search),source=params.get('source')||'',initialVolume=Math.max(0,Math.min(1,Number(params.get('volume')??1)));
 let hls=null,candidateIndex=0,lastProgressAt=Date.now(),lastCurrentTime=0,recoveryCount=0,lastTelemetryAt=0;
 const counters={manifestParsed:0,levelLoaded:0,fragmentLoaded:0,networkErrors:0,mediaErrors:0,otherErrors:0,stalls:0,recoveries:0};
+function safeTelemetryUrl(value){try{const u=new URL(String(value||''));return `${u.origin}${u.pathname}`}catch{return ''}}
 function bufferedAhead(){try{for(let i=0;i<video.buffered.length;i++)if(video.buffered.start(i)<=video.currentTime&&video.buffered.end(i)>=video.currentTime)return Math.max(0,video.buffered.end(i)-video.currentTime)}catch{}return 0}
 function telemetry(event,extra={},force=false){
   const now=Date.now();if(!force&&now-lastTelemetryAt<750&&event==='heartbeat')return;lastTelemetryAt=now;
   const payload={event,state:video.ended?'ended':video.paused?'paused':video.readyState<3?'buffering':'playing',at:new Date().toISOString(),url:hls?.url||video.currentSrc||'',source,candidateIndex,currentTime:Number(video.currentTime||0),bufferedAhead:Number(bufferedAhead().toFixed(3)),readyState:video.readyState,networkState:video.networkState,paused:video.paused,ended:video.ended,recoveryCount,counters:{...counters},...extra};
+  payload.url=safeTelemetryUrl(payload.url);payload.source=safeTelemetryUrl(payload.source);
   try{parent.postMessage({type:'classroom-hub.antmedia.telemetry',telemetry:payload},location.origin)}catch{}
   try{console.info('[ClassroomHub AntMedia]',event,payload)}catch{}
 }

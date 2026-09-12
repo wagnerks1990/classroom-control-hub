@@ -16,7 +16,11 @@ const APK=path.join(ROOT,"RoomGoblin-Display-Agent.apk");
 const META=path.join(ROOT,"RoomGoblin-Display-Agent.json");
 const BUNDLE_APK=path.resolve(process.env.ANDROID_AGENT_BUNDLE_APK||"/app/android-agent/agent-release-unsigned.apk");
 const BUNDLE_META=path.resolve(process.env.ANDROID_AGENT_BUNDLE_META||"/app/android-agent/agent-build.json");
-const SIGNING_ROOT=path.resolve(process.env.ANDROID_AGENT_SIGNING_ROOT||"/signing/android-agent");
+const SIGNING_MOUNT_ROOT=path.resolve(process.env.ANDROID_AGENT_SIGNING_ROOT||"/signing");
+// Full Recovery treats this nested directory as the indivisible Android
+// signing identity. Older alpha builds accidentally wrote the pair directly at
+// the mount root; migrate that complete pair once without regenerating it.
+const SIGNING_ROOT=path.join(SIGNING_MOUNT_ROOT,"android-agent");
 const KEYSTORE=path.join(SIGNING_ROOT,"RoomGoblin-Display-Agent.keystore");
 const PASSWORD_FILE=path.join(SIGNING_ROOT,"password");
 const KEY_ALIAS="classroom-hub";
@@ -35,13 +39,36 @@ function command(file,args,opts={}){return execFileSync(file,args,{encoding:"utf
 function sha256(file){const h=crypto.createHash("sha256");h.update(fs.readFileSync(file));return h.digest("hex")}
 function json(file,label){try{return JSON.parse(fs.readFileSync(file,"utf8"))}catch(error){throw Error(`${label} metadata is invalid: ${error.message}`)}}
 function safeWriteSecret(file,value){fs.writeFileSync(file,value,{encoding:"utf8",mode:0o600,flag:"wx"});fs.chmodSync(file,0o600)}
+function migrateLegacySigningIdentity(){
+  const legacyKey=path.join(SIGNING_MOUNT_ROOT,"RoomGoblin-Display-Agent.keystore"),legacyPassword=path.join(SIGNING_MOUNT_ROOT,"password");
+  const legacyPresent=fs.existsSync(legacyKey)||fs.existsSync(legacyPassword),currentPresent=fs.existsSync(KEYSTORE)||fs.existsSync(PASSWORD_FILE);
+  if(fs.existsSync(legacyKey)!==fs.existsSync(legacyPassword))throw Error("Legacy Android signing identity is incomplete; restore both files before continuing");
+  if(fs.existsSync(KEYSTORE)!==fs.existsSync(PASSWORD_FILE))throw Error("Android signing identity is incomplete; restore both files before continuing");
+  if(!legacyPresent)return;
+  if(currentPresent){
+    if(sha256(legacyKey)!==sha256(KEYSTORE)||sha256(legacyPassword)!==sha256(PASSWORD_FILE))throw Error("Conflicting Android signing identities exist; resolve them without regenerating device trust");
+    return;
+  }
+  fs.mkdirSync(SIGNING_ROOT,{recursive:true,mode:0o700});
+  fs.renameSync(legacyKey,KEYSTORE);fs.renameSync(legacyPassword,PASSWORD_FILE);
+  fs.chmodSync(SIGNING_ROOT,0o700);fs.chmodSync(KEYSTORE,0o600);fs.chmodSync(PASSWORD_FILE,0o600);
+  console.warn("Migrated the complete legacy Android signing identity into the Full Recovery layout.");
+}
 function signerDigest(apk){
   const output=command("apksigner",["verify","--verbose","--print-certs",apk]);
   const match=String(output).match(/Signer #1 certificate SHA-256 digest:\s*([0-9a-f]{64})/i);
   if(!match)throw Error("Unable to verify Android agent signing certificate digest");
   return match[1].toLowerCase();
 }
+function signingIdentityDigest(password){
+  const env={...process.env,CLASSROOM_HUB_KEYSTORE_PASS:password};
+  const certificate=execFileSync("keytool",["-exportcert","-keystore",KEYSTORE,"-alias",KEY_ALIAS,"-storepass:env","CLASSROOM_HUB_KEYSTORE_PASS"],{stdio:["ignore","pipe","pipe"],maxBuffer:1024*1024,env});
+  if(!Buffer.isBuffer(certificate)||certificate.length<64)throw Error("Unable to export the protected Android signing identity certificate");
+  return crypto.createHash("sha256").update(certificate).digest("hex");
+}
 function ensureSigningIdentity(){
+  fs.mkdirSync(SIGNING_MOUNT_ROOT,{recursive:true,mode:0o700});
+  migrateLegacySigningIdentity();
   fs.mkdirSync(SIGNING_ROOT,{recursive:true,mode:0o700});
   fs.chmodSync(SIGNING_ROOT,0o700);
   if(fs.existsSync(KEYSTORE)!==fs.existsSync(PASSWORD_FILE))throw Error("Android agent signing identity is incomplete; restore the signing directory instead of generating over partial state");
@@ -74,13 +101,14 @@ function ensureCurrentArtifact(){
   if(bundle.package!=="org.roomgoblin.display"||!bundle.versionName||!Number.isInteger(Number(bundle.versionCode))||bundle.unsignedSha256!==bundleSha)throw Error("Bundled Android agent metadata does not match the current maintenance-image APK");
   fs.mkdirSync(ROOT,{recursive:true,mode:0o770});
   const password=ensureSigningIdentity();
+  const expectedSigner=signingIdentityDigest(password);
 
   if(fs.existsSync(APK)&&fs.existsSync(META)){
     try{
       const current=json(META,"Staged Android agent");
       const currentSha=sha256(APK);
       const currentSigner=signerDigest(APK);
-      if(current.package===bundle.package&&current.versionName===bundle.versionName&&Number(current.versionCode)===Number(bundle.versionCode)&&current.bundleSha256===bundleSha&&current.sha256===currentSha&&current.signerSha256===currentSigner&&current.signingMode==="persistent-per-appliance"){
+      if(current.package===bundle.package&&current.versionName===bundle.versionName&&Number(current.versionCode)===Number(bundle.versionCode)&&current.bundleSha256===bundleSha&&current.sha256===currentSha&&current.signerSha256===currentSigner&&currentSigner===expectedSigner&&current.signingMode==="persistent-per-appliance"){
         try{fs.chmodSync(APK,0o660);fs.chmodSync(META,0o660)}catch{}
         return;
       }
@@ -94,6 +122,7 @@ function ensureCurrentArtifact(){
     signApk(unsignedCopy,signedTemp,password);
     command("apksigner",["verify","--verbose",signedTemp]);
     const signedSha=sha256(signedTemp),signerSha=signerDigest(signedTemp);
+    if(signerSha!==expectedSigner)throw Error("Signed Android agent does not match the protected appliance signing identity");
     fs.chmodSync(signedTemp,0o660);
     try{fs.chownSync(signedTemp,0,10001)}catch(error){if(error.code!=="EPERM")throw error}
     fs.renameSync(signedTemp,APK);
@@ -115,10 +144,12 @@ function artifact(){
     fs.accessSync(APK,fs.constants.R_OK);
     const meta=json(META,"Staged Android agent");
     const actualSha=sha256(APK);
+    const actualSigner=signerDigest(APK);
+    const expectedSigner=signingIdentityDigest(ensureSigningIdentity());
     const bundle=fs.existsSync(BUNDLE_META)?json(BUNDLE_META,"Bundled Android agent"):null;
     const bundleSha=fs.existsSync(BUNDLE_APK)?sha256(BUNDLE_APK):null;
-    const valid=meta.package==="org.roomgoblin.display"&&typeof meta.versionName==="string"&&meta.versionName&&Number.isInteger(Number(meta.versionCode))&&meta.sha256===actualSha&&/^[0-9a-f]{64}$/i.test(String(meta.signerSha256||""))&&!!bundle&&meta.versionName===bundle.versionName&&Number(meta.versionCode)===Number(bundle.versionCode)&&meta.bundleSha256===bundleSha;
-    return {available:valid,readable:true,package:meta.package||null,versionName:meta.versionName||null,versionCode:Number(meta.versionCode)||null,sha256:actualSha,signerSha256:meta.signerSha256||null,signingMode:meta.signingMode||null,bundleSha256:meta.bundleSha256||null,source:meta.source||null,stagedAt:meta.stagedAt||null,verified:valid,error:valid?null:"Staged Android agent does not match the current maintenance-image build"};
+    const valid=meta.package==="org.roomgoblin.display"&&typeof meta.versionName==="string"&&meta.versionName&&Number.isInteger(Number(meta.versionCode))&&meta.sha256===actualSha&&meta.signerSha256===actualSigner&&actualSigner===expectedSigner&&!!bundle&&meta.versionName===bundle.versionName&&Number(meta.versionCode)===Number(bundle.versionCode)&&meta.bundleSha256===bundleSha;
+    return {available:valid,readable:true,package:meta.package||null,versionName:meta.versionName||null,versionCode:Number(meta.versionCode)||null,sha256:actualSha,signerSha256:actualSigner,signingMode:meta.signingMode||null,bundleSha256:meta.bundleSha256||null,source:meta.source||null,stagedAt:meta.stagedAt||null,verified:valid,error:valid?null:"Staged Android agent does not match the current maintenance-image build or protected signing identity"};
   }catch(error){return {available:false,readable:false,verified:false,error:error.message}}
 }
 function device(id){const d=STORE.getDevice(id);if(!d){const e=Error("Managed Android display not found");e.status=404;throw e}return d}
@@ -146,21 +177,27 @@ async function packageInstalled(d,pkg){
 }
 async function installCurrent(d,{replaceExisting=false}={}){
   const info=artifact();if(!info.available){const e=Error(info.error||"Current Android agent artifact is unavailable");e.status=503;throw e}
-  const pkg=CURRENT_PACKAGE;let replacedExisting=false;
-  if(await packageInstalled(d,LEGACY_PACKAGE)){
-    if(!replaceExisting){const e=Error("The old RoomGoblin Android app must be uninstalled before installing RoomGoblin. In-place update is not supported for the new package identity.");e.status=409;e.code="legacy_package_reinstall_required";throw e}
-    await adb(["-s",d.serial,"uninstall",LEGACY_PACKAGE],60000);
-    replacedExisting=true;
-  }
-  try{await adb(["-s",d.serial,"install","-r","-g",APK])}
-  catch(error){
-    if(!signatureMismatch(error))throw error;
-    if(!replaceExisting){const e=Error("The installed RoomGoblin agent uses a different signing identity. One-time replacement is required to adopt the appliance-managed signing key.");e.status=409;e.code="signature_transition_required";throw e}
-    await adb(["-s",d.serial,"uninstall",pkg],60000);await adb(["-s",d.serial,"install","-g",APK]);replacedExisting=true;
-  }
-  const migrated=STORE.upsertDevice({...d,agentPackage:CURRENT_PACKAGE});
-  const grants=await restoreAgentConfiguration(migrated);
-  return {installed:true,replacedExisting,grants,artifact:info,message:`Installed RoomGoblin Display Agent ${info.versionName}${replacedExisting?" after removing the old Android app":""}.`};
+  const installCopy=path.join(SIGNING_ROOT,`.verified-install-${process.pid}-${crypto.randomBytes(8).toString("hex")}.apk`);
+  try{
+    fs.copyFileSync(APK,installCopy,fs.constants.COPYFILE_EXCL);fs.chmodSync(installCopy,0o600);
+    const installSha=sha256(installCopy),installSigner=signerDigest(installCopy),expectedSigner=signingIdentityDigest(ensureSigningIdentity());
+    if(installSha!==info.sha256||installSigner!==info.signerSha256||installSigner!==expectedSigner)throw Error("Android agent artifact changed after verification; installation was blocked");
+    const pkg=CURRENT_PACKAGE;let replacedExisting=false;
+    if(await packageInstalled(d,LEGACY_PACKAGE)){
+      if(!replaceExisting){const e=Error("The old RoomGoblin Android app must be uninstalled before installing RoomGoblin. In-place update is not supported for the new package identity.");e.status=409;e.code="legacy_package_reinstall_required";throw e}
+      await adb(["-s",d.serial,"uninstall",LEGACY_PACKAGE],60000);
+      replacedExisting=true;
+    }
+    try{await adb(["-s",d.serial,"install","-r","-g",installCopy])}
+    catch(error){
+      if(!signatureMismatch(error))throw error;
+      if(!replaceExisting){const e=Error("The installed RoomGoblin agent uses a different signing identity. One-time replacement is required to adopt the appliance-managed signing key.");e.status=409;e.code="signature_transition_required";throw e}
+      await adb(["-s",d.serial,"uninstall",pkg],60000);await adb(["-s",d.serial,"install","-g",installCopy]);replacedExisting=true;
+    }
+    const migrated=STORE.upsertDevice({...d,agentPackage:CURRENT_PACKAGE});
+    const grants=await restoreAgentConfiguration(migrated);
+    return {installed:true,replacedExisting,grants,artifact:info,message:`Installed RoomGoblin Display Agent ${info.versionName}${replacedExisting?" after removing the old Android app":""}.`};
+  }finally{try{fs.rmSync(installCopy,{force:true})}catch{}}
 }
 function route(fn){return (req,res)=>Promise.resolve(fn(req,res)).catch(error=>res.status(error.status||500).json({ok:false,code:error.code||undefined,error:error.message}))}
 
@@ -173,4 +210,4 @@ function installRoutes(app){
   app.post("/android/devices/:id/agent/artifact/install",route(async(req,res)=>{const result=await installCurrent(device(req.params.id),{replaceExisting:req.body?.replaceExisting===true});res.json({ok:true,deviceId:req.params.id,...result})}));
 }
 express.application.listen=function(...args){installRoutes(this);return originalListen.apply(this,args)};
-module.exports={artifact,installCurrent,installRoutes,ensureCurrentArtifact};
+module.exports={artifact,installCurrent,installRoutes,ensureCurrentArtifact,signingIdentityDigest};

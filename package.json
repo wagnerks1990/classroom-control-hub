@@ -1,6 +1,6 @@
 {
   "name": "roomgoblin",
-  "version": "1.0.0-alpha.80",
+  "version": "1.0.0-alpha.81",
   "engines": {
     "node": ">=22"
   },
@@ -17,7 +17,6 @@
   "dependencies": {
     "@sendspin/sendspin-js": "3.2.0",
     "adm-zip": "0.6.1",
-    "esbuild": "^0.25.9",
     "express": "^5.1.0",
     "express-rate-limit": "8.7.0",
     "hls.js": "^1.6.13",
@@ -25,5 +24,8 @@
     "multer": "^2.0.2",
     "pdfjs-dist": "^6.2.108",
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

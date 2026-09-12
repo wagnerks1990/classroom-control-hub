@@ -44,6 +44,12 @@ The school schedule profile owns the authoritative alternating-cycle anchor. The
 
 A successful primary action must not be misdiagnosed as failed merely because a timer overlay failed. Conversely, a failed timer overlay must remain visible as a distinct failure rather than being hidden behind a generic `Completed with action errors` message.
 
+## Announcement priority during execution
+
+Morning Announcements reserve only their target displays. The scheduler may continue non-display actions, including lighting, while recording locked display work for the post-announcement winner resync. Priority is checked immediately before every display delivery as well as at automation entry; a delayed or multi-step automation that began first cannot overwrite a later announcement takeover.
+
+Background Music remains paused until display reconciliation succeeds. A failed reconciliation is retried while the audio-priority hold remains active.
+
 ## Regression requirements
 
 Changes to the scheduler or controller must preserve these invariants:

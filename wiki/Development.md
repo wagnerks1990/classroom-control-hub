@@ -68,6 +68,21 @@ Every release should:
 
 ## Validation
 
+The `Security gates` workflow performs a full-history Gitleaks scan and blocks
+pull requests that introduce dependencies with moderate-or-higher known
+vulnerabilities. Both actions are pinned to full reviewed commit SHAs. The
+validated-main and tagged-release publication gates require this workflow to
+pass. Main validation also scans both built runtime images and blocks fixable
+high/critical vulnerabilities. Dependabot separately monitors the two npm
+graphs, GitHub Actions, and the Android Agent Gradle build.
+
+Every tracked shell script is syntax checked; adding a new `.sh` file therefore
+does not require manually extending a workflow filename list.
+
+The directly downloaded Gradle 8.9 distribution is verified against Gradle's
+published SHA-256 checksum in both Android CI and the maintenance image build.
+Do not update the distribution or checksum independently.
+
 ```bash
 node --check src/server.js
 node --check src/storage.js
@@ -112,7 +127,7 @@ docker build -t classroom-control-hub-maintenance:test maintenance-agent
 
 ## Current known-good baseline
 
-`1.0.0-alpha.80` is the production-readiness review baseline. A newer `VERSION` supersedes the version number but not these invariants unless deliberately changed and documented. Alpha.80 adds authenticated encrypted single-export full recovery with host-owned staging, durable journaling, complete safety snapshots, and all-state rollback.
+`1.0.0-alpha.81` is the production-readiness review baseline. A newer `VERSION` supersedes the version number but not these invariants unless deliberately changed and documented. Alpha.81 freezes and drains writers for a point-in-time encrypted export, snapshots recovery identities consistently, and preserves durable all-state rollback.
 
 Installers copy executable host runners into `/usr/local/libexec` and must not change tracked source modes in `/opt/classroom-hub`. A supported update that starts from a clean checkout must leave `git status --short` empty.
 

@@ -14,13 +14,14 @@ AI coding assistants and contributors should treat the GitHub repository `main` 
 
 ## Current baseline
 
-The current production-readiness review baseline is `1.0.0-alpha.80`.
+The current production-readiness review baseline is `1.0.0-alpha.81`.
 
 Critical invariants:
 
 - The appliance is temporarily HTTP-only for ordinary administration and restricted to a trusted classroom/admin LAN; Caddy/TLS is intentionally deferred. Full Recovery passphrases require loopback or HTTPS terminated by a same-host loopback reverse proxy.
 - Full Recovery uses one AES-256-GCM `.rgbak` envelope with scrypt `N=32768/r=8/p=1`, random salt/nonce, authenticated canonical metadata and bounded payloads.
 - Maintenance stages only authenticated allowlisted state; the Host Agent owns final paths/permissions, takes a complete safety snapshot, journals the transaction durably and rolls every changed root back after failure or interruption.
+- Full Recovery Export holds the Host Agent appliance lock plus a one-use Hub writer freeze before database selection, drains existing writers, queues audits, and stable-copies/revalidates master, ADB, signing and Veyon identities. Both locks thaw on every outcome and have bounded crash leases.
 - Database/master key, ADB trust/named volume and Android signing identity are indivisible recovery sets; every encrypted database secret must decrypt before acceptance.
 - Only explicit RoomGoblin-owned service state with its fixed reviewed image identity may be recreated. Adopted/external collisions fail closed and owned stopped services remain stopped.
 - `DATABASE_FILE` is authoritative. Installer migrations take SQLite-safe backups of every database, stop the app before active-database canonicalization, validate with `PRAGMA quick_check`, and preserve the prior file for rollback.
@@ -30,11 +31,11 @@ Critical invariants:
 - Receiver IDs are stable/editable and display groups must be pruned when receivers are removed.
 - The controller inventories existing Docker containers and can adopt them for safe lifecycle/log control.
 - New container creation remains restricted to reviewed supported integration templates.
-- Supported optional managed add-ons are Mosquitto, Govee2MQTT, Music Assistant, and Veyon WebAPI; adoption must not recreate an existing container unless explicitly requested, and persistent integration data must survive recreation/removal.
-- Morning Announcements are highest priority.
+- Supported optional managed Docker add-ons are Mosquitto, Govee2MQTT, Music Assistant, and Node-RED; adoption must not recreate an existing container unless explicitly requested, persistent integration data must survive recreation/removal, and native Veyon services remain host-managed.
+- Morning Announcements are highest priority. Recheck their target lock at each display delivery so an already-running delayed automation cannot overwrite a takeover; continue non-display actions rather than discarding them.
 - Ant Media live detection uses HLS as the primary signal.
 - Announcement audio is locally controlled so mute/volume work.
-- When announcements end, the scheduler re-evaluates the current moment and re-triggers winning current display automations before Background Music resumes.
+- When announcements end, the scheduler re-evaluates the current moment and re-triggers winning current display automations before Background Music resumes. Failed reconciliation retains the audio hold and retries.
 - Timer chaining is only for an explicitly linked continuation of the same base class or period.
 - Runtime versions must stay converged through release metadata/stamping and the Host Agent wrapper.
 - Integration health is independent; a failure in Pluto must not falsely mark MQTT/Govee offline.
@@ -50,11 +51,16 @@ Critical invariants:
 Optional managed Docker services:
 
 ```text
-mosquitto                 eclipse-mosquitto:latest
-govee2mqtt                ghcr.io/wez/govee2mqtt:latest
-music-assistant-server     ghcr.io/music-assistant/server:latest
-veyon-webapi               veyon/webapi-proxy:latest
+mosquitto                 eclipse-mosquitto:2.0.22
+govee2mqtt                ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72
+music-assistant-server     ghcr.io/music-assistant/server:2.9.13
+nodered                   nodered/node-red:4.1.14-22
 ```
+
+These reviewed identities are exact allowlist values, not examples. Do not
+replace them with mutable `latest` tags. Native `veyon.service` and
+`veyon-webapi.service` are host-managed; the retired Veyon proxy container must
+not be deployed.
 
 Production runtime `.env`, databases, data, uploads, backups, integration data, private keys, master keys, tokens, endpoints, and site-specific mappings must remain outside Git.
 

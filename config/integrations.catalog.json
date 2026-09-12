@@ -1,8 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "integrations": [
     {"id":"mosquitto","name":"MQTT Broker","type":"docker","image":"eclipse-mosquitto:2.0.22","optional":true},
     {"id":"govee2mqtt","name":"Govee Lighting","type":"docker","image":"ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72","requires":["mosquitto"],"optional":true},
+    {"id":"musicassistant","name":"Music Assistant","type":"docker","image":"ghcr.io/music-assistant/server:2.9.13","optional":true},
     {"id":"nodered","name":"Node-RED","type":"docker","image":"nodered/node-red:4.1.14-22","optional":true},
     {"id":"pluto","name":"HDMI / HDBaseT Matrix","type":"external","optional":true},
     {"id":"veyon","name":"Veyon Computer Management","type":"external","optional":true}

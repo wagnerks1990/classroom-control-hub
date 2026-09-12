@@ -23,7 +23,7 @@ Do not rename these merely for cosmetic consistency. A future internal-identifie
 
 The Linux RoomGoblin appliance and maintenance containers, plus reviewed managed add-on templates, use host networking. Maintenance is loopback-only; custom ports are actual listeners. Preserve explicit bind addresses, persistent mounts and secrets, and never silently recreate adopted containers. See [Host networking and migration](docs/HOST-NETWORKING.md) for preflight, port inventory, compatibility, acceptance tests and rollback. Do not reintroduce Docker service DNS or port-publishing assumptions.
 
-> **Status:** `1.0.0-alpha.80` — alpha software. Production deployment remains limited to reviewed, backed-up `amd64` installations. Normal administration may use the trusted-LAN HTTP deployment; recovery passphrases require loopback or HTTPS through a same-host proxy.
+> **Status:** `1.0.0-alpha.81` — alpha software. Production deployment remains limited to reviewed, backed-up `amd64` installations. Normal administration may use the trusted-LAN HTTP deployment; recovery passphrases require loopback or HTTPS through a same-host proxy.
 
 ## What it does
 
@@ -65,6 +65,7 @@ First-class optional add-ons can also be deployed/recreated from Setup or Infras
 mosquitto                 eclipse-mosquitto:2.0.22
 govee2mqtt                ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72
 music-assistant-server     ghcr.io/music-assistant/server:2.9.13
+nodered                   nodered/node-red:4.1.14-22
 ```
 
 Native `veyon.service` and `veyon-webapi.service` remain host-managed rather than being deployed as a proxy container. Persistent add-on state remains under the managed services root rather than container writable layers. Removing/recreating a supported add-on preserves its managed data directory.

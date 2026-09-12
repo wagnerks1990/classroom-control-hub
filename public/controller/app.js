@@ -4,7 +4,7 @@ async function api(url,opt={}){const r=await fetch(url,{cache:'no-store',credent
 function jpost(url,obj){return api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)})}
 let toastTimer=null;function notify(message,type='info'){const el=document.getElementById('hubToast');if(!el)return;el.textContent=String(message||'');el.style.display='block';el.style.borderColor=type==='error'?'#9b3a3a':type==='success'?'#2d8a57':'#3a4a5a';clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display='none',4500)}
 
-const CLASSROOM_HUB_VERSION='1.0.0-alpha.80';
+const CLASSROOM_HUB_VERSION='1.0.0-alpha.81';
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&loginOverlay?.style.display==='flex'&&document.activeElement===loginPassword)performLogin()});
 let brandCycleState=null;
 

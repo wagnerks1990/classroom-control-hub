@@ -29,7 +29,7 @@ jobs:
           VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          required=('Validate' 'Display browser regression' 'Android TV Display Agent' 'Restrictive image permissions')
+          required=('Validate' 'Display browser regression' 'Android TV Display Agent' 'Restrictive image permissions' 'Security gates')
           for attempt in $(seq 1 60); do
             runs="$(gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${VALIDATED_SHA}&event=push&per_page=100")"
             missing=()
@@ -90,6 +90,7 @@ jobs:
           tags: |
             ${{ matrix.image }}:sha-${{ github.event.workflow_run.head_sha }}
             ${{ matrix.legacy_image }}:sha-${{ github.event.workflow_run.head_sha }}
+          labels: org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
           sbom: true
           provenance: mode=max
 

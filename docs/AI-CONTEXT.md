@@ -14,6 +14,13 @@ Production installers and semantic-release updates pull exact CI-built GHCR
 images. Do not reintroduce appliance-local builds as the default. Local compilation
 is available only through the explicit `install.sh --build-local` development path.
 
+CI treats secret scanning, pull-request dependency review, and high/critical
+fixable vulnerability scans of both built runtime images as release gates. All
+third-party actions must remain pinned to full reviewed commit SHAs, and
+Dependabot covers npm, GitHub Actions, and the Android Agent Gradle build. The
+tracked integration catalog is documentation/discovery metadata; its managed
+image set must stay aligned with the executable maintenance/Host Agent allowlist.
+
 ## Runtime architecture
 
 ```text
@@ -80,7 +87,7 @@ The current master key path is `/etc/classroom-control-hub/master.key`. Upgrades
 
 ## Current known-good baseline
 
-`1.0.0-alpha.80` is the current production-readiness review baseline.
+`1.0.0-alpha.81` is the current production-readiness review baseline.
 
 Production deployment is currently validated only on `amd64` Ubuntu Server
 24.04 LTS. Treat `arm64` as unsupported until both container images and the
@@ -125,6 +132,20 @@ Alpha.80 Full Recovery invariants:
   closed, and an owned service's saved stopped state is preserved;
 - native Veyon identity recovery is restricted to the reviewed
   `VEYON_RECOVERY_ROOT=/veyon-recovery` mount.
+- export acquires the Host Agent appliance lock and a one-use application writer
+  freeze before database selection; it drains in-flight HTTP/WebSocket and
+  scheduler/announcement/presentation/session/audio/update work, queues audits,
+  and fails closed after 30 seconds rather than mixing points in time;
+- master, ADB, signing and native Veyon identities are stable-copied and
+  revalidated under that host lock, and both freeze tokens are released on every
+  success/failure path (with a bounded crash lease);
+- an empty Veyon private-key bind placeholder means Veyon is unconfigured and
+  is omitted; native `/opt/services/veyon-webapi` runtime files are not managed
+  Docker state and are excluded;
+- interrupted rollback serves authenticated Host Agent health before Compose
+  reconciliation while rejecting mutation requests;
+- pulled production images are accepted only when their OCI revision label
+  equals the exact selected Git commit.
 
 Verified classroom behaviors remain:
 
@@ -177,7 +198,7 @@ Do not show a button whose backend path intentionally rejects the same operation
 
 School calendar state affects scheduled operations. No-school days suppress scheduled classroom operations. Remote days advance the cycle but suppress scheduled classroom operations while manual controls remain available. Delay and half-day rules affect schedule resolution.
 
-Morning Announcements override conflicting display automation. On release, do not restore stale snapshots. Re-evaluate the current schedule and select the newest currently applicable automation for each display target.
+Morning Announcements override conflicting display automation. Priority is enforced again at each display delivery, not only when an automation starts, so delayed or multi-step work cannot overwrite a takeover that began mid-run. Non-display portions such as lighting continue while only locked display targets are deferred. On release, do not restore stale snapshots. Re-evaluate the current schedule and select the newest currently applicable automation for each display target. If reconciliation fails, keep Background Music paused and retry rather than resuming audio against an unreconciled display state.
 
 Scheduler readiness validates stored class and automation data. Invalid class times such as an end time before the start time must be rejected or repaired before migration is committed; health diagnostics should identify invalid records rather than returning only a generic failure.
 
@@ -187,7 +208,9 @@ Major integrations include MQTT/Govee, Pluto Mark I, Music Assistant / Sendspin,
 
 Integration health must be independent. A Pluto failure must not make MQTT/Govee appear offline. Optional/slow hardware probes should run asynchronously and must not block the Overview screen.
 
-Music Assistant managed Docker deployment uses host networking so local multicast discovery works and keeps its persistent `/data` outside the container. Veyon WebAPI may be adopted as an existing container/service or deployed using the supported proxy template where appropriate.
+Music Assistant managed Docker deployment uses host networking so local multicast discovery works and keeps its persistent `/data` outside the container. Native `veyon.service` and `veyon-webapi.service` are host-managed; the retired Veyon proxy container is not a supported managed add-on or recovery root.
+
+Background Music runtime tracks the player that actually started playback. Pause, stop, and resume must address that player even if configuration changes or a manual request supplied a player override. Changing the configured player or favorite while active stops the prior playback identity before reconciling the new schedule.
 
 ## Android / Google TV managed-display invariants
 

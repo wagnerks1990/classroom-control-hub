@@ -30,11 +30,16 @@ Never commit:
 
 ## Classroom display credentials
 
-Provision each receiver with a one-time enrollment link from the controller.
-Each display receives its own revocable credential; the database stores only
-its SHA-256 hash. Disable the legacy shared `DISPLAY_TOKEN` after all enabled
-displays are enrolled. Raw display credentials and enrollment codes must not
-appear in logs, diagnostics, database records, or administrative read APIs.
+Stable URL access for enabled configured display IDs is the intentional default
+on a trusted classroom network. It does not authenticate the physical browser,
+so isolate the display network and reject unknown, removed, or disabled IDs.
+
+Where per-browser revocation is required, enroll every enabled receiver with a
+one-time link before explicitly enabling individual display authentication.
+Each enrolled display receives its own revocable credential; the database
+stores only its SHA-256 hash. Disable the legacy shared `DISPLAY_TOKEN` after
+migration. Raw display credentials and enrollment codes must not appear in
+logs, diagnostics, database records, or administrative read APIs.
 
 ## Classroom computer agents and student data
 

@@ -27,6 +27,10 @@ The Hub does not silently generate or rotate Veyon keys because a rotated public
 
 Veyon itself also supports logon/username-password authentication, but the current RoomGoblin backend profile is key-file authentication. Do not select or document logon authentication as active until that backend path is implemented and tested.
 
+The classroom **Log In User** action uses a masked password dialog. The browser
+clears its password field on cancel, close, and immediately after submitting the
+one endpoint command; it does not retain or display that password.
+
 ### Required Veyon settings
 
 Open the Veyon WebAPI integration configuration and review:

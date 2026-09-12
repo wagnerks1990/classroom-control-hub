@@ -21,7 +21,10 @@ function diagnosticBackupEntryAllowed(relativePath,isDirectory=false){
 // device identifiers, credentials, student information, or operational state.
 function backupContainsSensitiveData(scope){return String(scope||"")!=="diagnostic"}
 
-const FULL_RECOVERY_SERVICE_ROOTS=Object.freeze(["govee2mqtt","mosquitto","music-assistant","nodered","veyon-webapi"]);
+// Native Veyon is recovered through its bounded identity files under
+// recovery-secrets/veyon.  /opt/services/veyon-webapi is not a RoomGoblin-owned
+// Docker service and must not be archived as managed service state.
+const FULL_RECOVERY_SERVICE_ROOTS=Object.freeze(["govee2mqtt","mosquitto","music-assistant","nodered"]);
 const FULL_RECOVERY_SERVICE_SPECS=Object.freeze({
   govee2mqtt:{container:"govee2mqtt",image:"ghcr.io/wez/govee2mqtt:2025.04.13-17d43d72"},
   mosquitto:{container:"mosquitto",image:"eclipse-mosquitto:2.0.22"},

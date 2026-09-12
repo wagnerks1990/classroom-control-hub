@@ -134,6 +134,7 @@ m._validate_staging(os.environ["RECOVERY_ID"], os.environ["MANIFEST_SHA"])
 
 test("recovery implementation includes bounded input and crash-safe state restoration",()=>{
   const maintenance=fs.readFileSync(path.join(ROOT,"maintenance-agent/server.js"),"utf8");
+  const host=fs.readFileSync(path.join(ROOT,"host-agent/server.py"),"utf8");
   const transaction=fs.readFileSync(path.join(ROOT,"host-agent/full_recovery.py"),"utf8");
 
   assert.match(maintenance,/RESTORE_MAX_ARCHIVE_BYTES/);
@@ -146,4 +147,15 @@ test("recovery implementation includes bounded input and crash-safe state restor
   assert.match(transaction,/"start" if running else "stop"/);
   assert.match(transaction,/secretDecryption/);
   assert.match(transaction,/classroom-control-hub-android-adb/);
+  const main=host.slice(host.indexOf("if __name__=='__main__':"));
+  assert.ok(main.indexOf("UnixHTTPServer(SOCKET_PATH,Handler)")<main.indexOf("FULL_RECOVERY.startup_recover()"),"host socket must be bound before interrupted recovery can recreate health-dependent containers");
+  assert.ok(main.indexOf("serving.start()")<main.indexOf("FULL_RECOVERY.startup_recover()"),"host socket must serve health before interrupted recovery reconciliation");
+  assert.match(host,/if STARTUP_RECOVERY_ACTIVE:\s+return self\.send_json\(423/);
+});
+
+test("native Veyon runtime data is outside the managed Docker recovery namespace",()=>{
+  assert.equal(policy.FULL_RECOVERY_SERVICE_ROOTS.includes("veyon-webapi"),false);
+  assert.equal(policy.fullRecoveryEntryAllowed("services/veyon-webapi/runtime.db",false),false);
+  const transaction=fs.readFileSync(path.join(ROOT,"host-agent/full_recovery.py"),"utf8");
+  assert.doesNotMatch(transaction,/"veyon-webapi":\s*"veyon-webapi"/);
 });

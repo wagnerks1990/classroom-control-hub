@@ -38,3 +38,6 @@ Short, useful, calm, slightly playful. Prefer actionable language such as “3 d
 
 ## Accessibility
 Never use color alone to communicate state. Pair color with labels/icons and maintain accessible contrast.
+Every form input, select, and textarea must have a programmatic accessible name
+through an associated `label`, `aria-label`, or `aria-labelledby`; placeholder
+text and visual proximity do not count as a label.

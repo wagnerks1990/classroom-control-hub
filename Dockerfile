@@ -1,3 +1,13 @@
+FROM node:22-bookworm-slim AS browser-build
+
+WORKDIR /build
+
+COPY package*.json ./
+RUN npm ci --ignore-scripts
+
+COPY public/display/sendspin-entry.js ./public/display/sendspin-entry.js
+RUN npx --no-install esbuild public/display/sendspin-entry.js --bundle --format=esm --target=es2022 --outfile=public/display/sendspin.bundle.js
+
 FROM node:22-bookworm-slim
 
 WORKDIR /app
@@ -14,12 +24,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts \
+ && rm -rf /usr/local/lib/node_modules/npm \
+ && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
 COPY VERSION ./VERSION
 COPY src ./src
 COPY config ./config
 COPY public ./public
+COPY --from=browser-build /build/public/display/sendspin.bundle.js ./public/display/sendspin.bundle.js
 COPY tools/prepare-display-fonts.sh ./tools/prepare-display-fonts.sh
 COPY tools/verify-image-permissions.js ./tools/verify-image-permissions.js
 RUN bash tools/prepare-display-fonts.sh
@@ -34,8 +47,6 @@ RUN RELEASE_VERSION="$(cat VERSION)" \
       public/controller/display.html \
       public/display/index.html \
       public/lab-agent/ClassroomHubAgent.ps1
-
-RUN npx esbuild public/display/sendspin-entry.js --bundle --format=esm --target=es2022 --outfile=public/display/sendspin.bundle.js
 
 # Local Docker contexts retain file modes. A root-edited 0600 server.js must not
 # produce an image that only root can start. Normalize packaged, non-secret

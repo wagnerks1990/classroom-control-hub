@@ -14,11 +14,42 @@ test("Morning Announcements hold audio priority through display resynchronizatio
   const release=server.slice(server.indexOf("async function releaseMorningAnnouncements"),server.indexOf("let morningAnnouncementsTickBusy"));
   assert.ok(release.indexOf("await resyncCurrentDisplayAutomationsAfterAnnouncements")<release.indexOf("await setMorningAnnouncementPriorityTargets(targets,false)"));
   assert.match(release,/await setMorningAnnouncementPriorityTargets\(targets,false\)/);
-  assert.match(release,/finally\{/);
+  assert.match(release,/const resyncComplete=/);
+  assert.match(release,/if\(resyncComplete\)/);
   const start=server.slice(server.indexOf("async function assertMorningAnnouncements"),server.indexOf("function queueAutomationDuringAnnouncements"));
+  assert.match(start,/validateMorningAnnouncementsUrl\(String\(urlOverride\|\|announcementsPlaybackUrl\(\)\)\)/);
   assert.ok(start.indexOf("morningAnnouncementsRuntime.active=true")<start.indexOf('type:"display.clear"'));
   assert.ok(start.indexOf("const priorityTask=setMorningAnnouncementPriorityTargets(targets,true)")<start.indexOf('type:"display.clear"'));
   assert.match(start,/await priorityTask/);
+});
+
+test("announcement priority is rechecked at delivery time without dropping non-display actions",()=>{
+  const router=server.slice(server.indexOf("async function executeCommand"),server.indexOf("// HTTP API"));
+  assert.match(router,/source==="automation"/);
+  assert.match(router,/announcementPriorityError\(targets\)/);
+  const runner=server.slice(server.indexOf("async function runClassroomAutomation"),server.indexOf("function safeStoredName"));
+  assert.match(runner,/announcementLockedDisplayTargets\(resolvedTargets\)/);
+  assert.match(runner,/deferred:true,lockedTargets/);
+  const scheduler=server.slice(server.indexOf("// Unified Classroom Automation scheduler"),server.indexOf("// Legacy per-output Pluto schedules"));
+  assert.match(scheduler,/announcementLockedDisplayTargets\(\[\.\.\.automationDeferredDisplayTargets\(event\)\]\)/);
+  assert.doesNotMatch(scheduler,/queueAutomationDuringAnnouncements[^;]+;changed=true;continue/);
+});
+
+test("post-announcement reconciliation failure keeps Background Music paused for retry",()=>{
+  const release=server.slice(server.indexOf("function scheduleMorningAnnouncementsReleaseRetry"),server.indexOf("let morningAnnouncementsTickBusy"));
+  assert.match(release,/releaseReconcilePending=true/);
+  assert.match(release,/scheduleMorningAnnouncementsReleaseRetry\(targets,reason\)/);
+  assert.match(release,/if\(resyncComplete\).*setMorningAnnouncementPriorityTargets\(targets,false\)/s);
+  assert.ok(release.indexOf("resyncCurrentDisplayAutomationsAfterAnnouncements")<release.indexOf("setMorningAnnouncementPriorityTargets(targets,false)"));
+});
+
+test("Background Music controls retain the player that actually started playback",()=>{
+  const music=server.slice(server.indexOf("const backgroundMusicRuntime"),server.indexOf("// Appliance-wide budgets"));
+  assert.match(music,/activePlayerId:null/);
+  assert.match(music,/backgroundMusicRuntime\.activePlayerId\|\|cfg\.playerId/);
+  assert.match(music,/backgroundMusicRuntime\.activePlayerId=pid/);
+  assert.match(music,/schedule-identity-changed/);
+  assert.match(music,/prior\.playerId!==cfg\.playerId\|\|prior\.favoriteId!==cfg\.favoriteId/);
 });
 
 test("post-announcement resync applies each candidate only to targets it won",()=>{

@@ -65,6 +65,11 @@ const DISPLAY_GATEWAY_HOSTS=[...parseDisplayGatewayAllowedHosts()].sort();
 const LOGIN_MAX_ATTEMPTS = Math.max(3, Math.min(20, Number(process.env.LOGIN_MAX_ATTEMPTS || 5)));
 const LOGIN_WINDOW_MS = Math.max(60000, Number(process.env.LOGIN_WINDOW_MS || 15 * 60 * 1000));
 const LOGIN_LOCK_MS = Math.max(60000, Number(process.env.LOGIN_LOCK_MS || 15 * 60 * 1000));
+const fullExportFreeze={requested:false,active:false,token:null,activeHttpMutations:0,activeWsMutations:0,activeAsyncMutations:0,startedAt:null,leaseTimer:null};
+function trackFullExportMutation(task){
+  fullExportFreeze.activeAsyncMutations++;
+  return Promise.resolve(task).finally(()=>{fullExportFreeze.activeAsyncMutations=Math.max(0,fullExportFreeze.activeAsyncMutations-1)});
+}
 
 // Veyon becomes the lab-computer control plane in v0.20.0.
 let VEYON_WEBAPI_URL = serviceUrl(process.env.VEYON_WEBAPI_URL || "http://127.0.0.1:11080", ["veyon-webapi"]).replace(/\/$/,"");
@@ -199,6 +204,13 @@ function validMqttEndpoint(value){
   let url;try{url=new URL(value)}catch{throw Error("MQTT broker must be a valid mqtt, mqtts, ws, or wss URL")}
   if(!["mqtt:","mqtts:","ws:","wss:"].includes(url.protocol)||url.username||url.password)throw Error("MQTT broker must use mqtt, mqtts, ws, or wss without embedded credentials");
   return value;
+}
+function endpointForLog(value){
+  const text=String(value||"").trim();if(!text)return "";
+  try{
+    const url=new URL(text);url.username="";url.password="";url.search="";url.hash="";
+    return url.toString();
+  }catch{return "[configured endpoint]"}
 }
 function normalizedIntegrationConnections(value={},fallback={}){
   const mqttValue=value.mqtt||{},mqttFallback=fallback.mqtt||{};
@@ -636,6 +648,8 @@ if(!storedSchoolScheduleProfile){schoolScheduleProfile.updatedAt=new Date().toIS
 function setSchoolScheduleProfile(value){schoolScheduleProfile=normalizeSchoolScheduleProfile(value,schoolScheduleProfile);schoolScheduleProfile.updatedAt=new Date().toISOString();dbStore.setPreference("school.schedule.profile",schoolScheduleProfile);return schoolScheduleProfile}
 
 const DEFAULT_MORNING_ANNOUNCEMENTS_URL = String(process.env.MORNING_ANNOUNCEMENTS_URL||"").trim();
+const MORNING_ANNOUNCEMENTS_URL_SECRET="automation.morning-announcements.stream-url";
+const REDACTED_CONFIG_VALUE="••••••••";
 const MORNING_ANNOUNCEMENTS_ALLOWED_HOSTS=new Set(DISPLAY_GATEWAY_HOSTS);
 if(DEFAULT_MORNING_ANNOUNCEMENTS_URL){
   try{MORNING_ANNOUNCEMENTS_ALLOWED_HOSTS.add(new URL(DEFAULT_MORNING_ANNOUNCEMENTS_URL).hostname.toLowerCase())}catch{}
@@ -647,7 +661,8 @@ function validateMorningAnnouncementsUrl(value){
   catch(error){throw Error(`Morning Announcements URL is not approved: ${error.message}`)}
 }
 function normalizeMorningAnnouncements(input={},existing={}){
-  const streamUrl=validateMorningAnnouncementsUrl(String(input.streamUrl??existing.streamUrl??DEFAULT_MORNING_ANNOUNCEMENTS_URL).trim()||DEFAULT_MORNING_ANNOUNCEMENTS_URL);
+  const requestedStreamUrl=input.streamUrl===REDACTED_CONFIG_VALUE?existing.streamUrl:input.streamUrl;
+  const streamUrl=validateMorningAnnouncementsUrl(String(requestedStreamUrl??existing.streamUrl??DEFAULT_MORNING_ANNOUNCEMENTS_URL).trim()||DEFAULT_MORNING_ANNOUNCEMENTS_URL);
   const startCandidate=String(input.startTime??existing.startTime??"07:00"),endCandidate=String(input.endTime??existing.endTime??"08:30");
   if(!validTime(startCandidate)||!validTime(endCandidate))throw Error("Morning Announcement times must be valid HH:MM values");
   const startTime=startCandidate,endTime=endCandidate;
@@ -663,8 +678,10 @@ function normalizeMorningAnnouncements(input={},existing={}){
   };
 }
 const storedMorningAnnouncements=readJson(MORNING_ANNOUNCEMENTS_FILE,{});
+let securedMorningAnnouncementsUrl="";
+try{securedMorningAnnouncementsUrl=String(dbStore.getSecret(MORNING_ANNOUNCEMENTS_URL_SECRET)||"")}catch(error){console.warn(`Morning Announcements secret could not be read: ${error.message}`)}
 let morningAnnouncements;
-try{morningAnnouncements=normalizeMorningAnnouncements(storedMorningAnnouncements,{})}
+try{morningAnnouncements=normalizeMorningAnnouncements({...storedMorningAnnouncements,streamUrl:securedMorningAnnouncementsUrl||storedMorningAnnouncements.streamUrl||DEFAULT_MORNING_ANNOUNCEMENTS_URL},{})}
 catch(error){
   // A legacy URL that predates the outbound allowlist must not crash boot or be
   // contacted implicitly. Start disabled until an administrator approves its
@@ -672,12 +689,40 @@ catch(error){
   console.error(`Morning Announcements disabled: ${error.message}`);
   morningAnnouncements=normalizeMorningAnnouncements({...storedMorningAnnouncements,enabled:false,streamUrl:""},{});
 }
-function persistMorningAnnouncements(){persistJson(MORNING_ANNOUNCEMENTS_FILE,morningAnnouncements)}
-const morningAnnouncementsRuntime={live:false,active:false,mode:null,targets:[],lastCheck:null,lastWatcherTick:null,lastLiveAt:null,lastEndedAt:null,lastError:null,probe:null,probeStatus:null,probeDurationMs:null,offlineCount:0,lastAssertAt:0};
+function publicMorningAnnouncementsConfig(){
+  return {...morningAnnouncements,streamUrl:morningAnnouncements.streamUrl?REDACTED_CONFIG_VALUE:"",streamUrlConfigured:Boolean(morningAnnouncements.streamUrl)};
+}
+function persistMorningAnnouncements(){
+  if(morningAnnouncements.streamUrl)dbStore.putSecret(MORNING_ANNOUNCEMENTS_URL_SECRET,morningAnnouncements.streamUrl,{type:"automation-stream-url",automation:"morning-announcements"});
+  else dbStore.deleteSecret(MORNING_ANNOUNCEMENTS_URL_SECRET);
+  const {streamUrl:_secret,...stored}=morningAnnouncements;
+  const persisted={...stored,streamUrlConfigured:Boolean(morningAnnouncements.streamUrl)};
+  persistJson(MORNING_ANNOUNCEMENTS_FILE,persisted);
+  // readJson imports legacy files into SQLite but intentionally leaves their
+  // source in place. Atomically scrub this one after the encrypted write wins.
+  if(fs.existsSync(MORNING_ANNOUNCEMENTS_FILE)){
+    const staged=`${MORNING_ANNOUNCEMENTS_FILE}.redacted-${process.pid}`;
+    fs.writeFileSync(staged,JSON.stringify(persisted,null,2),{mode:0o600});
+    fs.renameSync(staged,MORNING_ANNOUNCEMENTS_FILE);
+  }
+}
+// Migrate legacy plaintext/environment configuration into the encrypted store
+// and remove it from the ordinary database-backed JSON object.
+persistMorningAnnouncements();
+const morningAnnouncementsRuntime={live:false,active:false,mode:null,targets:[],lastCheck:null,lastWatcherTick:null,lastLiveAt:null,lastEndedAt:null,lastError:null,probe:null,probeStatus:null,probeDurationMs:null,offlineCount:0,lastAssertAt:0,releaseReconcilePending:false};
 let morningAnnouncementsTimer=null;
+let morningAnnouncementsReleaseRetryTimer=null;
+let morningAnnouncementsLifecycle=Promise.resolve();
+let morningAnnouncementsLifecycleBusy=0;
+function serializeMorningAnnouncementsLifecycle(task){
+  const invoke=async()=>{morningAnnouncementsLifecycleBusy++;try{return await task()}finally{morningAnnouncementsLifecycleBusy=Math.max(0,morningAnnouncementsLifecycleBusy-1)}};
+  const run=morningAnnouncementsLifecycle.then(invoke,invoke);
+  morningAnnouncementsLifecycle=run.catch(()=>{});
+  return run;
+}
 function restartMorningAnnouncementsWatcher(){
   if(morningAnnouncementsTimer)clearTimeout(morningAnnouncementsTimer);
-  const run=async()=>{try{await morningAnnouncementsTick()}finally{morningAnnouncementsTimer=setTimeout(run,Math.max(10000,Number(morningAnnouncements.checkIntervalSeconds||15)*1000));morningAnnouncementsTimer.unref()}};
+  const run=async()=>{try{await serializeMorningAnnouncementsLifecycle(()=>morningAnnouncementsTick())}finally{morningAnnouncementsTimer=setTimeout(run,Math.max(10000,Number(morningAnnouncements.checkIntervalSeconds||15)*1000));morningAnnouncementsTimer.unref()}};
   morningAnnouncementsTimer=setTimeout(run,2500);morningAnnouncementsTimer.unref();
 }
 const deferredAnnouncementAutomations=new Map();
@@ -800,9 +845,10 @@ function morningAnnouncementsSchoolDay(now=new Date()){
 function announcementTargets(){return automationDisplayTargets(morningAnnouncements.targets?.length?morningAnnouncements.targets:["all"])}
 function scheduleAnnouncementAudioRetries(targets){
   for(const delay of [1500,4500,10000,20000])setTimeout(()=>{
+    if(fullExportFreeze.requested)return;
     if(!morningAnnouncementsRuntime.active)return;
     if(morningAnnouncementsRuntime.mode!=="manual"&&!morningAnnouncementsRuntime.live)return;
-    executeCommand({type:"display.web.audio",target:targets,payload:{unmute:Number(morningAnnouncements.volumePercent??100)>0,volume:Math.max(0,Math.min(1,Number(morningAnnouncements.volumePercent??100)/100)),reload:false,contentKind:"morning-announcements"}},"automation").catch(()=>{});
+    trackFullExportMutation(executeCommand({type:"display.web.audio",target:targets,payload:{unmute:Number(morningAnnouncements.volumePercent??100)>0,volume:Math.max(0,Math.min(1,Number(morningAnnouncements.volumePercent??100)/100)),reload:false,contentKind:"morning-announcements"}},"morning-announcements")).catch(()=>{});
   },delay);
 }
 async function setMorningAnnouncementPriorityTargets(targets,active){
@@ -813,7 +859,7 @@ async function setMorningAnnouncementPriorityTargets(targets,active){
 }
 async function assertMorningAnnouncements({mode="automatic",targetsOverride=null,urlOverride=null}={}){
   const targets=Array.isArray(targetsOverride)&&targetsOverride.length?automationDisplayTargets(targetsOverride):announcementTargets();if(!targets.length)return;
-  const url=String(urlOverride||announcementsPlaybackUrl());
+  const url=validateMorningAnnouncementsUrl(String(urlOverride||announcementsPlaybackUrl()));
   // Acquire both the display and audio priority state before sending any
   // takeover commands. Otherwise a scheduler tick can overwrite the display,
   // or Music Assistant can remain audible, while takeover is in flight.
@@ -826,8 +872,8 @@ async function assertMorningAnnouncements({mode="automatic",targetsOverride=null
   // display content; do not invoke the master classroom clear because that would
   // pause lesson/session queues beyond the announcement window.
   try{
-    await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-takeover"}},"automation");
-    await executeCommand({type:"display.web",target:targets,payload:{url,fit:"cover",opacity:1,localDirect:true,forceAudio:true,autoplay:true,muted:Number(morningAnnouncements.volumePercent??100)<=0,volume:Math.max(0,Math.min(1,Number(morningAnnouncements.volumePercent??100)/100)),contentKind:"morning-announcements"}},"automation");
+    await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-takeover"}},"morning-announcements");
+    await executeCommand({type:"display.web",target:targets,payload:{url,fit:"cover",opacity:1,localDirect:true,forceAudio:true,autoplay:true,muted:Number(morningAnnouncements.volumePercent??100)<=0,volume:Math.max(0,Math.min(1,Number(morningAnnouncements.volumePercent??100)/100)),contentKind:"morning-announcements"}},"morning-announcements");
     await priorityTask;
   }catch(error){
     await priorityTask.catch(()=>{});
@@ -922,7 +968,7 @@ async function runDisplayAutomationResync(event,winningTargets){
   const allowed=new Set(winningTargets||[]),eventDomain=automationTargetDomain(event.action);
   const steps=[{id:"primary",action:event.action,targets:event.targets,useEventTargets:true,payload:event.payload||{},delaySeconds:0},...(Array.isArray(event.actions)?event.actions:[])];
   const results=[];
-  if(allowed.size)results.push(await executeCommand({type:"display.clear",target:[...allowed],payload:{reason:"morning-announcements-resync"}},"automation"));
+  if(allowed.size)results.push(await executeCommand({type:"display.clear",target:[...allowed],payload:{reason:"morning-announcements-resync"}},"morning-announcements-resync"));
   for(const step of steps){
     const action=step?.action||event.action,domain=automationTargetDomain(action);
     if(domain!=="display")continue;
@@ -935,7 +981,7 @@ async function runDisplayAutomationResync(event,winningTargets){
     else rawTargets=["all"];
     const targets=automationDisplayTargets(rawTargets).filter(id=>allowed.has(id));
     if(!targets.length)continue;
-    const output=await runSingleAutomationAction({...event,action,targets,payload:step.payload||{},timerOverlay:null},{manual:false,skipOverlay:true,skipAudit:true});
+    const output=await runSingleAutomationAction({...event,action,targets,payload:step.payload||{},timerOverlay:null},{manual:false,skipOverlay:true,skipAudit:true,commandSource:"morning-announcements-resync"});
     results.push(...(output.results||[]));
   }
   const timer=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
@@ -945,7 +991,7 @@ async function runDisplayAutomationResync(event,winningTargets){
       : (timer.useEventTargets!==false?event.targets:(Array.isArray(timer.targets)&&timer.targets.length?timer.targets:event.targets));
     const targets=automationDisplayTargets(rawTargets).filter(id=>allowed.has(id));
     if(targets.length){
-      const timerResult=await runAutomationTimerOverlay({...event,useClassTargets:false,targets,timerOverlay:{...timer,useEventTargets:true}},{manual:false});
+      const timerResult=await runAutomationTimerOverlay({...event,useClassTargets:false,targets,timerOverlay:{...timer,useEventTargets:true}},{manual:false,commandSource:"morning-announcements-resync"});
       if(timerResult?.result)results.push(timerResult.result);
     }
   }
@@ -987,28 +1033,47 @@ async function resyncCurrentDisplayAutomationsAfterAnnouncements(reason="stream-
   audit({kind:"automation.morning-announcements.resync",reason,at:now.toISOString(),winnerCount:winners.length,results});
   return {winnerCount:winners.length,results};
 }
+function scheduleMorningAnnouncementsReleaseRetry(targets,reason){
+  if(morningAnnouncementsReleaseRetryTimer)return;
+  morningAnnouncementsReleaseRetryTimer=setTimeout(()=>{
+    morningAnnouncementsReleaseRetryTimer=null;
+    if(fullExportFreeze.requested){scheduleMorningAnnouncementsReleaseRetry(targets,reason);return}
+    serializeMorningAnnouncementsLifecycle(async()=>{
+      if(morningAnnouncementsRuntime.active)return;
+      const retry=await resyncCurrentDisplayAutomationsAfterAnnouncements(`${reason}-retry`);
+      if(retry.results.some(item=>item.ok===false))throw new Error("Post-announcement display reconciliation is still incomplete");
+      morningAnnouncementsRuntime.releaseReconcilePending=false;
+      await setMorningAnnouncementPriorityTargets(targets,false);
+      await backgroundMusicTick();
+    }).catch(error=>{
+      morningAnnouncementsRuntime.lastError=error.message;
+      scheduleMorningAnnouncementsReleaseRetry(targets,reason);
+    });
+  },5000);
+  morningAnnouncementsReleaseRetryTimer.unref();
+}
 async function releaseMorningAnnouncements(reason="stream-ended"){
   if(!morningAnnouncementsRuntime.active)return;
   const targets=morningAnnouncementsRuntime.targets?.length?[...morningAnnouncementsRuntime.targets]:announcementTargets();
   let deferredConsumed=0,resync={winnerCount:0,results:[]},releaseError=null;
+  try{if(targets.length)await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-release"}},"morning-announcements")}catch(error){releaseError=error;diagnosticError(error,{component:"automation",operation:"morning-announcements-release-clear",data:{reason}})}
+  try{deferredConsumed=consumeDeferredAnnouncementAutomations()}catch(error){releaseError=releaseError||error;diagnosticError(error,{component:"automation",operation:"morning-announcements-release-bookkeeping",data:{reason}})}
+  try{resync=await resyncCurrentDisplayAutomationsAfterAnnouncements(reason)}catch(error){releaseError=releaseError||error;diagnosticError(error,{component:"automation",operation:"morning-announcements-release-resync",data:{reason}})}
+  const resyncComplete=!releaseError&&!resync.results.some(item=>item.ok===false);
   try{
-    if(targets.length)await executeCommand({type:"display.clear",target:targets,payload:{reason:"morning-announcements-release"}},"automation");
-    deferredConsumed=consumeDeferredAnnouncementAutomations();
-    resync=await resyncCurrentDisplayAutomationsAfterAnnouncements(reason);
-  }catch(error){releaseError=error;diagnosticError(error,{component:"automation",operation:"morning-announcements-release",data:{reason}})}
-  finally{
     // Hold the announcement lock through display reconciliation. Display commands
     // emitted by the resync must not release audio priority early, but a failed
     // persistence/audit step must never leave the lock stuck forever.
     morningAnnouncementsRuntime.active=false;morningAnnouncementsRuntime.mode=null;morningAnnouncementsRuntime.targets=[];morningAnnouncementsRuntime.lastEndedAt=new Date().toISOString();morningAnnouncementsRuntime.lastAssertAt=0;
-    await setMorningAnnouncementPriorityTargets(targets,false);
-    await backgroundMusicTick();
-  }
+    if(resyncComplete){morningAnnouncementsRuntime.releaseReconcilePending=false;await setMorningAnnouncementPriorityTargets(targets,false);await backgroundMusicTick()}
+    else{morningAnnouncementsRuntime.releaseReconcilePending=true;scheduleMorningAnnouncementsReleaseRetry(targets,reason)}
+  }catch(error){releaseError=releaseError||error}
   audit({kind:"automation.morning-announcements.stop",reason,targets,deferredConsumed,resyncWinnerCount:resync.winnerCount,resyncResults:resync.results});
   if(releaseError)throw releaseError;
 }
 let morningAnnouncementsTickBusy=false;
 async function morningAnnouncementsTick(){
+  if(fullExportFreeze.requested)return;
   if(morningAnnouncementsTickBusy)return;morningAnnouncementsTickBusy=true;
   try{
     const now=new Date();morningAnnouncementsRuntime.lastWatcherTick=now.toISOString();
@@ -1283,6 +1348,19 @@ function automationDisplayTargets(targets){
     return [];
   }))];
 }
+function announcementLockedDisplayTargets(targets){
+  if(!morningAnnouncementsRuntime.active)return [];
+  const locked=new Set(morningAnnouncementsRuntime.targets||[]);
+  return automationDisplayTargets(targets||[]).filter(id=>locked.has(id));
+}
+function announcementPriorityError(targets){
+  const locked=announcementLockedDisplayTargets(targets);
+  if(!locked.length)return null;
+  const error=new Error(`Morning Announcements have priority on: ${locked.join(", ")}`);
+  error.code="ANNOUNCEMENTS_PRIORITY_ACTIVE";
+  error.targets=locked;
+  return error;
+}
 
 
 function automationVariableContext(event,date=new Date()){
@@ -1317,7 +1395,7 @@ function expandAutomationPayload(value,event,date=new Date()){
   if(value&&typeof value==="object"){const o={};for(const [k,v] of Object.entries(value))o[k]=expandAutomationPayload(v,event,date);return o}
   return expandAutomationVariables(value,event,date);
 }
-async function runSingleAutomationAction(event,{manual=false,skipOverlay=false,skipAudit=false}={}){
+async function runSingleAutomationAction(event,{manual=false,skipOverlay=false,skipAudit=false,commandSource="automation"}={}){
   const p=expandAutomationPayload(event.payload||{},event,new Date());
   const action=event.action;
   if(!AUTOMATION_ACTIONS.has(action))throw new Error(`Unsupported automation action: ${action||"(blank)"}`);
@@ -1355,44 +1433,44 @@ async function runSingleAutomationAction(event,{manual=false,skipOverlay=false,s
       label:String(p.label||`${cls.shortName||cls.name} • Class Ends`),position:p.position||"bottom",fontSize:Number(p.fontSize||64),
       textColor:p.textColor||"#ffffff",borderColor:p.borderColor||"#ffffff",borderWidth:Number(p.borderWidth??4),borderRadius:Number(p.borderRadius??18),
       background:p.background||"rgba(0,0,0,.35)",linkedClassIds:chain.classes.map(c=>c.id),linkedClassNames:chain.classes.map(c=>c.name),finalClassId:labelClass.id
-    }},"automation"));
+    }},commandSource));
   }else if(action==="display.clear"){
     const ts=automationDisplayTargets(event.targets);
-    outputs.results.push(await executeCommand({type:"display.clear",target:ts,payload:{}},"automation"));
+    outputs.results.push(await executeCommand({type:"display.clear",target:ts,payload:{}},commandSource));
   }else if(action==="display.text"){
     const ts=automationDisplayTargets(event.targets);
-    if(p.clearBefore!==false)outputs.results.push(await executeCommand({type:"display.clear",target:ts,payload:{}},"automation"));
-    if(p.background)outputs.results.push(await executeCommand({type:"display.background",target:ts,payload:{color:p.background}},"automation"));
-    if(p.title)outputs.results.push(await executeCommand({type:"display.title",target:ts,payload:{text:String(p.title),color:p.titleColor||"#ffffff",size:Number(p.titleSize||72)}},"automation"));
-    if(p.subtitle)outputs.results.push(await executeCommand({type:"display.subtitle",target:ts,payload:{text:String(p.subtitle),color:p.subtitleColor||"#ffffff",size:Number(p.subtitleSize||40)}},"automation"));
+    if(p.clearBefore!==false)outputs.results.push(await executeCommand({type:"display.clear",target:ts,payload:{}},commandSource));
+    if(p.background)outputs.results.push(await executeCommand({type:"display.background",target:ts,payload:{color:p.background}},commandSource));
+    if(p.title)outputs.results.push(await executeCommand({type:"display.title",target:ts,payload:{text:String(p.title),color:p.titleColor||"#ffffff",size:Number(p.titleSize||72)}},commandSource));
+    if(p.subtitle)outputs.results.push(await executeCommand({type:"display.subtitle",target:ts,payload:{text:String(p.subtitle),color:p.subtitleColor||"#ffffff",size:Number(p.subtitleSize||40)}},commandSource));
     outputs.results.push(await executeCommand({type:"display.text",target:ts,payload:{
       text:String(p.text||""),color:p.color||"#ffffff",size:Number(p.size||54),position:p.position||"center"
-    }},"automation"));
+    }},commandSource));
   }else if(action==="display.url"){
     const ts=automationDisplayTargets(event.targets);
-    if(p.clearBefore!==false)outputs.results.push(await executeCommand({type:"display.clear",target:ts,payload:{}},"automation"));
+    if(p.clearBefore!==false)outputs.results.push(await executeCommand({type:"display.clear",target:ts,payload:{}},commandSource));
     const url=String(p.url||"").trim();
     if(!url)throw new Error("URL is required");
-    outputs.results.push(await executeCommand({type:"display.web",target:ts,payload:{url,localDirect:p.localDirect!==false}},"automation"));
+    outputs.results.push(await executeCommand({type:"display.web",target:ts,payload:{url,localDirect:p.localDirect!==false}},commandSource));
   }else if(action==="display.media"){
     const ts=automationDisplayTargets(event.targets);
-    if(p.clearBefore!==false)outputs.results.push(await executeCommand({type:"display.clear",target:ts,payload:{}},"automation"));
+    if(p.clearBefore!==false)outputs.results.push(await executeCommand({type:"display.clear",target:ts,payload:{}},commandSource));
     const name=resolveAutomationMediaName(p);
     const full=path.join(MEDIA_DIR,name);
     const rec=mediaLibrary.files[name]||{},type=rec.type||classifyMedia(name,rec.mime||"");
     const sourceUrl=automationMediaUrl(name);
     outputs.media={storedName:name,originalName:rec.originalName||name,type,size:fs.statSync(full).size,url:sourceUrl};
     if(type==="image"){
-      outputs.results.push(await executeCommand({type:"display.image",target:ts,payload:{url:sourceUrl,fit:p.fit||"contain",retry:true}},"automation"));
+      outputs.results.push(await executeCommand({type:"display.image",target:ts,payload:{url:sourceUrl,fit:p.fit||"contain",retry:true}},commandSource));
     }else if(type==="video"){
-      outputs.results.push(await executeCommand({type:"display.video",target:ts,payload:{url:sourceUrl,fit:p.fit||"contain",autoplay:true,muted:!!p.muted,loop:!!p.loop}},"automation"));
+      outputs.results.push(await executeCommand({type:"display.video",target:ts,payload:{url:sourceUrl,fit:p.fit||"contain",autoplay:true,muted:!!p.muted,loop:!!p.loop}},commandSource));
     }else if(type==="pdf"){
-      outputs.results.push(await executeCommand({type:"display.pdf",target:ts,payload:{url:documentViewerUrl(name,p),sourceUrl:mediaUrl(name)}},"automation"));
+      outputs.results.push(await executeCommand({type:"display.pdf",target:ts,payload:{url:documentViewerUrl(name,p),sourceUrl:mediaUrl(name)}},commandSource));
     }else if(type==="presentation"||type==="document"){
       if(!rec.generatedPdf||!fs.existsSync(path.join(MEDIA_DIR,rec.generatedPdf)))throw new Error("Document conversion is not ready");
       outputs.results.push(await executeCommand({type:"display.document",target:ts,payload:{
         url:documentViewerUrl(rec.generatedPdf,p),sourceUrl:mediaUrl(name),pdfUrl:mediaUrl(rec.generatedPdf),originalName:rec.originalName||name
-      }},"automation"));
+      }},commandSource));
     }else throw new Error(`Media type ${type} cannot be displayed`);
   }else if(action.startsWith("govee.")){
     const map={power:null,color:"color",brightness:"brightness",temp:"temp",scene:"scene"};
@@ -1523,7 +1601,7 @@ function timerLinkedClassChain(event,baseClass,now=new Date(),timerOverlay={}){
   };
 }
 
-async function runAutomationTimerOverlay(event,{manual=false}={}){
+async function runAutomationTimerOverlay(event,{manual=false,commandSource="automation"}={}){
   const timerOverlay=event.timerOverlay&&typeof event.timerOverlay==="object"?event.timerOverlay:null;
   if(!timerOverlay?.enabled)return {ok:true,skipped:true,reason:"disabled"};
 
@@ -1581,7 +1659,7 @@ async function runAutomationTimerOverlay(event,{manual=false}={}){
           borderRadius:Number(timerOverlay.borderRadius??18),
           background:timerOverlay.background||"rgba(0,0,0,.35)"
         }
-      },"automation");
+      },commandSource);
       return {ok:true,atZero:true,classId:cls.id,className:cls.name,result};
     }
   }else{
@@ -1609,7 +1687,7 @@ async function runAutomationTimerOverlay(event,{manual=false}={}){
       borderRadius:Number(timerOverlay.borderRadius??18),
       background:timerOverlay.background||"rgba(0,0,0,.35)"
     }
-  },"automation");
+  },commandSource);
 
   return {ok:true,classId:cls?.id||null,className:cls?.name||null,remainingSeconds,endAt:endAt.toISOString(),result};
 }
@@ -1625,7 +1703,6 @@ function automationRunFailures(result={}){
 async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPriority=false}={}){
   // Validate legacy/imported records again before the pre-clear or any delivery.
   event={...event,timerOverlay:normalizeTimerOverlay(event.timerOverlay,event.timerOverlay||null)};
-  if(morningAnnouncementsRuntime.active&&!bypassAnnouncementPriority){const err=new Error("Morning Announcements have priority; automation is blocked until announcements end");err.code="ANNOUNCEMENTS_PRIORITY_ACTIVE";throw err}
   const additional=Array.isArray(event.actions)?event.actions:[];
   const steps=[{id:"primary",action:event.action,targets:event.targets,useEventTargets:true,payload:event.payload||{},delaySeconds:0,continueOnError:true},...additional];
   const combined={ok:true,eventId:event.id,name:event.name,manual,results:[],steps:[]};
@@ -1660,7 +1737,13 @@ async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPrio
         : (timer.useEventTargets!==false?event.targets:(Array.isArray(timer.targets)&&timer.targets.length?timer.targets:event.targets));
       for(const id of automationDisplayTargets(tt||[]))displayScope.add(id);
     }
-    const clearTargets=displayScope.size?[...displayScope]:["all"];
+    const requestedClearTargets=automationDisplayTargets(displayScope.size?[...displayScope]:["all"]);
+    const lockedClearTargets=bypassAnnouncementPriority?[]:announcementLockedDisplayTargets(requestedClearTargets);
+    const lockedClearSet=new Set(lockedClearTargets);
+    const clearTargets=requestedClearTargets.filter(id=>!lockedClearSet.has(id));
+    if(!clearTargets.length&&lockedClearTargets.length){
+      combined.steps.push({index:0,id:"pre-clear",action:"display.clear",targets:[],ok:true,automatic:true,deferred:true,lockedTargets:lockedClearTargets});
+    }else if(clearTargets.length){
     const clearResult=await runSingleAutomationAction({
       ...event,
       action:"display.clear",
@@ -1670,12 +1753,17 @@ async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPrio
     },{manual,skipOverlay:true,skipAudit:true});
     combined.results.push(...(clearResult.results||[]));
     combined.steps.push({index:0,id:"pre-clear",action:"display.clear",targets:clearTargets,ok:true,automatic:true});
+    }
   }catch(err){
+    if(err.code==="ANNOUNCEMENTS_PRIORITY_ACTIVE"){
+      combined.steps.push({index:0,id:"pre-clear",action:"display.clear",targets:[],ok:true,automatic:true,deferred:true,lockedTargets:err.targets||[]});
+    }else{
     combined.ok=false;
     combined.steps.push({index:0,id:"pre-clear",action:"display.clear",targets:[],ok:false,error:err.message,automatic:true});
     diagnosticError(err,{component:"automation.pre-clear",operation:"display.clear",data:{automationId:event.id}});
     // Clearing is a safety/reset action; continue so lighting/TV shutdown and other
     // non-display automation still executes even if a display client is unavailable.
+    }
   }
 
   for(let i=0;i<steps.length;i++){
@@ -1705,12 +1793,26 @@ async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPrio
     }else{
       resolvedTargets=[];
     }
+    let lockedTargets=[];
+    if(stepDomain==="display"&&!bypassAnnouncementPriority){
+      lockedTargets=announcementLockedDisplayTargets(resolvedTargets);
+      const lockedSet=new Set(lockedTargets);
+      resolvedTargets=automationDisplayTargets(resolvedTargets).filter(id=>!lockedSet.has(id));
+      if(!resolvedTargets.length&&lockedTargets.length){
+        combined.steps.push({index:i+1,id:step.id||`step-${i+1}`,action:stepAction,targets:[],ok:true,deferred:true,lockedTargets});
+        continue;
+      }
+    }
     const stepEvent={...event,action:stepAction,payload:step.payload||{},targets:resolvedTargets,timerOverlay:null};
     try{
       const result=await runSingleAutomationAction(stepEvent,{manual,skipOverlay:true,skipAudit:true});
       combined.results.push(...(result.results||[]));
-      combined.steps.push({index:i+1,id:step.id||`step-${i+1}`,action:stepEvent.action,targets:stepEvent.targets,ok:true});
+      combined.steps.push({index:i+1,id:step.id||`step-${i+1}`,action:stepEvent.action,targets:stepEvent.targets,ok:true,...(lockedTargets.length?{deferred:true,lockedTargets}:{})});
     }catch(err){
+      if(err.code==="ANNOUNCEMENTS_PRIORITY_ACTIVE"){
+        combined.steps.push({index:i+1,id:step.id||`step-${i+1}`,action:stepEvent.action,targets:[],ok:true,deferred:true,lockedTargets:err.targets||lockedTargets});
+        continue;
+      }
       combined.ok=false;
       combined.steps.push({index:i+1,id:step.id||`step-${i+1}`,action:stepEvent.action,targets:stepEvent.targets,ok:false,error:err.message});
       if(step.continueOnError===false)break;
@@ -1719,12 +1821,23 @@ async function runClassroomAutomation(event,{manual=false,bypassAnnouncementPrio
 
   if(event.timerOverlay?.enabled){
     try{
-      combined.timerOverlay=await runAutomationTimerOverlay(event,{manual});
+      const lockedTimerTargets=bypassAnnouncementPriority?[]:announcementLockedDisplayTargets(
+        event.useClassTargets!==false&&Array.isArray(event._classDefaultTargets)&&event._classDefaultTargets.length
+          ? event._classDefaultTargets
+          : (event.timerOverlay.useEventTargets!==false?event.targets:event.timerOverlay.targets)
+      );
+      if(lockedTimerTargets.length){
+        combined.timerOverlay={ok:true,deferred:true,lockedTargets:lockedTimerTargets};
+      }else combined.timerOverlay=await runAutomationTimerOverlay(event,{manual});
       if(combined.timerOverlay?.result)combined.results.push(combined.timerOverlay.result);
     }catch(err){
+      if(err.code==="ANNOUNCEMENTS_PRIORITY_ACTIVE"){
+        combined.timerOverlay={ok:true,deferred:true,lockedTargets:err.targets||[]};
+      }else{
       combined.ok=false;
       combined.timerOverlay={ok:false,error:err.message};
       diagnosticError(err,{component:"automation.timer",operation:"timer-overlay",data:{automationId:event.id,classId:event.timerOverlay?.classId||event.classId||null}});
+      }
     }
   }
 
@@ -2195,6 +2308,7 @@ async function controlPresentation(action,body={}){
 
 let presentationAutoAdvanceBusy=false;
 const presentationAutoAdvanceTimer=setInterval(async()=>{
+  if(fullExportFreeze.requested)return;
   if(presentationAutoAdvanceBusy)return;presentationAutoAdvanceBusy=true;
   try{
     if(!presentationState.active||presentationState.paused)return;
@@ -2910,8 +3024,8 @@ function pruneStudentData(policy=privacyRetentionPolicy()){
   dbStore.db.prepare("DELETE FROM audit_events WHERE at < ?").run(auditCutoff);
 }
 
-const studentDataPruneTimer=setInterval(()=>{try{pruneStudentData()}catch(error){diagnosticError(error,{component:"privacy-retention",operation:"periodic-prune"})}},10*60*1000);studentDataPruneTimer.unref();
-setTimeout(()=>{try{pruneStudentData()}catch(error){diagnosticError(error,{component:"privacy-retention",operation:"startup-prune"})}},5000).unref();
+const studentDataPruneTimer=setInterval(()=>{if(fullExportFreeze.requested)return;try{pruneStudentData()}catch(error){diagnosticError(error,{component:"privacy-retention",operation:"periodic-prune"})}},10*60*1000);studentDataPruneTimer.unref();
+setTimeout(()=>{if(fullExportFreeze.requested)return;try{pruneStudentData()}catch(error){diagnosticError(error,{component:"privacy-retention",operation:"startup-prune"})}},5000).unref();
 
 const baseDeviceConfig = readJson(DEVICE_CONFIG_FILE, {
   room: ROOM_NAME,
@@ -3212,6 +3326,7 @@ let sessionEffectBusy = false;
 const sessionLastSpotlightAt = new Map();
 
 async function nextSessionEffect() {
+  if(fullExportFreeze.requested)return;
   if (sessionEffectBusy) return;
 
   const sessions = Object.values(classroomSessions).filter(x => !x.paused);
@@ -3304,7 +3419,7 @@ const runtime = {
   mqtt: {
     configured: Boolean(MQTT_URL),
     connected: false,
-    url: MQTT_URL ? MQTT_URL.replace(/:\/\/.*@/, "://***@") : "",
+    url: endpointForLog(MQTT_URL),
     lastError: null,
     lastConnectAt: null
   },
@@ -3336,10 +3451,38 @@ function isTelemetryEvent(entry){
   if(kind==="service.action" && String(entry.operation||"").toUpperCase()==="GET" && entry.ok!==false)return true;
   return false;
 }
+function redactUrlSecrets(value){
+  const text=String(value??"");
+  return text.replace(/\b(?:https?|mqtts?|wss?):\/\/[^\s<>"']+/gi,candidate=>{
+    let suffix="",raw=candidate;
+    while(/[),.;!?]$/.test(raw)){suffix=raw.slice(-1)+suffix;raw=raw.slice(0,-1)}
+    try{
+      const url=new URL(raw);
+      if(url.username)url.username="redacted";
+      if(url.password)url.password="redacted";
+      for(const key of [...url.searchParams.keys()])url.searchParams.set(key,"[redacted]");
+      url.hash="";
+      return url.toString()+suffix;
+    }catch{return "[redacted-url]"+suffix}
+  });
+}
+function publicProjection(value,depth=0){
+  if(depth>12)return "[max-depth]";
+  if(value===null||value===undefined)return value;
+  if(typeof value==="string")return redactUrlSecrets(value);
+  if(typeof value!=="object")return value;
+  if(Array.isArray(value))return value.map(item=>publicProjection(item,depth+1));
+  const out={};
+  for(const [key,valueAtKey] of Object.entries(value)){
+    if(/password|passwd|secret|token|keydata|privatekey|authorization|credential/i.test(key))out[key]="[redacted]";
+    else out[key]=publicProjection(valueAtKey,depth+1);
+  }
+  return out;
+}
 function audit(event) {
   const entry = {
     at: new Date().toISOString(),
-    ...event,
+    ...diagnosticSanitize(event),
     auditId: crypto.randomUUID()
   };
   recentEvents.push(entry);
@@ -3349,6 +3492,13 @@ function audit(event) {
   // failed (and invite a duplicate retry) solely because SQLite auditing is
   // temporarily unavailable; retain writes and retry them on later events.
   pendingAuditWrites.push(entry);
+  // Full Recovery Export needs one cross-root point in time. Keep operational
+  // audit events queued in memory while the maintenance agent snapshots SQLite
+  // and the related files, then flush them after thaw.
+  if(fullExportFreeze.requested){
+    if(pendingAuditWrites.length>2000)pendingAuditWrites.splice(0,pendingAuditWrites.length-2000);
+    return entry;
+  }
   while(pendingAuditWrites.length){
     const queued=pendingAuditWrites[0];
     try{
@@ -3371,6 +3521,7 @@ function diagnosticSanitize(value,depth=0){
   if(depth>6)return "[max-depth]";
   if(value===null||value===undefined)return value;
   if(Array.isArray(value))return value.slice(0,100).map(v=>diagnosticSanitize(v,depth+1));
+  if(typeof value==="string")return redactUrlSecrets(value);
   if(typeof value!=="object")return value;
   const out={};
   for(const [k,v] of Object.entries(value)){
@@ -3414,7 +3565,7 @@ function diagnosticsEventSlice({limit=250,kind=null,errorsOnly=false}={}){
     e.kind!=="veyon.framebuffer.unavailable" &&
     (e.kind==="error"||e.ok===false||e.status>=400||String(e.kind||"").includes("error"))
   );
-  return rows.slice(-Math.max(1,Math.min(2000,Number(limit||250))));
+  return rows.slice(-Math.max(1,Math.min(2000,Number(limit||250)))).map(event=>diagnosticSanitize(event));
 }
 
 
@@ -3428,10 +3579,16 @@ function publicDisplayStatus(id) {
     ws.deviceId===id &&
     ws.readyState===WebSocket.OPEN
   );
-  return {
+  return publicProjection({
     ...r,
     online:Boolean(activeSocket || (seen && now-seen<=offlineMs))
-  };
+  });
+}
+function publicPersistentState(){return publicProjection(persistentState)}
+function physicalDisplayState(id){
+  const state=structuredClone(persistentState.displays[id]||null);
+  if(state?.media?.protectedUrl==="morning-announcements")state.media.url=announcementsPlaybackUrl();
+  return state;
 }
 
 function publicRuntime() {
@@ -3601,7 +3758,9 @@ function updateStateFromCommand(command, targets) {
         setDisplayState(id, { media: { type: "video", ...p } });
         break;
       case "display.web":
-        setDisplayState(id, { media: { type: "web", ...p } });
+        // Upstream announcement URLs can contain bearer credentials. Persist a
+        // resolvable marker and hydrate it only for authenticated receivers.
+        setDisplayState(id, { media: { type: "web", ...p,...(p.contentKind==="morning-announcements"?{url:REDACTED_CONFIG_VALUE,protectedUrl:"morning-announcements"}:{}) } });
         break;
       case "display.pdf":
       case "display.document":
@@ -3765,7 +3924,7 @@ function mqttPublish(topic, payload, options = {}) {
 
 function connectMqtt() {
   runtime.mqtt.configured=Boolean(MQTT_URL);
-  runtime.mqtt.url=MQTT_URL?MQTT_URL.replace(/:\/\/.*@/, "://***@"):"";
+  runtime.mqtt.url=endpointForLog(MQTT_URL);
   runtime.mqtt.lastError=null;
   if (!MQTT_URL) {
     console.log("MQTT_URL is blank; MQTT bridge disabled.");
@@ -3788,7 +3947,7 @@ function connectMqtt() {
     runtime.mqtt.connected = true;
     runtime.mqtt.lastError = null;
     runtime.mqtt.lastConnectAt = new Date().toISOString();
-    console.log("MQTT connected:", MQTT_URL);
+    console.log("MQTT connected:", endpointForLog(MQTT_URL));
 
     mqttClient.subscribe(
       [
@@ -3824,6 +3983,7 @@ function connectMqtt() {
   });
 
   mqttClient.on("message", (topic, payloadBuffer) => {
+    if(fullExportFreeze.requested)return;
     const payloadText = payloadBuffer.toString();
     let payload;
     try { payload = JSON.parse(payloadText); } catch { payload = {raw:payloadText}; }
@@ -4150,7 +4310,7 @@ function broadcastControllers(message) {
         const sensitive=type.startsWith("lab.history")||type.startsWith("lab.screenshot")||type.startsWith("lab.ai.alert");
         if(sensitive&&!hasCapability(user,"lab.sensitive.read"))continue;
       }
-      wsSend(ws, message);
+      wsSend(ws, publicProjection(message));
     }
   }
 }
@@ -4169,7 +4329,7 @@ function broadcastDisplays(targets, message) {
 function broadcastDisplayPreviews(targets, message) {
   const wanted = new Set(targets);
   for (const ws of wsClients) {
-    if (ws.role === "preview" && wanted.has(ws.deviceId) && ws.readyState === WebSocket.OPEN) wsSend(ws, message);
+    if (ws.role === "preview" && wanted.has(ws.deviceId) && ws.readyState === WebSocket.OPEN) wsSend(ws, publicProjection(message));
   }
 }
 
@@ -4229,6 +4389,13 @@ async function executeCommand(input, source = "api") {
     const targets = resolveDisplayTargets(command.target);
     if (!targets.length) {
       throw new Error(`No display targets resolved from ${JSON.stringify(command.target)}`);
+    }
+    // This final router-level check closes the race where an automation passed
+    // its initial check, awaited a delay/network operation, and then attempted
+    // to overwrite a display after an announcement had acquired priority.
+    if(source==="automation"){
+      const priorityError=announcementPriorityError(targets);
+      if(priorityError)throw priorityError;
     }
 
     updateStateFromCommand(command, targets);
@@ -4318,6 +4485,16 @@ const app = express();
 let shuttingDown=false;
 app.disable("x-powered-by");
 app.set("trust proxy", TRUST_PROXY_HOPS);
+app.use((req,res,next)=>{
+  const mutating=!['GET','HEAD','OPTIONS'].includes(req.method);
+  const freezeControl=req.path==="/api/v1/internal/maintenance/export-freeze"||req.path==="/api/v1/internal/maintenance/export-thaw";
+  const exportProxy=req.path==="/api/v1/maintenance/backup/create";
+  if(!mutating||freezeControl||exportProxy)return next();
+  if(fullExportFreeze.requested)return res.status(423).json({ok:false,error:"A Full Recovery Export is creating a consistent appliance snapshot; changes are temporarily locked"});
+  fullExportFreeze.activeHttpMutations++;
+  let released=false;const release=()=>{if(released)return;released=true;fullExportFreeze.activeHttpMutations=Math.max(0,fullExportFreeze.activeHttpMutations-1)};
+  res.once("finish",release);res.once("close",release);next();
+});
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -4445,6 +4622,37 @@ app.get("/api/v1/internal/maintenance/status",requireMaintenanceAgent,(_req,res)
     res.json({ok:true,database:dbStore.databaseInfo(),audit:{total,first,last},secretDecryption:{ok:true,checked:secrets.length}});
   }catch(error){res.status(503).json({ok:false,error:`Database recovery validation failed: ${error.message}`,secretDecryption:{ok:false}})}
 });
+function clearFullExportFreeze({forced=false}={}){
+  if(fullExportFreeze.leaseTimer)clearTimeout(fullExportFreeze.leaseTimer);
+  fullExportFreeze.requested=false;fullExportFreeze.active=false;fullExportFreeze.token=null;fullExportFreeze.startedAt=null;fullExportFreeze.leaseTimer=null;
+  audit({kind:forced?"recovery.full-export.freeze-expired":"recovery.full-export.thaw",forced});
+}
+app.post("/api/v1/internal/maintenance/export-freeze",requireMaintenanceAgent,async(req,res)=>{
+  if(req.body?.confirm!=="FREEZE_FULL_EXPORT")return res.status(400).json({ok:false,error:"Full-export freeze confirmation required"});
+  if(fullExportFreeze.requested)return res.status(423).json({ok:false,error:"A Full Recovery Export freeze is already active"});
+  const token=crypto.randomBytes(32).toString("base64url"),started=Date.now();
+  fullExportFreeze.requested=true;fullExportFreeze.startedAt=new Date(started).toISOString();
+  try{
+    const drained=()=>fullExportFreeze.activeHttpMutations===0&&fullExportFreeze.activeWsMutations===0&&fullExportFreeze.activeAsyncMutations===0&&!morningAnnouncementsLifecycleBusy&&!morningAnnouncementsTickBusy&&!presentationAutoAdvanceBusy&&presentationBuilds.size===0&&!sessionEffectBusy&&!backgroundMusicTickBusy&&!automationSchedulerBusy&&!legacyPlutoSchedulerBusy&&!automaticUpdateBusy&&!updateJobSyncBusy;
+    while(!drained()&&Date.now()-started<30000)await new Promise(resolve=>setTimeout(resolve,25));
+    if(!drained())throw new Error("Timed out waiting for active application mutations to finish");
+    dbStore.db.exec("PRAGMA wal_checkpoint(PASSIVE)");
+    fullExportFreeze.active=true;fullExportFreeze.token=token;
+    fullExportFreeze.leaseTimer=setTimeout(()=>{if(fullExportFreeze.active&&secureTokenEqual(fullExportFreeze.token,token))clearFullExportFreeze({forced:true})},30*60*1000);
+    fullExportFreeze.leaseTimer.unref();
+    return res.json({ok:true,freezeToken:token,startedAt:fullExportFreeze.startedAt,leaseSeconds:1800});
+  }catch(error){
+    fullExportFreeze.requested=false;fullExportFreeze.active=false;fullExportFreeze.token=null;fullExportFreeze.startedAt=null;
+    audit({kind:"recovery.full-export.freeze-failed",error:error.message});
+    return res.status(503).json({ok:false,error:error.message});
+  }
+});
+app.post("/api/v1/internal/maintenance/export-thaw",requireMaintenanceAgent,(req,res)=>{
+  const supplied=String(req.body?.freezeToken||"");
+  if(!fullExportFreeze.active||!fullExportFreeze.token||!secureTokenEqual(supplied,fullExportFreeze.token))return res.status(409).json({ok:false,error:"Full-export freeze token is invalid or already used"});
+  clearFullExportFreeze();
+  res.json({ok:true});
+});
 app.post("/api/v1/internal/maintenance/audit/prune",requireMaintenanceAgent,(req,res)=>{
   if(req.body?.confirm!==true)return res.status(400).json({ok:false,error:"Confirmation required"});
   const days=Math.max(7,Math.min(3650,Number(req.body?.days||180))),cutoff=new Date(Date.now()-days*86400000).toISOString();
@@ -4546,9 +4754,11 @@ app.post("/api/v1/admin/app-updates/install",requireAdmin,async(req,res)=>{try{c
 app.post("/api/v1/admin/app-updates/revert",requireAdmin,async(req,res)=>{try{if(String(req.body?.confirm||"")!=="REVERT_RELEASE")return res.status(400).json({ok:false,error:"Explicit REVERT_RELEASE confirmation required"});const result=await maintenanceAgentApi("POST","/app-updates/revert",{confirm:"REVERT_RELEASE"},30000);audit({kind:"admin.updates.revert"});res.status(202).json(result)}catch(e){res.status(502).json({ok:false,error:e.message})}});
 
 function withinUpdateWindow(policy,date=new Date()){const minutes=s=>{const [h,m]=s.split(":").map(Number);return h*60+m},now=date.getHours()*60+date.getMinutes(),start=minutes(policy.maintenanceStart),end=minutes(policy.maintenanceEnd);return start===end||start<end?(now>=start&&now<end):(now>=start||now<end)}
-async function automaticUpdateTick(){const policy=updatePolicy();if(!policy.automatic||!withinUpdateWindow(policy))return;const last=policy.lastCheckedAt?Date.parse(policy.lastCheckedAt):0;if(Date.now()-last<policy.checkIntervalHours*3600000)return;try{const job=await maintenanceAgentApi("GET","/app-updates/job");if(job.running)return;const check=await githubReleaseCheck();if(check.available){await maintenanceAgentApi("POST","/app-updates/start",{targetRef:check.available.tag,expectedVersion:check.available.version,githubToken:String(dbStore.getSecret("github.update.token")||""),confirm:"INSTALL_RELEASE"},30000);audit({kind:"updates.automatic.start",tag:check.available.tag})}}catch(e){audit({kind:"updates.automatic.error",error:e.message})}}
+let automaticUpdateBusy=false;
+async function automaticUpdateTick(){if(fullExportFreeze.requested||automaticUpdateBusy)return;automaticUpdateBusy=true;try{const policy=updatePolicy();if(!policy.automatic||!withinUpdateWindow(policy))return;const last=policy.lastCheckedAt?Date.parse(policy.lastCheckedAt):0;if(Date.now()-last<policy.checkIntervalHours*3600000)return;try{const job=await maintenanceAgentApi("GET","/app-updates/job");if(job.running)return;const check=await githubReleaseCheck();if(check.available){await maintenanceAgentApi("POST","/app-updates/start",{targetRef:check.available.tag,expectedVersion:check.available.version,githubToken:String(dbStore.getSecret("github.update.token")||""),confirm:"INSTALL_RELEASE"},30000);audit({kind:"updates.automatic.start",tag:check.available.tag})}}catch(e){audit({kind:"updates.automatic.error",error:e.message})}}finally{automaticUpdateBusy=false}}
 const automaticUpdateTimer=setInterval(()=>automaticUpdateTick(),15*60*1000);automaticUpdateTimer.unref();setTimeout(()=>automaticUpdateTick(),60*1000).unref();
-async function synchronizeUpdateJob(){try{recordUpdateJob(await maintenanceAgentApi("GET","/app-updates/job"))}catch{}}
+let updateJobSyncBusy=false;
+async function synchronizeUpdateJob(){if(fullExportFreeze.requested||updateJobSyncBusy)return;updateJobSyncBusy=true;try{recordUpdateJob(await maintenanceAgentApi("GET","/app-updates/job"))}catch{}finally{updateJobSyncBusy=false}}
 const updateJobSyncTimer=setInterval(()=>synchronizeUpdateJob(),60*1000);updateJobSyncTimer.unref();setTimeout(()=>synchronizeUpdateJob(),15*1000).unref();
 app.use("/api/v1/maintenance", requireAdmin, requireFullRecoveryTransport, (req,res)=>{
   if(!MAINTENANCE_PROXY_ENABLED)return res.status(503).json({ok:false,error:"Privileged maintenance proxy is disabled during stabilization"});
@@ -4683,7 +4893,7 @@ app.get("/api/v1/status",requireClassroomRead, (_req, res) => {
   res.json({
     ok: true,
     runtime: publicRuntime(),
-    state: persistentState
+    state: publicPersistentState()
   });
 });
 app.get("/api/v1/lab-agent/manifest",(_req,res)=>{
@@ -4711,7 +4921,7 @@ app.get("/api/v1/devices/:id",requireClassroomRead, (req, res) => {
     ok: true,
     id,
     config: devices[id],
-    state: persistentState.displays[id] || null,
+    state: publicProjection(persistentState.displays[id] || null),
     status: publicRuntime().displays[id] || null
   });
 });
@@ -4726,15 +4936,15 @@ app.get("/api/v1/groups",requireClassroomRead, (_req, res) => {
 
 app.get("/api/v1/events",requireClassroomRead, (req, res) => {
   const limit = Math.min(500, Math.max(1, Number(req.query.limit || 100)));
-  res.json({ ok: true, events: recentEvents.slice(-limit) });
+  res.json({ ok: true, events: recentEvents.slice(-limit).map(event=>diagnosticSanitize(event)) });
 });
 
 app.post("/api/v1/commands", requireControl, async (req, res) => {
   try {
     const result = await executeCommand(req.body, "http");
-    res.json(result);
+    res.json(publicProjection(result));
   } catch (err) {
-    audit({ kind: "command.error", error: err.message, input: req.body });
+    audit({kind:"command.error",error:err.message,commandType:String(req.body?.type||"").slice(0,100),target:req.body?.target});
     res.status(400).json({ ok: false, error: err.message });
   }
 });
@@ -4833,10 +5043,10 @@ app.post("/api/v1/pluto/schedules",requireControl,(req,res)=>{
 
 // v0.10 unified classroom automations
 app.get("/api/v1/automations/morning-announcements",requireClassroomRead,(_req,res)=>{
-  res.json({ok:true,config:morningAnnouncements,runtime:morningAnnouncementsRuntime,playbackUrl:announcementsPlaybackUrl()});
+  res.json({ok:true,config:publicMorningAnnouncementsConfig(),runtime:publicProjection(morningAnnouncementsRuntime)});
 });
 app.put("/api/v1/automations/morning-announcements",requireCapability("automation.manage"),(req,res)=>{
-  try{morningAnnouncements=normalizeMorningAnnouncements(req.body||{},morningAnnouncements);persistMorningAnnouncements();restartMorningAnnouncementsWatcher();res.json({ok:true,config:morningAnnouncements,runtime:morningAnnouncementsRuntime,playbackUrl:announcementsPlaybackUrl()})}
+  try{morningAnnouncements=normalizeMorningAnnouncements(req.body||{},morningAnnouncements);persistMorningAnnouncements();restartMorningAnnouncementsWatcher();res.json({ok:true,config:publicMorningAnnouncementsConfig(),runtime:publicProjection(morningAnnouncementsRuntime)})}
   catch(err){res.status(400).json({ok:false,error:err.message})}
 });
 app.post("/api/v1/automations/morning-announcements/check",requireControl,async(_req,res)=>{
@@ -4856,7 +5066,7 @@ app.post("/api/v1/automations/morning-announcements/check",requireControl,async(
       if(morningAnnouncementsRuntime.active)morningAnnouncementsRuntime.offlineCount++;
       else morningAnnouncementsRuntime.offlineCount=0;
     }
-    res.json({ok:true,...probe,config:morningAnnouncements,runtime:morningAnnouncementsRuntime});
+    res.json(publicProjection({ok:true,...probe,config:publicMorningAnnouncementsConfig(),runtime:morningAnnouncementsRuntime}));
   }catch(err){
     morningAnnouncementsRuntime.lastCheck=new Date().toISOString();
     morningAnnouncementsRuntime.lastError=err.message;
@@ -4867,12 +5077,12 @@ app.post("/api/v1/automations/morning-announcements/start",requireControl,async(
   try{
     const rawTargets=Array.isArray(req.body?.targets)?req.body.targets:[req.body?.targets||"all"];
     const targets=automationDisplayTargets(rawTargets);
-    await assertMorningAnnouncements({mode:"manual",targetsOverride:targets,urlOverride:req.body?.url||announcementsPlaybackUrl()});
-    res.json({ok:true,config:morningAnnouncements,runtime:morningAnnouncementsRuntime,targets});
+    await serializeMorningAnnouncementsLifecycle(()=>assertMorningAnnouncements({mode:"manual",targetsOverride:targets,urlOverride:req.body?.url||announcementsPlaybackUrl()}));
+    res.json({ok:true,config:publicMorningAnnouncementsConfig(),runtime:publicProjection(morningAnnouncementsRuntime),targets});
   }catch(err){res.status(500).json({ok:false,error:err.message})}
 });
 app.post("/api/v1/automations/morning-announcements/stop",requireControl,async(req,res)=>{
-  try{await releaseMorningAnnouncements(String(req.body?.reason||"manual-stop"));res.json({ok:true,runtime:morningAnnouncementsRuntime})}
+  try{await serializeMorningAnnouncementsLifecycle(()=>releaseMorningAnnouncements(String(req.body?.reason||"manual-stop")));res.json({ok:true,runtime:morningAnnouncementsRuntime})}
   catch(err){res.status(500).json({ok:false,error:err.message})}
 });
 app.get("/api/v1/automations/calendar",requireClassroomRead,(_req,res)=>{
@@ -5037,7 +5247,6 @@ app.post("/api/v1/automations/:id/run",requireControl,async(req,res)=>{
   try{
     const id=cleanId(req.params.id);event=classroomAutomations.events.find(x=>x.id===id);
     if(!event)return res.status(404).json({ok:false,error:"Automation not found"});
-    if(morningAnnouncementsRuntime.active)return res.status(409).json({ok:false,error:"Morning Announcements have priority. Stop announcements before running an automation manually."});
     const result=await runClassroomAutomation(resolveAutomationForManualTest(event),{manual:true});
     event.lastRun={at:new Date().toISOString(),ok:result.ok!==false,manual:true,message:result.ok===false?"Completed with action errors":"Completed",resultSummary:{action:event.action,actions:[event.action,...(event.actions||[]).map(x=>x.action)],targets:event.targets,failures:automationRunFailures(result)}};event.updatedAt=new Date().toISOString();persistAutomations();
     res.json(result);
@@ -5363,6 +5572,8 @@ const backgroundMusicRuntime={
   pausedForPriority:false,
   manualStopped:false,
   startedKey:null,
+  activePlayerId:null,
+  activeFavoriteId:null,
   lastAction:null,
   lastActionAt:null,
   lastError:null
@@ -5430,18 +5641,18 @@ async function backgroundMusicActualPlayerState(cfg=backgroundMusicSchedule(),fo
   }
 }
 async function backgroundMusicPause(reason="manual"){
-  const cfg=backgroundMusicSchedule();if(!cfg.playerId)return false;
-  await musicAssistantCommand("players/cmd/pause",{player_id:cfg.playerId});
+  const cfg=backgroundMusicSchedule(),playerId=String(backgroundMusicRuntime.activePlayerId||cfg.playerId||"").trim();if(!playerId)return false;
+  await musicAssistantCommand("players/cmd/pause",{player_id:playerId});
   backgroundMusicRuntime.playing=false;backgroundMusicRuntime.paused=true;backgroundMusicRuntime.lastAction=`pause:${reason}`;backgroundMusicRuntime.lastActionAt=new Date().toISOString();return true;
 }
 async function backgroundMusicResume(reason="resume"){
-  const cfg=backgroundMusicSchedule();if(!cfg.playerId)return false;
-  await musicAssistantCommand("players/cmd/play",{player_id:cfg.playerId});
+  const cfg=backgroundMusicSchedule(),playerId=String(backgroundMusicRuntime.activePlayerId||cfg.playerId||"").trim();if(!playerId)return false;
+  await musicAssistantCommand("players/cmd/play",{player_id:playerId});
   backgroundMusicRuntime.playing=true;backgroundMusicRuntime.paused=false;backgroundMusicRuntime.pausedForPriority=false;backgroundMusicRuntime.lastAction=`play:${reason}`;backgroundMusicRuntime.lastActionAt=new Date().toISOString();return true;
 }
-async function backgroundMusicStop(reason="manual"){
-  const cfg=backgroundMusicSchedule();if(cfg.playerId)await musicAssistantCommand("players/cmd/stop",{player_id:cfg.playerId});
-  backgroundMusicRuntime.playing=false;backgroundMusicRuntime.paused=false;backgroundMusicRuntime.pausedForPriority=false;backgroundMusicRuntime.lastAction=`stop:${reason}`;backgroundMusicRuntime.lastActionAt=new Date().toISOString();return true;
+async function backgroundMusicStop(reason="manual",playerIdOverride=null){
+  const cfg=backgroundMusicSchedule(),playerId=String(playerIdOverride||backgroundMusicRuntime.activePlayerId||cfg.playerId||"").trim();if(playerId)await musicAssistantCommand("players/cmd/stop",{player_id:playerId});
+  backgroundMusicRuntime.playing=false;backgroundMusicRuntime.paused=false;backgroundMusicRuntime.pausedForPriority=false;backgroundMusicRuntime.activePlayerId=null;backgroundMusicRuntime.activeFavoriteId=null;backgroundMusicRuntime.lastAction=`stop:${reason}`;backgroundMusicRuntime.lastActionAt=new Date().toISOString();return true;
 }
 async function backgroundMusicStart({favoriteId=null,playerId=null,reason="manual"}={}){
   const cfg=backgroundMusicSchedule(),pid=String(playerId||cfg.playerId||"").trim(),fav=backgroundMusicFavoriteById(favoriteId||cfg.favoriteId);
@@ -5450,7 +5661,7 @@ async function backgroundMusicStart({favoriteId=null,playerId=null,reason="manua
   await musicAssistantCommand("players/cmd/volume_set",{player_id:pid,volume_level:cfg.volume});
   await musicAssistantCommand("players/cmd/volume_mute",{player_id:pid,muted:false});
   await musicAssistantCommand("player_queues/play_media",{queue_id:pid,media:fav.uri});
-  backgroundMusicRuntime.playing=true;backgroundMusicRuntime.paused=false;backgroundMusicRuntime.pausedForPriority=false;backgroundMusicRuntime.manualStopped=false;backgroundMusicRuntime.lastAction=`start:${reason}`;backgroundMusicRuntime.lastActionAt=new Date().toISOString();backgroundMusicRuntime.lastError=null;
+  backgroundMusicRuntime.playing=true;backgroundMusicRuntime.paused=false;backgroundMusicRuntime.pausedForPriority=false;backgroundMusicRuntime.manualStopped=false;backgroundMusicRuntime.activePlayerId=pid;backgroundMusicRuntime.activeFavoriteId=fav.id;backgroundMusicRuntime.lastAction=`start:${reason}`;backgroundMusicRuntime.lastActionAt=new Date().toISOString();backgroundMusicRuntime.lastError=null;
   return {playerId:pid,favorite:fav};
 }
 async function backgroundMusicReconcilePriority({force=false}={}){
@@ -5459,7 +5670,7 @@ async function backgroundMusicReconcilePriority({force=false}={}){
   const priority=backgroundMusicPriorityTargets.size>0;
   if(priority&&!backgroundMusicRuntime.playing){
     const actual=await backgroundMusicActualPlayerState(cfg,true);
-    if(actual?.playing){backgroundMusicRuntime.playing=true;backgroundMusicRuntime.paused=false}
+    if(actual?.playing){backgroundMusicRuntime.playing=true;backgroundMusicRuntime.paused=false;backgroundMusicRuntime.activePlayerId=String(cfg.playerId||"");backgroundMusicRuntime.activeFavoriteId=String(cfg.favoriteId||"")||null}
   }
   if(priority&&backgroundMusicRuntime.playing){
     try{await backgroundMusicPause("priority-audio");backgroundMusicRuntime.pausedForPriority=true}catch(e){backgroundMusicRuntime.lastError=e.message}
@@ -5485,9 +5696,10 @@ function backgroundMusicObserveDisplayCommand(command,source="api"){
     if(!announcementOwnsTarget)backgroundMusicPriorityTargets.delete(id);
   }
   if(startsAudio)for(const id of targets)backgroundMusicPriorityTargets.add(id);
-  backgroundMusicReconcilePriority().catch(()=>{});
+  trackFullExportMutation(backgroundMusicReconcilePriority()).catch(()=>{});
 }
 async function backgroundMusicTick(){
+  if(fullExportFreeze.requested)return;
   if(backgroundMusicTickBusy)return;backgroundMusicTickBusy=true;
   try{
     const cfg=backgroundMusicSchedule(),now=new Date(),active=backgroundMusicWindowActive(cfg,now),key=backgroundMusicWindowKey(cfg,now);
@@ -5514,6 +5726,8 @@ async function backgroundMusicTick(){
         backgroundMusicRuntime.playing=true;
         backgroundMusicRuntime.paused=false;
         backgroundMusicRuntime.pausedForPriority=false;
+        backgroundMusicRuntime.activePlayerId=String(cfg.playerId||"");
+        backgroundMusicRuntime.activeFavoriteId=String(cfg.favoriteId||"")||null;
       }else if(!backgroundMusicRuntime.manualStopped&&!backgroundMusicRuntime.pausedForPriority){
         backgroundMusicRuntime.playing=false;
         backgroundMusicRuntime.paused=false;
@@ -5532,7 +5746,7 @@ async function backgroundMusicTick(){
 }
 
 app.get("/api/v1/music-assistant/background",requireControl,async(_req,res)=>{const cfg=backgroundMusicSchedule();const actualPlayer=await backgroundMusicActualPlayerState(cfg,true).catch(()=>null);res.json({ok:true,schedule:cfg,favorites:backgroundMusicFavorites(),runtime:{...backgroundMusicRuntime,priority:backgroundMusicPriorityState(),actualPlayer,playerProbeError:backgroundMusicPlayerProbe.error}})});
-app.put("/api/v1/music-assistant/background/schedule",requireControl,(req,res)=>{try{const cfg=normalizeBackgroundMusicSchedule(req.body||{},backgroundMusicSchedule());dbStore.setPreference("musicassistant.background.schedule",cfg);backgroundMusicRuntime.lastError=null;audit({kind:"musicassistant.background.schedule.update",enabled:cfg.enabled,startTime:cfg.startTime,endTime:cfg.endTime,playerId:cfg.playerId,favoriteId:cfg.favoriteId});backgroundMusicTick().catch(()=>{});res.json({ok:true,schedule:cfg})}catch(e){res.status(400).json({ok:false,error:e.message})}});
+app.put("/api/v1/music-assistant/background/schedule",requireControl,async(req,res)=>{try{const prior=backgroundMusicSchedule(),cfg=normalizeBackgroundMusicSchedule(req.body||{},prior);dbStore.setPreference("musicassistant.background.schedule",cfg);backgroundMusicRuntime.lastError=null;const identityChanged=prior.playerId!==cfg.playerId||prior.favoriteId!==cfg.favoriteId;if(identityChanged&&(backgroundMusicRuntime.playing||backgroundMusicRuntime.paused)){await backgroundMusicStop("schedule-identity-changed",backgroundMusicRuntime.activePlayerId||prior.playerId);backgroundMusicRuntime.startedKey=null}audit({kind:"musicassistant.background.schedule.update",enabled:cfg.enabled,startTime:cfg.startTime,endTime:cfg.endTime,playerId:cfg.playerId,favoriteId:cfg.favoriteId});await backgroundMusicTick();res.json({ok:true,schedule:cfg})}catch(e){res.status(400).json({ok:false,error:e.message})}});
 app.post("/api/v1/music-assistant/background/favorites",requireControl,(req,res)=>{try{const uri=String(req.body?.uri||"").trim(),name=String(req.body?.name||"").trim(),detail=String(req.body?.detail||"").trim();if(!uri||!name)return res.status(400).json({ok:false,error:"Favorite name and media URI are required"});const list=backgroundMusicFavorites(),existing=list.find(x=>x.uri===uri);if(existing){existing.name=name;existing.detail=detail}else list.push({id:`bgm-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,name,uri,detail,createdAt:new Date().toISOString()});dbStore.setPreference("musicassistant.background.favorites",list.slice(-100));res.json({ok:true,favorites:list})}catch(e){res.status(400).json({ok:false,error:e.message})}});
 app.delete("/api/v1/music-assistant/background/favorites/:id",requireControl,(req,res)=>{const id=String(req.params.id||""),list=backgroundMusicFavorites().filter(x=>String(x.id)!==id);dbStore.setPreference("musicassistant.background.favorites",list);const cfg=backgroundMusicSchedule();if(cfg.favoriteId===id){cfg.favoriteId="";dbStore.setPreference("musicassistant.background.schedule",cfg)}res.json({ok:true,favorites:list})});
 app.post("/api/v1/music-assistant/background/control",requireControl,async(req,res)=>{try{const action=String(req.body?.action||"");if(action==="play"){const r=await backgroundMusicStart({favoriteId:req.body?.favoriteId,playerId:req.body?.playerId,reason:"manual"});return res.json({ok:true,action,...r})}if(action==="pause"){await backgroundMusicPause("manual");backgroundMusicRuntime.manualStopped=true;return res.json({ok:true,action})}if(action==="stop"){await backgroundMusicStop("manual");backgroundMusicRuntime.manualStopped=true;return res.json({ok:true,action})}if(action==="resume"){backgroundMusicRuntime.manualStopped=false;await backgroundMusicResume("manual");return res.json({ok:true,action})}return res.status(400).json({ok:false,error:"Unknown Background Music action"})}catch(e){res.status(502).json({ok:false,error:e.message})}});
@@ -5560,7 +5774,7 @@ app.post("/api/v1/music-assistant/tv-bridge",musicAssistantMutationLimit,require
 app.get("/api/v1/database/status",requireAdmin,(_req,res)=>{res.json({ok:true,database:dbStore.databaseInfo(),secrets:dbStore.listSecrets(),certificates:dbStore.listCertificates()})});
 app.get("/api/v1/database/schema",requireAdmin,(_req,res)=>{const info=dbStore.databaseInfo();res.json({ok:true,schemaVersion:info.schemaVersion,normalized:info.normalized,migrations:dbStore.db.prepare("SELECT version,name,applied_at appliedAt FROM schema_migrations ORDER BY version").all()})});
 app.get("/api/v1/database/telemetry",requireAdmin,(req,res)=>{const limit=Math.max(1,Math.min(5000,Number(req.query.limit||500)));res.json({ok:true,count:dbStore.databaseInfo().telemetry||0,telemetry:dbStore.telemetryState(limit)})});
-app.get("/api/v1/database/audit",requireAdmin,(req,res)=>{res.json({ok:true,events:dbStore.recentAudit(req.query.limit||250,{kind:req.query.kind||null})})});
+app.get("/api/v1/database/audit",requireAdmin,(req,res)=>{res.json({ok:true,events:dbStore.recentAudit(req.query.limit||250,{kind:req.query.kind||null}).map(event=>diagnosticSanitize(event))})});
 
 app.get("/api/v1/diagnostics",requireCapability("diagnostics.read"),async(_req,res)=>{
   try{res.json(await buildDiagnosticsSnapshot())}
@@ -6699,7 +6913,12 @@ wss.on("connection", (ws, req) => {
     } catch {
       return wsSend(ws, { type: "error", error: "Invalid JSON" });
     }
+    if(fullExportFreeze.requested){
+      if(msg.type==="heartbeat")return wsSend(ws,{type:"heartbeat.ack",at:Date.now(),maintenanceFreeze:true});
+      return wsSend(ws,{type:"maintenance.freeze",reason:"full-recovery-export"});
+    }
 
+    fullExportFreeze.activeWsMutations++;
     try {
       if (msg.type === "hello") {
         if(ws.role!=="unknown")throw new Error("WebSocket identity is already established");
@@ -6724,7 +6943,7 @@ wss.on("connection", (ws, req) => {
             devices,
             groups: displayGroups,
             runtime: publicRuntime(),
-            state: persistentState
+            state: publicPersistentState()
           });
           return;
         }
@@ -6751,7 +6970,7 @@ wss.on("connection", (ws, req) => {
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
-            state: persistentState.displays[deviceId] || null,
+            state: publicProjection(persistentState.displays[deviceId] || null),
             displayGatewayHosts:DISPLAY_GATEWAY_HOSTS
           });
           return;
@@ -6794,7 +7013,7 @@ wss.on("connection", (ws, req) => {
             deviceId,
             room: deviceConfig.room || ROOM_NAME,
             config: devices[deviceId],
-            state: persistentState.displays[deviceId] || null,
+            state: physicalDisplayState(deviceId),
             authMode,
             credential:issuedCredential?.credential||undefined,
             credentialId:displayCredential?.id||undefined,
@@ -6807,7 +7026,7 @@ wss.on("connection", (ws, req) => {
             const maTargets=dbStore.getPreference("musicassistant.tvBridgeTargets",[])||[];
             if(Array.isArray(maTargets)&&maTargets.includes(deviceId)){
               const maToken=musicAssistantToken();
-              if(maToken){const issued=issueMusicAssistantProxyTicket(deviceId);setTimeout(()=>{if(ws.readyState===WebSocket.OPEN)wsSend(ws,{type:"command",command:{type:"music.assistant.attach",target:deviceId,payload:musicAssistantTvAttachPayload(deviceId,issued)}})},1200)};
+              if(maToken){const issued=issueMusicAssistantProxyTicket(deviceId);setTimeout(()=>{if(!fullExportFreeze.requested&&ws.readyState===WebSocket.OPEN)wsSend(ws,{type:"command",command:{type:"music.assistant.attach",target:deviceId,payload:musicAssistantTvAttachPayload(deviceId,issued)}})},1200)};
             }
           }catch{}
 
@@ -6819,7 +7038,7 @@ wss.on("connection", (ws, req) => {
           if(clientVersion!==APPLICATION_VERSION) {
             audit({kind:"display.renderer.refresh-required",deviceId,clientVersion:clientVersion||null,serverVersion:APPLICATION_VERSION});
             setTimeout(()=>{
-              if(ws.readyState===WebSocket.OPEN){
+              if(!fullExportFreeze.requested&&ws.readyState===WebSocket.OPEN){
                 wsSend(ws,{type:"command",command:{type:"display.reload",target:deviceId,payload:{reason:"renderer-version-mismatch",serverVersion:APPLICATION_VERSION}}});
               }
             },700);
@@ -6859,7 +7078,7 @@ wss.on("connection", (ws, req) => {
 
       if (msg.type === "display.media.ended" && ws.role === "display") {
         backgroundMusicPriorityTargets.delete(ws.deviceId);
-        backgroundMusicReconcilePriority().catch(()=>{});
+        trackFullExportMutation(backgroundMusicReconcilePriority()).catch(()=>{});
         audit({kind:"display.media.ended",deviceId:ws.deviceId,mediaType:String(msg.mediaType||"unknown")});
         return;
       }
@@ -6868,7 +7087,7 @@ wss.on("connection", (ws, req) => {
         const previous=runtime.displays[ws.deviceId]||{},status=boundedWsObject(msg.status,"Music Assistant status");
         runtime.displays[ws.deviceId]={...previous,musicAssistant:{...status,desiredAudio:musicAssistantTvAudioState(ws.deviceId),updatedAt:new Date().toISOString()}};
         broadcastControllers({type:"device.status",deviceId:ws.deviceId,status:publicDisplayStatus(ws.deviceId)});
-        if(status.protocolActive===true&&!ws.maAudioRestored&&!ws.maAudioRestorePending){ws.maAudioRestorePending=true;setTimeout(async()=>{try{await restoreMusicAssistantTvAudioState(ws.deviceId,ws)}finally{ws.maAudioRestorePending=false}},250)}
+        if(status.protocolActive===true&&!ws.maAudioRestored&&!ws.maAudioRestorePending){ws.maAudioRestorePending=true;setTimeout(()=>{if(fullExportFreeze.requested){ws.maAudioRestorePending=false;return}trackFullExportMutation(restoreMusicAssistantTvAudioState(ws.deviceId,ws)).finally(()=>{ws.maAudioRestorePending=false})},250)}
         if(ws.maAudioRestored){const desired=musicAssistantTvAudioState(ws.deviceId),patch={};const n=Number(status.volume);if(Number.isFinite(n)&&Math.max(0,Math.min(100,n))!==desired.volume)patch.volume=n;if(status.muted!==undefined&&!!status.muted!==desired.muted)patch.muted=!!status.muted;if(Object.keys(patch).length)setMusicAssistantTvAudioState(ws.deviceId,patch)}
 
         // Reconcile scheduled Background Music after a display's persistent
@@ -7032,6 +7251,8 @@ wss.on("connection", (ws, req) => {
     } catch (err) {
       wsSend(ws, { type: "error", error: err.message });
       if(msg?.type==="hello"&&ws.role==="unknown")setTimeout(()=>{try{ws.close(1008,"Authentication failed")}catch{}},25);
+    } finally {
+      fullExportFreeze.activeWsMutations=Math.max(0,fullExportFreeze.activeWsMutations-1);
     }
   });
 
@@ -7099,6 +7320,7 @@ const backgroundMusicStartupTimer=setTimeout(()=>backgroundMusicTick().catch(err
 // Uses configured classroom timezone and a short restart/outage catch-up window.
 let automationSchedulerBusy=false;
 setInterval(async()=>{
+  if(fullExportFreeze.requested)return;
   if(automationSchedulerBusy)return;automationSchedulerBusy=true;
   try{
   const now=new Date();
@@ -7122,8 +7344,11 @@ setInterval(async()=>{
       const scheduledMinuteKey=`${dateKey} ${event.time}`;
       storedEvent.lastExecByClass=storedEvent.lastExecByClass||{};
       if(storedEvent.lastExecByClass[occurrenceKey]===scheduledMinuteKey)continue;
-      if(morningAnnouncementsRuntime.active){
-        queueAutomationDuringAnnouncements(storedEvent,event,dateKey,scheduledMinuteKey,deltaMinutes);changed=true;continue;
+      if(morningAnnouncementsRuntime.active&&announcementLockedDisplayTargets([...automationDeferredDisplayTargets(event)]).length){
+        // Record the display portion for post-announcement resync, but continue
+        // executing non-conflicting lighting/TV actions. runClassroomAutomation
+        // filters locked display targets again before every delivery.
+        queueAutomationDuringAnnouncements(storedEvent,event,dateKey,scheduledMinuteKey,deltaMinutes);changed=true;
       }
       storedEvent.lastExecByClass[occurrenceKey]=scheduledMinuteKey;
       storedEvent.lastExec=scheduledMinuteKey;changed=true;
@@ -7144,7 +7369,11 @@ setInterval(async()=>{
 
 // Legacy per-output Pluto schedules retained for migration/backward compatibility.
 // Direct Pluto schedule executor (replaces Node-RED schedule tick)
+let legacyPlutoSchedulerBusy=false;
 setInterval(async()=>{
+  if(fullExportFreeze.requested)return;
+  if(legacyPlutoSchedulerBusy)return;legacyPlutoSchedulerBusy=true;
+  try{
   const now=new Date(),hhmm=String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
   const day=now.getDay(),minuteKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${hhmm}`;
   let changed=false;
@@ -7166,6 +7395,7 @@ setInterval(async()=>{
     }
   }
   if(changed)persistPlutoSchedules();
+  }finally{legacyPlutoSchedulerBusy=false}
 },15000);
 
 connectMqtt();
@@ -7179,10 +7409,10 @@ server.listen(PORT, BIND_ADDRESS, () => {
   console.log(`Classroom Control Hub Backend v${APPLICATION_VERSION} listening on ${BIND_ADDRESS}:${PORT}`);
   console.log(`Scheduler timezone: ${SCHEDULER_TIMEZONE}; local time: ${schedulerLocalTimestamp()}; catch-up: ${SCHEDULER_CATCHUP_MINUTES} minute(s)`);
   console.log(`Room: ${deviceConfig.room || ROOM_NAME}`);
-  console.log(`MQTT: ${MQTT_URL || "disabled"}`);
+  console.log(`MQTT: ${endpointForLog(MQTT_URL) || "disabled"}`);
   console.log("Node-RED: not required (v0.8 direct hardware mode)");
 });
-const goveeReconcileTimer=setInterval(()=>reconcileGoveeDiscovery(),60000);
+const goveeReconcileTimer=setInterval(()=>{if(!fullExportFreeze.requested)reconcileGoveeDiscovery()},60000);
 function gracefulShutdown(signal){
   if(shuttingDown)return;shuttingDown=true;console.log(`${signal} received; draining Classroom Control Hub`);
   clearInterval(heartbeatTimer);clearInterval(veyonPoolTimer);clearInterval(goveeReconcileTimer);clearInterval(automaticUpdateTimer);clearInterval(updateJobSyncTimer);clearInterval(studentDataPruneTimer);if(morningAnnouncementsTimer)clearTimeout(morningAnnouncementsTimer);
