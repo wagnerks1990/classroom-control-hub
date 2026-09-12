@@ -62,7 +62,9 @@ ENV PATH=/opt/android-build-tools:$PATH
 RUN apksigner --version && keytool -help >/dev/null
 WORKDIR /app
 COPY maintenance-agent/package*.json ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts \
+ && rm -rf /usr/local/lib/node_modules/npm \
+ && rm -f /usr/local/bin/npm /usr/local/bin/npx
 COPY maintenance-agent/server.js ./
 COPY maintenance-agent/extensions.js ./
 COPY maintenance-agent/network.js ./

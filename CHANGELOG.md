@@ -41,7 +41,10 @@
   dependency review, blocking high/critical fixable image scans, verified Gradle
   distribution download integrity, complete tracked-shell syntax validation,
   and exact managed-integration catalog parity checks.
-- Expanded the regression suite to 295 tests covering recovery freeze/thaw,
+- Moved the esbuild browser bundler into a disposable build stage and removed
+  npm/npx from the final Hub and maintenance runtime images so build tooling and
+  its advisory surface are not shipped on the appliance.
+- Expanded the regression suite to 296 tests covering recovery freeze/thaw,
   identity consistency, secret projections and migration, Android trust and
   resource limits, accessibility, controller behavior, and release policy.
 

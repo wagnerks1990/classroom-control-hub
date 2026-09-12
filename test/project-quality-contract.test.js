@@ -65,3 +65,16 @@ test("the downloaded Gradle distribution is checksum verified",()=>{
     assert.match(source,/sha256sum -c -/);
   }
 });
+
+test("runtime images exclude browser build tooling and the npm toolchain",()=>{
+  const pkg=JSON.parse(read("package.json")),hub=read("Dockerfile"),maintenance=read("maintenance-agent/Dockerfile");
+  assert.equal(pkg.dependencies.esbuild,undefined);
+  assert.match(pkg.devDependencies.esbuild,/^\d+\.\d+\.\d+$/);
+  assert.match(hub,/FROM node:22-bookworm-slim AS browser-build/);
+  assert.match(hub,/npx --no-install esbuild/);
+  assert.match(hub,/COPY --from=browser-build .*sendspin\.bundle\.js/);
+  for(const source of [hub,maintenance]){
+    assert.match(source,/rm -rf \/usr\/local\/lib\/node_modules\/npm/);
+    assert.match(source,/rm -f \/usr\/local\/bin\/npm \/usr\/local\/bin\/npx/);
+  }
+});
