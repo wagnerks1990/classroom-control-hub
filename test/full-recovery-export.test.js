@@ -34,7 +34,7 @@ async function startAgent(t,{database=true,masterKey=true,envelopeMaxMb=64,manag
   const fakeSqlite=path.join(bin,"sqlite3");
   put(fakeSqlite,"#!/usr/bin/env node\nconst fs=require('fs');const command=process.argv[3]||'';const match=command.match(/^\\.backup '(.+)'$/);if(match)fs.copyFileSync(process.argv[2],match[1].replace(/''/g,\"'\"));else if(command==='PRAGMA quick_check;')process.stdout.write('ok\\n');else if(command.includes('schema_migrations'))process.stdout.write('1\\n');else process.exit(2);\n");
   fs.chmodSync(fakeSqlite,0o755);
-  const fakeAdb=path.join(bin,"adb"),fakeKeytool=path.join(bin,"keytool");put(fakeAdb,"#!/bin/sh\n[ \"$1\" = pubkey ] && printf 'QUJDRA==\\n'\n");put(fakeKeytool,"#!/bin/sh\n[ -n \"$ROOMGOBLIN_RECOVERY_KEYSTORE_PASSWORD\" ]\n");fs.chmodSync(fakeAdb,0o755);fs.chmodSync(fakeKeytool,0o755);
+  const adbCalls=path.join(temp,"adb-calls.jsonl"),fakeAdb=path.join(bin,"adb"),fakeKeytool=path.join(bin,"keytool");put(fakeAdb,"#!/usr/bin/env node\nconst fs=require('node:fs');fs.appendFileSync(process.env.ADB_CALL_LOG,JSON.stringify(process.argv.slice(2))+'\\n');if(process.argv[2]==='pubkey')process.stdout.write('QUJDRA==\\n');else process.exit(2);\n");put(fakeKeytool,"#!/bin/sh\n[ -n \"$ROOMGOBLIN_RECOVERY_KEYSTORE_PASSWORD\" ]\n");fs.chmodSync(fakeAdb,0o755);fs.chmodSync(fakeKeytool,0o755);
   const hostSocket=path.join(temp,"host-agent.sock"),hostMock=path.join(temp,"mock-host-agent.cjs"),hostCalls=path.join(temp,"host-calls.jsonl");
   put(hostMock,`"use strict";
 const fs=require("node:fs"),http=require("node:http"),{EventEmitter}=require("node:events"),{Readable}=require("node:stream");
@@ -49,6 +49,7 @@ http.request=function(options,callback){
   request.end=()=>process.nextTick(()=>{
     let body={};try{body=JSON.parse(written.toString()||"{}")}catch{};fs.appendFileSync(process.env.HOST_CALL_LOG,JSON.stringify({method:options.method,path:options.path,body})+"\\n");
     const payload={ok:true,stdout:"",stderr:""};
+    if(options.path==="/recovery/export/freeze")payload.freezeToken="host-freeze-token";
     if(options.path==="/docker/exec"&&body.args?.[1]==="music-assistant-server"&&body.args?.[0]==="stop")musicRunning=false;
     if(options.path==="/docker/exec"&&body.args?.[1]==="music-assistant-server"&&body.args?.[0]==="start")musicRunning=true;
     if(process.env.MANAGED_MUSIC_RUNNING==="1"&&options.path==="/docker/exec"&&body.args?.[0]==="inspect"&&body.args?.[1]==="music-assistant-server")payload.stdout=JSON.stringify([{Config:{Image:"ghcr.io/music-assistant/server:2.9.13",Labels:{"org.roomgoblin.deployment-ownership":"roomgoblin"}},State:{Running:musicRunning}}]);
@@ -57,15 +58,16 @@ http.request=function(options,callback){
   return request;
 };
 `);
-  const mainPort=await freePort(),main=http.createServer((_req,res)=>{res.setHeader("content-type","application/json");res.end(JSON.stringify({ok:true,database:{file:"/app/data/classroom-control-hub.db",schemaVersion:1}}))});
+  const mainCalls=path.join(temp,"main-calls.jsonl");
+  const mainPort=await freePort(),main=http.createServer((req,res)=>{const chunks=[];req.on("data",chunk=>chunks.push(chunk));req.on("end",()=>{let body={};try{body=JSON.parse(Buffer.concat(chunks).toString()||"{}")}catch{};fs.appendFileSync(mainCalls,JSON.stringify({method:req.method,path:req.url,body})+"\n");res.setHeader("content-type","application/json");if(req.url==="/api/v1/internal/maintenance/export-freeze")return res.end(JSON.stringify({ok:true,freezeToken:"main-freeze-token"}));res.end(JSON.stringify({ok:true,database:{file:"/app/data/classroom-control-hub.db",schemaVersion:1}}))})});
   await new Promise((resolve,reject)=>main.listen(mainPort,"127.0.0.1",resolve).once("error",reject));
   const port=await freePort(),token="full-recovery-test-token";
-  const child=spawn(process.execPath,[path.join(ROOT,"maintenance-agent/server.js")],{env:{...process.env,PORT:String(port),MAINTENANCE_TOKEN:token,MANAGED_HUB_ROOT:hub,MANAGED_SERVICES_ROOT:services,MASTER_KEY_FILE:master,ANDROID_AGENT_SIGNING_ROOT:signing,VEYON_RECOVERY_ROOT:veyon,RECOVERY_STAGING_ROOT:staging,RECOVERY_ENVELOPE_MAX_MB:String(envelopeMaxMb),MAINTENANCE_WORK_DIR:path.join(temp,"uploads"),HOST_AGENT_SOCKET:hostSocket,HOST_CALL_LOG:hostCalls,MANAGED_MUSIC_RUNNING:managedMusicRunning?"1":"0",MAIN_APP_URL:`http://127.0.0.1:${mainPort}`,APP_UID:String(process.getuid?.()??10001),APP_GID:String(process.getgid?.()??10001),NODE_OPTIONS:`--require=${hostMock}`,PATH:`${bin}:${process.env.PATH}`},stdio:["ignore","pipe","pipe"]});
+  const child=spawn(process.execPath,[path.join(ROOT,"maintenance-agent/server.js")],{env:{...process.env,PORT:String(port),MAINTENANCE_TOKEN:token,MANAGED_HUB_ROOT:hub,MANAGED_SERVICES_ROOT:services,MASTER_KEY_FILE:master,ANDROID_AGENT_SIGNING_ROOT:signing,VEYON_RECOVERY_ROOT:veyon,RECOVERY_STAGING_ROOT:staging,RECOVERY_ENVELOPE_MAX_MB:String(envelopeMaxMb),MAINTENANCE_WORK_DIR:path.join(temp,"uploads"),HOST_AGENT_SOCKET:hostSocket,HOST_CALL_LOG:hostCalls,ADB_CALL_LOG:adbCalls,MANAGED_MUSIC_RUNNING:managedMusicRunning?"1":"0",MAIN_APP_URL:`http://127.0.0.1:${mainPort}`,APP_UID:String(process.getuid?.()??10001),APP_GID:String(process.getgid?.()??10001),NODE_OPTIONS:`--require=${hostMock}`,PATH:`${bin}:${process.env.PATH}`},stdio:["ignore","pipe","pipe"]});
   let output="";child.stdout.on("data",chunk=>output+=chunk);child.stderr.on("data",chunk=>output+=chunk);
   t.after(()=>{if(child.exitCode==null)child.kill("SIGKILL");main.close();fs.rmSync(temp,{recursive:true,force:true})});
   const base=`http://127.0.0.1:${port}`;
   for(let attempt=0;attempt<50;attempt++){
-    try{await fetch(`${base}/backups`,{headers:{"x-maintenance-token":token}});return {base,token,hub,services,signing,staging,veyon,master,bin,hostCalls,output:()=>output}}catch{}
+    try{await fetch(`${base}/backups`,{headers:{"x-maintenance-token":token}});return {base,token,hub,services,signing,staging,veyon,master,bin,hostCalls,mainCalls,adbCalls,output:()=>output}}catch{}
     await new Promise(resolve=>setTimeout(resolve,20));
   }
   throw Error(`maintenance agent did not start: ${output}`);
@@ -100,6 +102,14 @@ test("one full export contains the database, master key, assets, ADB trust, and 
   assert.equal(created.status,200,JSON.stringify(created.body));
   assert.equal(created.body.containsSecrets,true);
   assert.match(created.body.sha256,/^[0-9a-f]{64}$/);
+  const mainCalls=fs.readFileSync(agent.mainCalls,"utf8").trim().split("\n").map(JSON.parse),mainPaths=mainCalls.map(call=>call.path);
+  assert.ok(mainPaths.indexOf("/api/v1/internal/maintenance/export-freeze")<mainPaths.indexOf("/api/v1/internal/maintenance/status"),"application writers must freeze before selecting and snapshotting the database");
+  assert.ok(mainPaths.indexOf("/api/v1/internal/maintenance/export-thaw")>mainPaths.indexOf("/api/v1/internal/maintenance/status"),"application freeze must be released only after the export is complete");
+  const hostCalls=fs.readFileSync(agent.hostCalls,"utf8").trim().split("\n").map(JSON.parse),hostPaths=hostCalls.map(call=>call.path);
+  assert.ok(hostPaths.indexOf("/recovery/export/freeze")>=0&&hostPaths.indexOf("/recovery/export/thaw")>hostPaths.indexOf("/recovery/export/freeze"),"host identity/update writers must be protected for the whole export");
+  const adbInvocation=JSON.parse(fs.readFileSync(agent.adbCalls,"utf8").trim().split("\n")[0]);
+  assert.match(adbInvocation[1],/full-export-identities-/,"identity validation must use the stable snapshot instead of the live ADB key");
+  assert.deepEqual(fs.readdirSync(path.join(path.dirname(agent.adbCalls),"uploads")),[],"temporary identity snapshots must be removed after thaw");
 
   assert.match(created.body.name,/\.rgbak$/);assert.equal(created.body.encrypted,true);
   const archivePath=path.join(agent.hub,"data","backups",created.body.name),envelope=fs.readFileSync(archivePath);
@@ -150,8 +160,24 @@ test("full export fails closed when either indispensable recovery root is absent
       assert.equal(result.status,400);
       assert.match(result.body.error,fixture.expected);
       assert.deepEqual(fs.readdirSync(path.join(agent.hub,"data","backups")),[]);
+      const mainPaths=fs.readFileSync(agent.mainCalls,"utf8").trim().split("\n").map(JSON.parse).map(call=>call.path),hostPaths=fs.readFileSync(agent.hostCalls,"utf8").trim().split("\n").map(JSON.parse).map(call=>call.path);
+      assert.ok(mainPaths.includes("/api/v1/internal/maintenance/export-thaw"),"application freeze must thaw after every export failure");
+      assert.ok(hostPaths.includes("/recovery/export/thaw"),"host freeze must thaw after every export failure");
     });
   }
+});
+
+test("clean-host Veyon placeholder is ignored and native service data is excluded",async t=>{
+  const agent=await startAgent(t);
+  put(path.join(agent.veyon,"private.pem"),"");
+  put(path.join(agent.services,"veyon-webapi","runtime.db"),"NATIVE_VEYON_RUNTIME_SENTINEL");
+  const passphrase="correct horse battery staple",created=await request(agent,"/backup/create",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({scope:"full",confirmSensitiveData:true,confirmSecrets:true,passphrase})});
+  assert.equal(created.status,200,JSON.stringify(created.body));
+  const envelope=fs.readFileSync(path.join(agent.hub,"data","backups",created.body.name));
+  const zip=new AdmZip(decryptRecoveryEnvelope(envelope,passphrase,{maxPayloadBytes:512*1024*1024}).plaintext);
+  const names=zip.getEntries().map(entry=>entry.entryName);
+  assert.equal(names.some(name=>name.startsWith("recovery-secrets/veyon/")),false,"empty bind placeholder is not a Veyon identity");
+  assert.equal(names.some(name=>name.startsWith("services/veyon-webapi/")),false,"native service state is outside managed Docker recovery");
 });
 
 test("full export quiesces owned service state and restores its prior running state",async t=>{

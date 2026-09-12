@@ -1,12 +1,41 @@
 #!/usr/bin/env python3
-import hmac, json, os, re, shutil, socketserver, subprocess, threading, urllib.parse, sys
+import fcntl, hmac, json, os, re, secrets, shutil, socketserver, subprocess, threading, urllib.parse, sys
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, timezone
 
-VERSION = "1.0.0-alpha.80"
+VERSION = "1.0.0-alpha.81"
 SOCKET_PATH = os.environ.get("CLASSROOM_HUB_HOST_AGENT_SOCKET", "/run/classroom-control-hub/host-agent.sock")
 TOKEN = os.environ.get("MAINTENANCE_TOKEN", "")
+APPLIANCE_MUTATION_LOCK = Path(os.environ.get("CLASSROOM_HUB_MUTATION_LOCK", "/run/classroom-control-hub-appliance-mutation.lock"))
+EXPORT_FREEZE_GUARD = threading.Lock()
+EXPORT_FREEZE = {"token":None,"file":None,"timer":None}
+
+def release_export_freeze(token=None, forced=False):
+    with EXPORT_FREEZE_GUARD:
+        current=EXPORT_FREEZE.get("token")
+        if token is not None and (not current or not hmac.compare_digest(str(token),str(current))): return False
+        timer=EXPORT_FREEZE.get("timer")
+        if timer and not forced: timer.cancel()
+        lock_file=EXPORT_FREEZE.get("file")
+        EXPORT_FREEZE.update(token=None,file=None,timer=None)
+        if lock_file:
+            try: fcntl.flock(lock_file,fcntl.LOCK_UN)
+            finally: lock_file.close()
+        return bool(current)
+
+def acquire_export_freeze():
+    with EXPORT_FREEZE_GUARD:
+        if EXPORT_FREEZE.get("token"): raise RuntimeError("A host export freeze is already active")
+        APPLIANCE_MUTATION_LOCK.parent.mkdir(parents=True,exist_ok=True)
+        lock_file=open(APPLIANCE_MUTATION_LOCK,"a+b")
+        try: fcntl.flock(lock_file,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:
+            lock_file.close(); raise RuntimeError("Another appliance mutation is active")
+        token=secrets.token_urlsafe(32)
+        timer=threading.Timer(30*60,lambda:release_export_freeze(token,forced=True));timer.daemon=True
+        EXPORT_FREEZE.update(token=token,file=lock_file,timer=timer);timer.start()
+        return {"ok":True,"freezeToken":token,"leaseSeconds":1800}
 
 SERVICE_POLICY = {
     "docker.service":{"owner":"core","recommendation":"keep","purpose":"Container runtime for RoomGoblin and managed integrations","protected":True},
@@ -141,6 +170,7 @@ _HOST_AGENT_DIR=str(Path(__file__).resolve().parent)
 if _HOST_AGENT_DIR not in sys.path: sys.path.insert(0,_HOST_AGENT_DIR)
 from full_recovery import FullRecoveryManager
 FULL_RECOVERY = FullRecoveryManager(run, hub_root=HUB_ROOT, services_root=SERVICES_ROOT)
+STARTUP_RECOVERY_ACTIVE = False
 
 def normalize_restored_data(body):
     if str(body.get('confirm') or '')!='NORMALIZE_RESTORED_DATA': raise RuntimeError('Explicit NORMALIZE_RESTORED_DATA confirmation required')
@@ -423,7 +453,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.auth(): return
         path=urllib.parse.urlparse(self.path).path
+        if STARTUP_RECOVERY_ACTIVE:
+            return self.send_json(423,{"ok":False,"error":"Interrupted full recovery is being resolved; host mutations are locked"})
         try:
+            if path=='/recovery/export/freeze':
+                body=self.body()
+                if str(body.get('confirm') or '')!='FREEZE_FULL_EXPORT': return self.send_json(400,{"ok":False,"error":"Explicit FREEZE_FULL_EXPORT confirmation required"})
+                return self.send_json(200,acquire_export_freeze())
+            if path=='/recovery/export/thaw':
+                body=self.body()
+                if not release_export_freeze(str(body.get('freezeToken') or '')): return self.send_json(409,{"ok":False,"error":"Host export freeze token is invalid or already used"})
+                return self.send_json(200,{"ok":True})
+            # Docker stop/start is part of the export transaction itself. All
+            # competing host mutations remain behind the held appliance lock.
+            if EXPORT_FREEZE.get("token") and path!='/docker/exec':
+                return self.send_json(423,{"ok":False,"error":"A Full Recovery Export holds the appliance mutation lock"})
             if path in ('/updates/apply','/updates/start'):
                 body=self.body()
                 if str(body.get('confirm') or '')!='INSTALL_UPDATES': return self.send_json(400,{"ok":False,"error":"Explicit INSTALL_UPDATES confirmation required"})
@@ -484,19 +528,31 @@ class UnixHTTPServer(socketserver.UnixStreamServer):
     allow_reuse_address=True
 
 if __name__=='__main__':
-    FULL_RECOVERY.startup_recover()
     Path(SOCKET_PATH).parent.mkdir(parents=True,exist_ok=True)
     try: os.unlink(SOCKET_PATH)
     except FileNotFoundError: pass
     server=UnixHTTPServer(SOCKET_PATH,Handler)
     os.chmod(SOCKET_PATH,0o660)
     print(f"RoomGoblin Host Agent {VERSION} listening on {SOCKET_PATH}",flush=True)
-    if APP_UPDATE_REQUEST_FILE.exists():
-        def resume_interrupted_update():
-            run(['systemctl','start','--no-block',APP_UPDATE_SERVICE],20,False)
-        threading.Timer(2.0,resume_interrupted_update).start()
-    try: server.serve_forever()
+    # Serve authenticated health over the Unix socket while interrupted recovery
+    # is resolved. Compose health for maintenance depends on this socket, so
+    # recovery-before-bind would deadlock when rollback recreates the core pair.
+    # Every host mutation remains locked until startup recovery finishes.
+    STARTUP_RECOVERY_ACTIVE=True
+    serving=threading.Thread(target=server.serve_forever,daemon=True)
+    serving.start()
+    try:
+        FULL_RECOVERY.startup_recover()
+        STARTUP_RECOVERY_ACTIVE=False
+        if APP_UPDATE_REQUEST_FILE.exists():
+            def resume_interrupted_update():
+                run(['systemctl','start','--no-block',APP_UPDATE_SERVICE],20,False)
+            threading.Timer(2.0,resume_interrupted_update).start()
+        serving.join()
     finally:
+        STARTUP_RECOVERY_ACTIVE=False
+        server.shutdown()
+        serving.join(timeout=5)
         server.server_close()
         try: os.unlink(SOCKET_PATH)
         except FileNotFoundError: pass

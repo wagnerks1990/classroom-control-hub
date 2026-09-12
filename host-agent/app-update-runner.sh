@@ -7,6 +7,7 @@ STATE_FILE="$STATE_DIR/app-update-status.json"
 REQUEST_FILE="$STATE_DIR/app-update-request.json"
 LOCK_FILE=/run/classroom-control-hub-appliance-mutation.lock
 mkdir -p "$STATE_DIR"
+source "$HUB_ROOT/deploy/image-identity.sh"
 
 write_state(){
   local phase="$1" message="$2" ok="${3:-null}"
@@ -125,7 +126,13 @@ ensure_runtime_layout(){
   sed -i '/^HUB_TLS_HOST=/d;/^HUB_HTTPS_PORT=/d;/^HUB_HTTP_PORT=/d' .env
   # Preserve explicit loopback/LAN bindings rather than widening host exposure.
   if ! grep -q '^HUB_BIND_ADDRESS=' .env; then echo 'HUB_BIND_ADDRESS=0.0.0.0' >> .env; fi
-  if grep -q '^TRUST_PROXY_HOPS=' .env; then sed -i 's/^TRUST_PROXY_HOPS=.*/TRUST_PROXY_HOPS=0/' .env; else echo 'TRUST_PROXY_HOPS=0' >> .env; fi
+  value="$(sed -n 's/^TRUST_PROXY_HOPS=//p' .env | tail -n 1)"
+  if [[ -z "$value" ]]; then
+    echo 'TRUST_PROXY_HOPS=0' >> .env
+  elif [[ ! "$value" =~ ^[0-9]+$ || "$value" -gt 8 ]]; then
+    echo "TRUST_PROXY_HOPS must be an integer between 0 and 8" >&2
+    return 1
+  fi
   chmod 0600 .env
   install -d -m 0750 -o root -g 10001 /etc/classroom-control-hub
   if [[ ! -s /etc/classroom-control-hub/master.key && -s /etc/classroom-hub/master.key ]]; then
@@ -280,6 +287,8 @@ else
   write_state building "Pulling immutable CI-built images for $ACTUAL_VERSION." null
   docker pull "$HUB_IMAGE"
   docker pull "$MAINTENANCE_IMAGE"
+  roomgoblin_verify_image_revision "$HUB_IMAGE" "$RESOLVED"
+  roomgoblin_verify_image_revision "$MAINTENANCE_IMAGE" "$RESOLVED"
   set_image_tag "$IMAGE_TAG"
 fi
 if [[ "$ACTION" == revert ]]; then

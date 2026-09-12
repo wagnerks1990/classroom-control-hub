@@ -31,9 +31,6 @@ SERVICE_DIRS = {
     "govee2mqtt": "govee2mqtt",
     "music-assistant": "music-assistant",
     "nodered": "nodered",
-    # Persistent state for the native Veyon WebAPI is restored, while its
-    # systemd lifecycle is reconciled separately from Docker add-ons.
-    "veyon-webapi": "veyon-webapi",
 }
 SERVICE_CONTAINERS = {
     "mosquitto": "mosquitto",

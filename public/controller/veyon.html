@@ -12,6 +12,7 @@ h1{margin:0;font-size:22px}.muted{color:var(--muted)}.toolbar{display:flex;flex-
 button,input,select{font:inherit;color:var(--text);background:#18232d;border:1px solid #3a4a56;border-radius:9px;padding:9px 11px}
 button{cursor:pointer}button:hover{border-color:#698075}.primary{background:#1c6038;border-color:#2b8952}.danger{background:#622727;border-color:#8f3a3a}.warn{background:#594716;border-color:#7d6722}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+dialog{width:min(440px,94vw);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:16px}dialog::backdrop{background:#000c}dialog form{display:grid;gap:12px}dialog label{display:grid;gap:5px}dialog input{width:100%}
 main{padding:14px}.status{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.pill{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .thumb{aspect-ratio:16/9;background:#06090c;display:flex;align-items:center;justify-content:center;position:relative}.thumb img{width:100%;height:100%;object-fit:contain}.badge{position:absolute;top:8px;left:8px;padding:4px 7px;border-radius:999px;background:#000b;font-size:12px}.online{color:var(--green)}.offline{color:var(--red)}.roleTeacher{color:#8ec5ff}.roleStudent{color:#a6e3b4}
@@ -131,6 +132,14 @@ main{padding:14px}.status{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12p
   <div class="row"><strong id="infoTitle">Details</strong><span class="grow"></span><button id="closeInfo">Close</button></div>
   <div id="infoBody" style="margin-top:10px"></div>
 </div></div>
+<dialog id="loginDialog" aria-labelledby="loginDialogTitle">
+  <form id="loginForm" autocomplete="off">
+    <div><strong id="loginDialogTitle">Log in selected computers</strong><div id="loginDialogTargets" class="muted"></div></div>
+    <label>Username<input id="veyonLoginUsername" autocomplete="username" required></label>
+    <label>Password<input id="veyonLoginPassword" type="password" autocomplete="current-password" required></label>
+    <div class="toolbar"><button type="button" id="cancelLogin">Cancel</button><button type="submit" class="primary">Log In</button></div>
+  </form>
+</dialog>
 <script>
 const $=id=>document.getElementById(id);
 let computers=[],selected=new Set(),liveId=null,liveTimer=null,roleFilter='student';
@@ -272,12 +281,23 @@ async function showPool(){
     $('closePool').onclick=async()=>{await api('/api/v1/veyon/connections/close',{method:'POST',body:JSON.stringify({ids:['all']})});closeInfo();await load()};
   }catch(e){$('infoBody').innerHTML=`<span class="offline">${esc(e.message)}</span>`}
 }
-async function loginSelected(){
+let veyonLoginTargets=[];
+function clearVeyonLogin(){veyonLoginTargets=[];$('veyonLoginPassword').value=''}
+function closeVeyonLogin(){$('loginDialog').close();clearVeyonLogin()}
+function loginSelected(){
   const ids=needSel();if(!ids.length)return;
-  const username=prompt('Username to log in:');if(!username)return;
-  const password=prompt('Password (used only for this command; not stored):');if(password===null)return;
-  await feature(ids,'userLogin',true,{username,password});
+  veyonLoginTargets=[...ids];$('loginDialogTargets').textContent=`${ids.length} selected computer${ids.length===1?'':'s'}`;
+  $('veyonLoginPassword').value='';$('loginDialog').showModal();$('veyonLoginUsername').focus();
 }
+async function submitVeyonLogin(event){
+  event.preventDefault();const ids=[...veyonLoginTargets],username=$('veyonLoginUsername').value.trim(),password=$('veyonLoginPassword').value;
+  if(!ids.length||!username||!password)return;
+  $('veyonLoginPassword').value='';$('loginDialog').close();veyonLoginTargets=[];
+  try{await feature(ids,'userLogin',true,{username,password})}finally{$('veyonLoginPassword').value=''}
+}
+$('loginForm').addEventListener('submit',submitVeyonLogin);
+$('cancelLogin').onclick=closeVeyonLogin;
+$('loginDialog').addEventListener('close',clearVeyonLogin);
 function downloadScreenshots(){
   const ids=needSel();if(!ids.length)return;
   ids.forEach((id,i)=>setTimeout(()=>{

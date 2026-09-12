@@ -147,7 +147,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
   <div class="top">
     <div>
       <h1>RoomGoblin Controller</h1>
-      <div class="muted">RoomGoblin • v1.0.0-alpha.80 • multi-display controller</div>
+      <div class="muted">RoomGoblin • v1.0.0-alpha.81 • multi-display controller</div>
     </div>
     <div id="conn" class="muted">Connecting…</div>
   </div>
@@ -200,10 +200,10 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
             <div class="muted">Exact 16:9 TV render. The receiver runs at its full logical resolution and is only scaled visually inside the dashboard.</div>
           </div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <select id="previewSelect" style="max-width:260px"></select>
+            <select id="previewSelect" aria-label="Preview display" style="max-width:260px"></select>
             <span class="previewResolution">
               Reference
-              <select id="previewResolution" onchange="setPreviewResolution(this.value)" style="width:auto">
+              <select id="previewResolution" aria-label="Preview resolution" onchange="setPreviewResolution(this.value)" style="width:auto">
                 <option value="1920x1080">1920×1080</option>
                 <option value="3840x2160">3840×2160</option>
                 <option value="1280x720">1280×720</option>
@@ -236,16 +236,16 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <div class="grid2">
             <div>
               <label>Title</label>
-              <input id="titleText" type="text" placeholder="Optional title">
+              <input id="titleText" aria-label="Display title" type="text" placeholder="Optional title">
             </div>
             <div>
               <label>Subtitle</label>
-              <input id="subtitleText" type="text" placeholder="Optional subtitle">
+              <input id="subtitleText" aria-label="Display subtitle" type="text" placeholder="Optional subtitle">
             </div>
-            <div><label>Title color</label><input id="titleColor" type="color" value="#ffffff"></div>
-            <div><label>Subtitle color</label><input id="subtitleColor" type="color" value="#ffffff"></div>
-            <div><label>Title size</label><input id="titleSize" type="number" min="18" max="220" value="92"></div>
-            <div><label>Subtitle size</label><input id="subtitleSize" type="number" min="14" max="180" value="44"></div>
+            <div><label>Title color</label><input id="titleColor" aria-label="Title color" type="color" value="#ffffff"></div>
+            <div><label>Subtitle color</label><input id="subtitleColor" aria-label="Subtitle color" type="color" value="#ffffff"></div>
+            <div><label>Title size</label><input id="titleSize" aria-label="Title size" type="number" min="18" max="220" value="92"></div>
+            <div><label>Subtitle size</label><input id="subtitleSize" aria-label="Subtitle size" type="number" min="14" max="180" value="44"></div>
           </div>
           <div class="toolbar">
             <button onclick="sendTitle()">Send Title</button>
@@ -255,14 +255,14 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <hr>
 
           <label>Body Message</label>
-          <textarea id="text">RoomGoblin Online</textarea>
+          <textarea id="text" aria-label="Body message">RoomGoblin Online</textarea>
           <div class="grid2">
-            <div><label>Text color</label><input id="textColor" type="color" value="#ffffff"></div>
-            <div><label>Screen background</label><input id="bgColor" type="color" value="#101318"></div>
-            <div><label>Text box color</label><input id="textBg" type="color" value="#000000"></div>
-            <div><label>Text box opacity</label><input id="textBgOpacity" type="number" min="0" max="1" step=".05" value="0"></div>
-            <div><label>Font size</label><input id="fontSize" type="number" min="12" max="220" value="64"></div>
-            <div><label>Position</label><select id="position"><option>top</option><option selected>center</option><option>bottom</option></select></div>
+            <div><label>Text color</label><input id="textColor" aria-label="Text color" type="color" value="#ffffff"></div>
+            <div><label>Screen background</label><input id="bgColor" aria-label="Screen background color" type="color" value="#101318"></div>
+            <div><label>Text box color</label><input id="textBg" aria-label="Text box color" type="color" value="#000000"></div>
+            <div><label>Text box opacity</label><input id="textBgOpacity" aria-label="Text box opacity" type="number" min="0" max="1" step=".05" value="0"></div>
+            <div><label>Font size</label><input id="fontSize" aria-label="Body font size" type="number" min="12" max="220" value="64"></div>
+            <div><label>Position</label><select id="position" aria-label="Body position"><option>top</option><option selected>center</option><option>bottom</option></select></div>
           </div>
           <div class="toolbar">
             <button class="primary" onclick="sendText()">Send Body</button>
@@ -282,29 +282,29 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <div class="grid2">
             <div>
               <label>Mode</label>
-              <select id="timerMode">
+              <select id="timerMode" aria-label="Timer mode">
                 <option value="countdown" selected>Countdown</option>
                 <option value="countup">Count Up / Stopwatch</option>
               </select>
             </div>
-            <div><label>Countdown Source</label><select id="timerSource" onchange="timerSourceChanged()"><option value="duration" selected>Manual Duration</option><option value="class-end">Class End Time</option></select></div>
-            <div id="timerClassWrap" style="display:none"><label>Class</label><select id="timerClassSelect" onchange="refreshClassTimerPreview()"></select></div>
+            <div><label>Countdown Source</label><select id="timerSource" aria-label="Countdown source" onchange="timerSourceChanged()"><option value="duration" selected>Manual Duration</option><option value="class-end">Class End Time</option></select></div>
+            <div id="timerClassWrap" style="display:none"><label>Class</label><select id="timerClassSelect" aria-label="Timer class" onchange="refreshClassTimerPreview()"></select></div>
             <div id="timerClassStatusWrap" style="display:none"><label>Class Status</label><div id="timerClassStatus" class="muted" style="padding:10px 0">Loading…</div></div>
             <div>
               <label>Label (optional)</label>
-              <input id="timerLabelInput" type="text" placeholder="DO NOW • Time Remaining">
+              <input id="timerLabelInput" aria-label="Timer label" type="text" placeholder="DO NOW • Time Remaining">
             </div>
             <div>
               <label>Minutes</label>
-              <input id="timerMinutes" type="number" min="0" max="999" value="5">
+              <input id="timerMinutes" aria-label="Timer minutes" type="number" min="0" max="999" value="5">
             </div>
             <div>
               <label>Seconds</label>
-              <input id="timerSeconds" type="number" min="0" max="59" value="0">
+              <input id="timerSeconds" aria-label="Timer seconds" type="number" min="0" max="59" value="0">
             </div>
             <div>
               <label>Position</label>
-              <select id="timerPosition">
+              <select id="timerPosition" aria-label="Timer position">
                 <option value="top">Top</option>
                 <option value="center">Center</option>
                 <option value="bottom" selected>Bottom</option>
@@ -312,31 +312,31 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
             </div>
             <div>
               <label>Font size</label>
-              <input id="timerFontSize" type="number" min="20" max="220" value="64">
+              <input id="timerFontSize" aria-label="Timer font size" type="number" min="20" max="220" value="64">
             </div>
             <div>
               <label>Text color</label>
-              <input id="timerTextColor" type="color" value="#ffffff">
+              <input id="timerTextColor" aria-label="Timer text color" type="color" value="#ffffff">
             </div>
             <div>
               <label>Border color</label>
-              <input id="timerBorderColor" type="color" value="#ffffff">
+              <input id="timerBorderColor" aria-label="Timer border color" type="color" value="#ffffff">
             </div>
             <div>
               <label>Border width</label>
-              <input id="timerBorderWidth" type="number" min="0" max="20" value="4">
+              <input id="timerBorderWidth" aria-label="Timer border width" type="number" min="0" max="20" value="4">
             </div>
             <div>
               <label>Border radius</label>
-              <input id="timerBorderRadius" type="number" min="0" max="80" value="18">
+              <input id="timerBorderRadius" aria-label="Timer border radius" type="number" min="0" max="80" value="18">
             </div>
             <div>
               <label>Background color</label>
-              <input id="timerBgColor" type="color" value="#000000">
+              <input id="timerBgColor" aria-label="Timer background color" type="color" value="#000000">
             </div>
             <div>
               <label>Background opacity</label>
-              <input id="timerBgOpacity" type="number" min="0" max="1" step=".05" value=".35">
+              <input id="timerBgOpacity" aria-label="Timer background opacity" type="number" min="0" max="1" step=".05" value=".35">
             </div>
           </div>
 
@@ -366,10 +366,10 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
               <span style="font-size:11px;border:1px solid rgba(42,168,102,.52);border-radius:999px;padding:5px 9px;color:#a9f0c7">AUDIO ON</span>
             </div>
             <label style="margin-top:10px">Stream URL</label>
-            <input id="announcementsUrl" type="url" value="">
+            <input id="announcementsUrl" aria-label="Morning Announcements stream URL" type="url" value="">
             <div class="toolbar" style="margin-top:10px;align-items:center">
               <label style="margin:0;min-width:160px">Announcement Volume</label>
-              <input id="announcementsVolume" type="range" min="0" max="100" value="100" style="flex:1;min-width:220px" oninput="announcementsVolumeValue.textContent=this.value+'%'" onchange="setMorningAnnouncementsVolume(this.value,true)">
+              <input id="announcementsVolume" aria-label="Morning Announcements volume" type="range" min="0" max="100" value="100" style="flex:1;min-width:220px" oninput="announcementsVolumeValue.textContent=this.value+'%'" onchange="setMorningAnnouncementsVolume(this.value,true)">
               <span id="announcementsVolumeValue" class="pill">100%</span>
               <button onclick="setMorningAnnouncementsVolume(0,true)">Mute</button>
               <button onclick="setMorningAnnouncementsVolume(50,true)">50%</button>
@@ -389,7 +389,7 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
             <button onclick="loadMedia()">Refresh</button>
           </div>
           <div id="dropZone" class="drop" style="margin-top:10px">Drop image/video/PDF here</div>
-          <input id="upload" type="file" accept="image/*,video/*,application/pdf" style="margin-top:8px">
+          <input id="upload" aria-label="Media upload file" type="file" accept="image/*,video/*,application/pdf" style="margin-top:8px">
           <div class="toolbar"><button onclick="uploadMedia()">Upload</button></div>
           <div id="uploadStatus" class="muted" style="margin-top:6px"></div>
           <div id="mediaGrid" class="mediaGrid" style="margin-top:12px"></div>
@@ -397,15 +397,15 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <hr>
 
           <h3>Manual / Selected Media</h3>
-          <label>URL</label><input id="mediaUrl" type="url" placeholder="http://... or /media/...">
+          <label>URL</label><input id="mediaUrl" aria-label="Manual media URL" type="url" placeholder="http://... or /media/...">
           <label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px">
             <input id="mediaLocalDirect" type="checkbox" checked style="margin-top:3px">
             <span><strong>Load URL directly from this TV/browser</strong><br>
             <span class="muted">Useful when the TV network can reach a site that the RoomGoblin server cannot.</span></span>
           </label>
           <div class="grid2">
-            <div><label>Fit</label><select id="mediaFit"><option>contain</option><option>cover</option><option>fill</option></select></div>
-            <div><label>Opacity</label><input id="mediaOpacity" type="number" min="0" max="1" step=".05" value="1"></div>
+            <div><label>Fit</label><select id="mediaFit" aria-label="Media fit"><option>contain</option><option>cover</option><option>fill</option></select></div>
+            <div><label>Opacity</label><input id="mediaOpacity" aria-label="Media opacity" type="number" min="0" max="1" step=".05" value="1"></div>
           </div>
           <label><input id="videoAutoplay" type="checkbox" checked> Autoplay</label>
           <label><input id="videoLoop" type="checkbox"> Loop</label>
@@ -426,10 +426,10 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
             </div>
             <div>
               <label>Brightness</label>
-              <input id="brightness" type="number" min="1" max="100" value="50">
+              <input id="brightness" aria-label="Lighting brightness" type="number" min="1" max="100" value="50">
             </div>
-            <div><label>Color</label><input id="lightColor" type="color" value="#ffffff"></div>
-            <div><label>Scene</label><select id="scene"><option value="">Load scenes…</option></select></div>
+            <div><label>Color</label><input id="lightColor" aria-label="Lighting color" type="color" value="#ffffff"></div>
+            <div><label>Scene</label><select id="scene" aria-label="Lighting scene"><option value="">Load scenes…</option></select></div>
           </div>
           <div class="toolbar">
             <button onclick="lighting('lighting.on')">On</button>
@@ -446,14 +446,14 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
           <div class="grid2">
             <div>
               <label>Input</label>
-              <select id="avInput">
+              <select id="avInput" aria-label="AV input">
                 <option value="1">Input 1</option><option value="2">Input 2</option><option value="3">Input 3</option><option value="4">Input 4</option>
                 <option value="5">Input 5</option><option value="6">Input 6</option><option value="7">Input 7</option><option value="8">Input 8</option>
               </select>
             </div>
             <div>
               <label>Current Routes</label>
-              <input id="plutoStatus" type="text" readonly value="Not loaded">
+              <input id="plutoStatus" aria-label="Current AV routes" type="text" readonly value="Not loaded">
             </div>
           </div>
           <div class="toolbar">
@@ -476,20 +476,20 @@ pre{background:rgba(0,0,0,.42)!important;color:#d8eee2!important;border-color:va
 
         <section id="settings" class="workspace">
           <h2>Display Configuration</h2>
-          <label>Display</label><select id="configDevice"></select>
-          <label>Name</label><input id="configName" type="text">
+          <label>Display</label><select id="configDevice" aria-label="Configured display"></select>
+          <label>Name</label><input id="configName" aria-label="Display name" type="text">
           <div class="grid2">
-            <div><label>Pluto output</label><input id="configAv" type="number" min="1" max="8"></div>
-            <div><label>Lighting alias</label><input id="configLight" type="text"></div>
+            <div><label>Pluto output</label><input id="configAv" aria-label="Display Pluto output" type="number" min="1" max="8"></div>
+            <div><label>Lighting alias</label><input id="configLight" aria-label="Display lighting alias" type="text"></div>
           </div>
-          <label>Tags</label><input id="configTags" type="text" placeholder="classroom,hallway">
+          <label>Tags</label><input id="configTags" aria-label="Display tags" type="text" placeholder="classroom,hallway">
           <label><input id="configEnabled" type="checkbox" checked> Enabled</label>
           <div class="toolbar"><button class="primary" onclick="saveDeviceConfig()">Save Display</button></div>
 
           <hr>
 
           <h2>Group Editor</h2>
-          <label>Group name</label><input id="groupName" type="text" placeholder="left-wall">
+          <label>Group name</label><input id="groupName" aria-label="Display group name" type="text" placeholder="left-wall">
           <div id="groupMembers" class="targets" style="margin-top:8px"></div>
           <div class="toolbar"><button onclick="saveGroup()">Save Group</button></div>
         </section>
@@ -810,6 +810,7 @@ window.identifySelected=()=>cmd('display.identify',targetArg(),{durationMs:8000}
 const DEFAULT_ANNOUNCEMENTS_URL='';
 function announcementsUrl(){
   const raw=(el('announcementsUrl')?.value||DEFAULT_ANNOUNCEMENTS_URL).trim();
+  if(!raw)throw new Error('Configure a Morning Announcements stream URL before starting playback.');
   const u=new URL(raw,location.href);
   u.searchParams.set('autoplay','true');
   u.searchParams.set('mute','false');
@@ -817,15 +818,26 @@ function announcementsUrl(){
   return u.toString();
 }
 function announcementVolumeFraction(){return Math.max(0,Math.min(1,Number(el('announcementsVolume')?.value??100)/100))}
-window.setMorningAnnouncementsVolume=async(value,apply=false)=>{
+function paintMorningAnnouncementVolume(value){
   const v=Math.max(0,Math.min(100,Number(value)||0));
   if(el('announcementsVolume'))el('announcementsVolume').value=String(v);
   if(el('announcementsVolumeValue'))el('announcementsVolumeValue').textContent=v+'%';
+  return v;
+}
+window.setMorningAnnouncementsVolume=async(value,apply=false)=>{
+  const v=paintMorningAnnouncementVolume(value);
   try{await api('/api/v1/automations/morning-announcements',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({volumePercent:v})});}catch{}
   if(apply){try{await cmd('display.web.audio',targetArg(),{unmute:v>0,volume:v/100,reload:false,contentKind:'morning-announcements'})}catch{}}
 };
-async function loadMorningAnnouncementVolume(){try{const x=await api('/api/v1/automations/morning-announcements'),v=Number.isFinite(Number(x.config?.volumePercent))?Number(x.config.volumePercent):100;setMorningAnnouncementsVolume(v,false)}catch{}}
-setTimeout(loadMorningAnnouncementVolume,0);
+async function loadMorningAnnouncementSettings(){
+  try{
+    const x=await api('/api/v1/automations/morning-announcements');
+    const v=Number.isFinite(Number(x.config?.volumePercent))?Number(x.config.volumePercent):100;
+    paintMorningAnnouncementVolume(v);
+    if(el('announcementsUrl'))el('announcementsUrl').value=String(x.config?.streamUrl||x.playbackUrl||'');
+  }catch{}
+}
+setTimeout(loadMorningAnnouncementSettings,0);
 window.startMorningAnnouncements=async()=>{
   try{
     const url=announcementsUrl(),target=targetArg();
@@ -845,7 +857,7 @@ window.retryMorningAnnouncementsAudio=async reload=>{
     setResultSummary(`✓ Audio recovery sent${reload?' • player reloaded':''}`,true,j);
   }catch(e){setResultSummary('✕ Audio recovery failed: '+e.message,false,{error:e.message})}
 };
-window.sendMedia=t=>cmd(t,targetArg(),{url:el('mediaUrl').value,fit:el('mediaFit').value,opacity:Number(el('mediaOpacity').value),autoplay:el('videoAutoplay').checked,loop:el('videoLoop').checked,muted:el('videoMuted').checked});
+window.sendMedia=t=>cmd(t,targetArg(),{url:el('mediaUrl').value,fit:el('mediaFit').value,opacity:Number(el('mediaOpacity').value),autoplay:el('videoAutoplay').checked,loop:el('videoLoop').checked,muted:el('videoMuted').checked,localDirect:el('mediaLocalDirect').checked});
 window.lighting=(t,p={})=>cmd(t,el('lightTarget').value,p);
 window.routeSelected=async()=>{for(const id of selected)await cmd('av.route',id,{input:Number(el('avInput').value)})};
 

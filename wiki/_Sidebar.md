@@ -29,5 +29,6 @@
 - [Development](Development)
 - [AI and Contributor Guide](AI-and-Contributor-Guide)
 - [Security](Security)
+- [Secret URL Handling](Secret-URL-Handling)
 - [Windows Lab Agent](Windows-Lab-Agent)
 - [Release and Upgrade Process](Release-and-Upgrade-Process)

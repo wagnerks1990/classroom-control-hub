@@ -36,6 +36,10 @@ devices.json                           root:10001  0660
 
 The setgid bit on `android-tv/` keeps newly created inventory files in group 10001. `devices.json` must remain group-readable and group-writable because the hardened maintenance process has no DAC-override capability.
 
+The APK and metadata staged in that group-writable data tree are therefore not a trust anchor. Maintenance re-verifies the APK and compares its signer certificate with the protected keystore under `/signing/android-agent` immediately before it reports the artifact ready or installs it. Full Recovery exports that exact nested keystore/password pair. A complete legacy pair found directly under `/signing` is moved to the nested layout; partial or conflicting pairs fail closed.
+
+Successful device probes persist the 16-hex-digit Android ID. Recovery first tries the saved endpoint or current DNS address. If DHCP changed the address, it may inspect already-authorized `_adb-tls-connect._tcp` mDNS endpoints, but it updates the record only when the observed Android ID matches. Missing or ambiguous identity fails closed instead of attaching a different classroom TV.
+
 `install.sh`, the GUI application updater, and rollback normalize this layout before maintenance starts. Both installer and updater also verify the ADB key directory is writable, and they fail instead of accepting a release when an existing inventory file is not readable.
 
 ### Why the UI once showed `0 devices`

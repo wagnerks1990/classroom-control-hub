@@ -28,6 +28,10 @@ HUB_PORT=3000
 TRUST_PROXY_HOPS=0
 ```
 
+Installer reruns and web-managed updates preserve a valid explicit proxy-hop
+count and default to `0` only when absent. Same-host HTTPS proxy use still
+requires direct backend access to be blocked.
+
 Restrict the port to the trusted classroom/admin network and do not expose this temporary HTTP-only deployment directly to the public Internet.
 
 The standard production checkout is `/opt/classroom-hub`. Older references to `/opt/classroom-control-hub` are migration-era defaults unless a deployment intentionally chose a custom path.
@@ -105,6 +109,9 @@ The supported production installer pulls the exact `sha-<commit>` main and
 maintenance images published after GitHub validation. It does not compile Gradle,
 JitPack, or Node dependencies on the appliance. `sudo bash install.sh --build-local`
 is an explicit development-only escape hatch.
+The images are also rejected unless their `org.opencontainers.image.revision`
+label equals the exact trusted Git commit, even if their displayed RoomGoblin
+version matches.
 
 The installer fills blank appliance secrets automatically, preserves the old master key when present, repairs the shared data-root ownership model, restarts the Host Agent, removes obsolete TLS settings/Caddy containers, starts the HTTP-only application, and verifies component convergence.
 

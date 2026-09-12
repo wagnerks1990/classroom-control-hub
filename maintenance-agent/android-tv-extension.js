@@ -3,6 +3,7 @@
 const express=require("express");
 const fs=require("fs");
 const path=require("path");
+const dns=require("dns").promises;
 const {execFile,spawn}=require("child_process");
 const {promisify}=require("util");
 const execFileAsync=promisify(execFile);
@@ -26,35 +27,66 @@ async function adb(args,opts={}){
 function asyncRoute(fn){return (req,res)=>Promise.resolve(fn(req,res)).catch(error=>res.status(error.status||500).json({ok:false,error:error.message}))}
 function findDevice(id){const d=STORE.getDevice(id);if(!d){const e=Error("Managed Android display not found");e.status=404;throw e}return d}
 function getProp(text,name){const m=String(text||"").match(new RegExp(`\\[${name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}\\]: \\[([^\\]]*)\\]`));return m?m[1]:""}
-async function probe(serial){const [props,state]=await Promise.all([adb(["-s",serial,"shell","getprop"]),adb(["-s",serial,"get-state"])]);const p=props.stdout;return {online:String(state.stdout).trim()==="device",serial,manufacturer:getProp(p,"ro.product.manufacturer"),model:getProp(p,"ro.product.model"),androidVersion:getProp(p,"ro.build.version.release"),sdk:getProp(p,"ro.build.version.sdk"),build:getProp(p,"ro.build.display.id"),fingerprint:getProp(p,"ro.build.fingerprint"),product:getProp(p,"ro.product.name"),lastSeenAt:new Date().toISOString()}}
+async function probe(serial){const [props,state,androidIdResult]=await Promise.all([adb(["-s",serial,"shell","getprop"]),adb(["-s",serial,"get-state"]),adb(["-s",serial,"shell","settings","get","secure","android_id"],{timeout:5000}).catch(()=>({stdout:""}))]);const p=props.stdout,androidId=String(androidIdResult.stdout||"").trim();return {online:String(state.stdout).trim()==="device",serial,manufacturer:getProp(p,"ro.product.manufacturer"),model:getProp(p,"ro.product.model"),androidVersion:getProp(p,"ro.build.version.release"),sdk:getProp(p,"ro.build.version.sdk"),build:getProp(p,"ro.build.display.id"),fingerprint:getProp(p,"ro.build.fingerprint"),product:getProp(p,"ro.product.name"),androidId:/^[a-fA-F0-9]{16}$/.test(androidId)?androidId.toLowerCase():null,lastSeenAt:new Date().toISOString()}}
 async function connect(serial){const target=cleanSerial(serial);const r=await adb(["connect",target],{timeout:20000});await adb(["-s",target,"get-state"],{timeout:5000});return {ok:true,message:(r.stdout||r.stderr).trim(),serial:target}}
 async function pair(host,port,code){const target=`${cleanHost(host)}:${cleanPort(port)}`;const c=String(code||"").trim();if(!/^\d{6}$/.test(c)){const e=Error("A six-digit Android wireless-debugging pairing code is required");e.status=400;throw e}const r=await adb(["pair",target,c],{timeout:30000});return {ok:true,target,message:(r.stdout||r.stderr).trim()}}
-function parseMdnsConnect(text,host){
-  const targetHost=String(host||"").trim();
+function parseMdnsConnectEndpoints(text){
+  const endpoints=[];
   for(const line of String(text||"").split(/\r?\n/)){
     if(!line.includes("_adb-tls-connect._tcp"))continue;
     const m=line.match(/((?:\d{1,3}\.){3}\d{1,3}):(\d{1,5})\s*$/);
-    if(!m||m[1]!==targetHost)continue;
-    return {host:m[1],port:cleanPort(m[2]),serial:`${m[1]}:${cleanPort(m[2])}`,raw:line.trim()};
+    if(!m)continue;
+    const port=cleanPort(m[2]);
+    endpoints.push({host:m[1],port,serial:`${m[1]}:${port}`,service:String(line.trim().split(/\s+/)[0]||""),raw:line.trim()});
   }
-  return null;
+  return endpoints;
+}
+function parseMdnsConnect(text,host){
+  const targetHost=String(host||"").trim();
+  return parseMdnsConnectEndpoints(text).find(endpoint=>endpoint.host===targetHost)||null;
+}
+async function resolvedHostAddresses(host){
+  if(/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host))return new Set([host]);
+  try{return new Set((await dns.lookup(host,{all:true,family:4})).map(item=>item.address))}catch{return new Set()}
 }
 async function discoverConnectEndpoint(host,attempts=6){
   const clean=cleanHost(host);
+  const addresses=await resolvedHostAddresses(clean);
   for(let i=0;i<attempts;i++){
-    try{const r=await adb(["mdns","services"],{timeout:7000});const found=parseMdnsConnect(r.stdout,clean);if(found)return found}catch{}
+    try{const r=await adb(["mdns","services"],{timeout:7000});const found=parseMdnsConnectEndpoints(r.stdout).find(endpoint=>addresses.has(endpoint.host));if(found)return found}catch{}
     if(i+1<attempts)await new Promise(resolve=>setTimeout(resolve,2500));
   }
   return null;
 }
+async function discoverConnectEndpointByIdentity(device,attempts=6){
+  if(!/^[a-f0-9]{16}$/i.test(String(device.androidId||"")))return null;
+  for(let i=0;i<attempts;i++){
+    let endpoints=[];
+    try{const r=await adb(["mdns","services"],{timeout:7000});endpoints=parseMdnsConnectEndpoints(r.stdout)}catch{}
+    for(const endpoint of endpoints){
+      try{
+        await connect(endpoint.serial);
+        const status=await probe(endpoint.serial);
+        if(sameAndroidIdentity(device,status))return {endpoint,status};
+        try{await adb(["disconnect",endpoint.serial],{timeout:5000})}catch{}
+      }catch{}
+    }
+    if(i+1<attempts)await new Promise(resolve=>setTimeout(resolve,2500));
+  }
+  return null;
+}
+function sameAndroidIdentity(device,status){
+  const saved=String(device?.androidId||"").toLowerCase(),observed=String(status?.androidId||"").toLowerCase();
+  return /^[a-f0-9]{16}$/.test(saved)&&saved===observed;
+}
 async function ensureDevice(device,opts={}){
   let d=device;
-  try{const status=await probe(d.serial);return {device:d,status,recovered:false}}catch{}
-  try{await connect(d.serial);const status=await probe(d.serial);return {device:d,status,recovered:true}}catch{}
-  const endpoint=await discoverConnectEndpoint(d.host,Number(opts.mdnsAttempts||6));
-  if(!endpoint){const e=Error(`Unable to reconnect ${d.name||d.id}. Secure wireless ADB endpoint was not discoverable for ${d.host}.`);e.status=503;throw e}
-  await connect(endpoint.serial);
-  const status=await probe(endpoint.serial);
+  try{const status=await probe(d.serial);if(!d.androidId||sameAndroidIdentity(d,status))return {device:d,status,recovered:false};try{await adb(["disconnect",d.serial],{timeout:5000})}catch{}}catch{}
+  try{await connect(d.serial);const status=await probe(d.serial);if(!d.androidId||sameAndroidIdentity(d,status))return {device:d,status,recovered:true};try{await adb(["disconnect",d.serial],{timeout:5000})}catch{}}catch{}
+  let endpoint=await discoverConnectEndpoint(d.host,Number(opts.mdnsAttempts||6)),status=null;
+  if(endpoint){await connect(endpoint.serial);status=await probe(endpoint.serial);if(d.androidId&&!sameAndroidIdentity(d,status)){try{await adb(["disconnect",endpoint.serial],{timeout:5000})}catch{};endpoint=null;status=null}}
+  if(!endpoint){const matched=await discoverConnectEndpointByIdentity(d,Number(opts.mdnsAttempts||6));endpoint=matched?.endpoint||null;status=matched?.status||null}
+  if(!endpoint){const e=Error(`Unable to reconnect ${d.name||d.id}. No authorized wireless ADB endpoint matched its saved device identity.`);e.status=503;throw e}
   d=STORE.upsertDevice({...d,host:endpoint.host,port:endpoint.port,serial:endpoint.serial,...status,lastStatus:{...status,source:"adb-mdns-recovery",checkedAt:new Date().toISOString()}});
   return {device:d,status,recovered:true,endpoint};
 }
@@ -108,4 +140,4 @@ function installRoutes(app){if(installed)return;installed=true;
 }
 
 express.application.listen=function(...args){installRoutes(this);return originalListen.apply(this,args)};
-module.exports={installRoutes,probe,pair,connect,parseMdnsConnect,discoverConnectEndpoint,ensureDevice,rebootDevice,enrollOne,applyPolicies,desiredAwake,localClock,STORE};
+module.exports={installRoutes,probe,pair,connect,parseMdnsConnect,parseMdnsConnectEndpoints,discoverConnectEndpoint,discoverConnectEndpointByIdentity,sameAndroidIdentity,ensureDevice,rebootDevice,enrollOne,applyPolicies,desiredAwake,localClock,STORE};

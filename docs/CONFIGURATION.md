@@ -243,6 +243,8 @@ Morning Announcements configuration includes:
 
 The manual and automatic announcement paths should enter the same priority state. For Ant Media player URLs, HLS is the preferred live-state and playback transport when available.
 
+Announcement priority is target-specific. Locked display actions are deferred and re-evaluated at release, while non-display actions in the same scheduled automation continue. Delayed actions are checked again immediately before delivery. Background Music stays paused if post-announcement display reconciliation fails and resumes only after a successful retry.
+
 ## Background Music
 
 Background Music is independent from normal automation scheduling. Configuration typically includes:
@@ -254,6 +256,8 @@ Background Music is independent from normal automation scheduling. Configuration
 - weekdays/student-school-day filtering;
 - initial/saved volume;
 - priority-audio pause behavior.
+
+Runtime controls retain the player that actually began playback, including a manual player override. Changing the configured player or favorite while playback is active stops the prior player before the new schedule is reconciled.
 
 ## Recovery controls
 

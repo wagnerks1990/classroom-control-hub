@@ -15,7 +15,7 @@ Read this file before generating RoomGoblin UI, documentation, marketing copy, c
 4. Keep the mascot helpful, technically capable, curious, and slightly mischievous - never malicious, frightening, destructive, or incompetent.
 5. Keep the UI professional enough for district/school operations; avoid turning it into a children's game.
 6. Use Slate Navy for structure/text, Goblin Teal for primary controls, Electric Green for healthy/online states, Amber for attention, Cloud Gray for neutrals, and Mint Glow for friendly secondary surfaces.
-7. Accessibility is mandatory. Do not communicate state by color alone.
+7. Accessibility is mandatory. Do not communicate state by color alone, and give every form control a programmatic accessible name rather than relying on placeholder text or visual proximity.
 8. Never bundle or redistribute font binaries merely because Poppins/Inter are preferred.
 
 ## Core modules

@@ -32,3 +32,12 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: "gradle"
+    directory: "/agents/android-tv"
+    schedule:
+      interval: "weekly"
+    groups:
+      android-agent-dependencies:
+        patterns:
+          - "*"

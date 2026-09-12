@@ -36,17 +36,28 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Collections;
 import java.util.Locale;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class AgentService extends Service {
     private static final String TAG="ClassroomHubAgentV2";
     private static final String CHANNEL="classroom_hub_agent";
     private static final int NOTIFICATION_ID=2202;
     private static final int DEFAULT_PORT=8765;
+    private static final int MAX_CLIENT_WORKERS=8;
+    private static final int MAX_QUEUED_CLIENTS=16;
+    private static final int CLIENT_TIMEOUT_MS=5000;
+    private static final int MAX_HEADER_LINES=32;
     private volatile boolean stopping=false;
     private ServerSocket server;
-    private final ExecutorService workers=Executors.newCachedThreadPool();
+    private Thread listenerThread;
+    private final ExecutorService workers=new ThreadPoolExecutor(
+        2,MAX_CLIENT_WORKERS,30L,TimeUnit.SECONDS,
+        new ArrayBlockingQueue<>(MAX_QUEUED_CLIENTS),
+        new ThreadPoolExecutor.AbortPolicy());
 
     public static void start(Context context){
         Intent i=new Intent(context,AgentService.class);
@@ -72,6 +83,7 @@ public class AgentService extends Service {
     @Override public void onDestroy(){
         stopping=true;
         try{if(server!=null)server.close();}catch(Exception ignored){}
+        if(listenerThread!=null)listenerThread.interrupt();
         workers.shutdownNow();
         NativeSendspinManager.INSTANCE.stop("agent-service-destroyed");
         KioskWatchdog.stop();
@@ -81,9 +93,9 @@ public class AgentService extends Service {
     private void createNotificationChannel(){if(Build.VERSION.SDK_INT<26)return;NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);if(nm==null)return;NotificationChannel c=new NotificationChannel(CHANNEL,"RoomGoblin device management",NotificationManager.IMPORTANCE_LOW);c.setDescription("Keeps the classroom display connected to RoomGoblin management and native audio.");nm.createNotificationChannel(c);}
     private Notification buildNotification(){Intent open=new Intent(this,MainActivity.class);PendingIntent pi=PendingIntent.getActivity(this,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);return b.setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("RoomGoblin display managed").setContentText("Kiosk watchdog and Device Agent v2 are running").setOngoing(true).setContentIntent(pi).build();}
 
-    private void startServer(){SharedPreferences p=HubStorage.prefs(this);if(!p.getBoolean("agent_enabled",true))return;final int port=Math.max(1024,Math.min(65535,p.getInt("agent_port",DEFAULT_PORT)));workers.execute(()->{try{server=new ServerSocket(port,16,InetAddress.getByName("0.0.0.0"));Log.i(TAG,"Agent v2 HTTP management listening on "+port);while(!stopping){Socket socket=server.accept();socket.setSoTimeout(10000);workers.execute(()->handle(socket));}}catch(Exception e){if(!stopping)Log.e(TAG,"Agent management listener failed",e);}});}
+    private void startServer(){SharedPreferences p=HubStorage.prefs(this);if(!p.getBoolean("agent_enabled",true))return;final int port=Math.max(1024,Math.min(65535,p.getInt("agent_port",DEFAULT_PORT)));listenerThread=new Thread(()->{try{server=new ServerSocket(port,16,InetAddress.getByName("0.0.0.0"));Log.i(TAG,"Agent v2 HTTP management listening on "+port);while(!stopping){Socket socket=server.accept();socket.setSoTimeout(CLIENT_TIMEOUT_MS);try{workers.execute(()->handle(socket));}catch(RejectedExecutionException busy){try{socket.close();}catch(Exception ignored){}}}}catch(Exception e){if(!stopping)Log.e(TAG,"Agent management listener failed",e);}},"RoomGoblin-Agent-Listener");listenerThread.setDaemon(true);listenerThread.start();}
 
-    private void handle(Socket socket){try(Socket s=socket;BufferedInputStream in=new BufferedInputStream(s.getInputStream());BufferedOutputStream out=new BufferedOutputStream(s.getOutputStream())){String requestLine=readLine(in);if(requestLine==null||requestLine.isEmpty())return;String[] first=requestLine.split(" ",3);if(first.length<2){writeJson(out,400,error("bad_request","Malformed request"));return;}String method=first[0].toUpperCase(Locale.ROOT),path=first[1];int contentLength=0;String token="";for(;;){String line=readLine(in);if(line==null||line.isEmpty())break;int colon=line.indexOf(':');if(colon<1)continue;String name=line.substring(0,colon).trim().toLowerCase(Locale.ROOT),value=line.substring(colon+1).trim();if("content-length".equals(name))try{contentLength=Math.min(65536,Integer.parseInt(value));}catch(Exception ignored){}if("x-classroom-hub-agent-token".equals(name))token=value;}if(!authorized(token)){writeJson(out,401,error("unauthorized","Valid device-agent token required"));return;}byte[] body=contentLength>0?readExact(in,contentLength):new byte[0];JSONObject input=body.length>0?new JSONObject(new String(body,StandardCharsets.UTF_8)):new JSONObject();if("GET".equals(method)&&"/v1/status".equals(path)){writeJson(out,200,status());return;}if("GET".equals(method)&&"/v1/capabilities".equals(path)){writeJson(out,200,AgentCapabilities.snapshot(this));return;}if("POST".equals(method)&&"/v1/action".equals(path)){JSONObject result=action(input);writeJson(out,result.optBoolean("ok",true)?200:409,result);return;}writeJson(out,404,error("not_found","Unknown agent endpoint"));}catch(Exception e){Log.w(TAG,"Agent request failed",e);}}
+    private void handle(Socket socket){try(Socket s=socket;BufferedInputStream in=new BufferedInputStream(s.getInputStream());BufferedOutputStream out=new BufferedOutputStream(s.getOutputStream())){String requestLine=readLine(in);if(requestLine==null||requestLine.isEmpty())return;String[] first=requestLine.split(" ",3);if(first.length<2){writeJson(out,400,error("bad_request","Malformed request"));return;}String method=first[0].toUpperCase(Locale.ROOT),path=first[1];int contentLength=0,headerLines=0;String token="";for(;;){if(++headerLines>MAX_HEADER_LINES){writeJson(out,431,error("headers_too_large","Too many request headers"));return;}String line=readLine(in);if(line==null||line.isEmpty())break;int colon=line.indexOf(':');if(colon<1)continue;String name=line.substring(0,colon).trim().toLowerCase(Locale.ROOT),value=line.substring(colon+1).trim();if("content-length".equals(name))try{contentLength=Math.max(0,Math.min(65536,Integer.parseInt(value)));}catch(Exception ignored){}if("x-classroom-hub-agent-token".equals(name))token=value;}if(!authorized(token)){writeJson(out,401,error("unauthorized","Valid device-agent token required"));return;}byte[] body=contentLength>0?readExact(in,contentLength):new byte[0];JSONObject input=body.length>0?new JSONObject(new String(body,StandardCharsets.UTF_8)):new JSONObject();if("GET".equals(method)&&"/v1/status".equals(path)){writeJson(out,200,status());return;}if("GET".equals(method)&&"/v1/capabilities".equals(path)){writeJson(out,200,AgentCapabilities.snapshot(this));return;}if("POST".equals(method)&&"/v1/action".equals(path)){JSONObject result=action(input);writeJson(out,result.optBoolean("ok",true)?200:409,result);return;}writeJson(out,404,error("not_found","Unknown agent endpoint"));}catch(Exception e){Log.w(TAG,"Agent request failed",e);}}
 
     private boolean authorized(String supplied){String expected=HubStorage.prefs(this).getString("agent_token","");if(expected==null||expected.length()<32||supplied==null)return false;return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),supplied.getBytes(StandardCharsets.UTF_8));}
     private JSONObject status() throws Exception {SharedPreferences p=HubStorage.prefs(this);JSONObject o=new JSONObject();o.put("ok",true);o.put("agentVersion",BuildConfig.VERSION_NAME);o.put("package",getPackageName());o.put("displayUrl",p.getString("display_url",""));o.put("agentPort",p.getInt("agent_port",DEFAULT_PORT));o.put("persistentAdb",p.getBoolean("persistent_adb",false));o.put("targetAdbPort",p.getInt("target_adb_port",5555));o.put("uptimeMs",android.os.SystemClock.elapsedRealtime());o.put("network",networkInfo());o.put("sendspin",NativeSendspinManager.INSTANCE.status(this));o.put("capabilities",AgentCapabilities.snapshot(this).optJSONObject("capabilities"));return o;}

@@ -29,6 +29,12 @@ clean target must first have a compatible RoomGoblin release installed. Recovery
 reconstructs durable RoomGoblin state; the installed release supplies executable
 code and reviewed service definitions.
 
+Native Veyon recovery includes only a complete, non-empty private-key/key-name
+identity pair beneath the reviewed Veyon recovery root. The installer's empty
+`private.pem` bind placeholder represents an unconfigured integration and is
+omitted. Files beneath `/opt/services/veyon-webapi` are native/external runtime
+state, not RoomGoblin-owned Docker service state, and are also omitted.
+
 The goal is deliberately simple:
 
 > **One export. One import. Full recovery.**
@@ -318,6 +324,22 @@ and removes the incomplete bundle; operators should expect a brief interruption
 to RoomGoblin-owned MQTT, lighting, automation, or audio services while a full
 export is created.
 
+The export is a cooperative point-in-time transaction, not merely a SQLite
+`.backup`. Before selecting the active database or copying any root, Maintenance
+holds the Host Agent appliance-mutation lock and obtains a one-use freeze token
+from the running application. The application blocks new HTTP/WebSocket/MQTT and
+timer-driven mutations, waits up to 30 seconds for already-running commands,
+announcement/presentation/session/audio/update jobs to drain, checkpoints SQLite,
+and queues audit persistence until thaw. Failure to drain fails closed. Both
+freezes have a 30-minute crash lease and are released after every success or
+failure before the browser receives its final response.
+
+Master, ADB, Android signing and native Veyon identity files are copied into a
+private temporary snapshot while the host lock is held, re-read to detect a
+concurrent change, and cryptographically/structurally validated from that copy.
+Only the validated copy enters the archive; temporary identity and database
+snapshots are removed before thaw completes.
+
 The bundle should include a machine-readable manifest similar in concept to:
 
 ```text
@@ -398,6 +420,10 @@ durable transaction under `/var/lib/classroom-hub/full-recovery`. A restart or
 power interruption therefore resumes rollback instead of treating a partially
 committed appliance as healthy. Staging paths, archive paths, ownership, and
 modes are fixed by policy; bundle metadata cannot select arbitrary host paths.
+
+During Host Agent startup, the authenticated Unix socket is served before an
+interrupted transaction recreates health-dependent containers. Host mutation
+requests return `423` until recovery or rollback completes.
 
 Restore should automatically:
 

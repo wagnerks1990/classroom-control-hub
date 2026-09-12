@@ -19,6 +19,7 @@ This directory is the canonical technical documentation set for RoomGoblin. `wik
 - [Architecture](ARCHITECTURE.md) — system components, process boundaries, persistence, scheduling, priority arbitration, and service relationships.
 - [Deployment](DEPLOYMENT.md) — Docker Compose deployment, persistent storage, host-agent placement, Git updates, backups, and rollback.
 - [Configuration](CONFIGURATION.md) — environment variables, site-specific settings, secrets, displays, integrations, and safe public-repository practices.
+- [Secret URL Handling](SECRET-URL-HANDLING.md) — encrypted URL storage, role-aware projections, physical-display delivery, logging, and regression boundaries.
 - [Operations](OPERATIONS.md) — normal classroom operation, automations, announcements, Background Music, display recovery, and maintenance.
 - [Troubleshooting](TROUBLESHOOTING.md) — diagnostic workflow and common failure modes.
 - [Development](DEVELOPMENT.md) — source layout, local validation, release workflow, version convergence, and contribution practices.

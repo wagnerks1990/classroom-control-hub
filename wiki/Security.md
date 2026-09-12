@@ -78,7 +78,9 @@ Upgrades from the older `/etc/classroom-hub/master.key` location must preserve t
 
 ## Display credentials
 
-Provision each classroom display with a one-time enrollment link from the controller. The resulting credential is unique, revocable, bound to a stable display ID, and stored locally by that receiver. Enrollment links expire and cannot be reused. The database stores only SHA-256 hashes, and administration APIs expose metadata rather than raw tokens. Disable the legacy shared display token after migration coverage is complete.
+Stable URL access for enabled configured display IDs is the intentional default on a trusted classroom network. This does not authenticate the physical browser, so isolate the display network and reject unknown, removed, or disabled IDs.
+
+Where per-browser revocation is required, enroll every enabled receiver with a one-time link before explicitly enabling individual display authentication. The resulting credential is unique, revocable, bound to a stable display ID, and stored locally by that receiver. Enrollment links expire and cannot be reused. The database stores only SHA-256 hashes, and administration APIs expose metadata rather than raw tokens. Disable the legacy shared display token after migration.
 
 ## Host privileges
 

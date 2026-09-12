@@ -65,4 +65,10 @@ A value present only on the Docker host does not configure the running Hub.
 
 Ant Media API/webhooks or another authoritative publisher signal can replace HLS manifest probing later. The replacement must preserve transition-based start/end behavior, UNKNOWN versus OFFLINE distinction, receiver telemetry, and server lifecycle logging.
 
+Player/receiver telemetry reports only a stream URL's origin and pathname. Query
+parameters, fragments, and the receiver's private full-URL comparison key are not
+included in heartbeat metadata because stream URLs may carry subscriber
+credentials. The manual display controller reads the saved stream URL without
+rewriting its configuration and refuses to start when no URL is configured.
+
 See the repository document `docs/MORNING-ANNOUNCEMENTS-DIAGNOSTICS.md` for the full diagnostic and acceptance-test contract.

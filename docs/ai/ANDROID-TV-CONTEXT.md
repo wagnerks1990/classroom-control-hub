@@ -13,7 +13,7 @@ Android TV management is a reusable device-provider subsystem. Onn Google TV is 
 3. Never publish the maintenance container port or Android ADB ports to untrusted networks.
 4. Routine actions and scheduled policy actions must continue using fixed argument arrays. Do not convert wake/reboot/app-control operations into interpolated shell strings.
 5. `/android/devices/:id/shell` is intentionally full administrator recovery access. Keep input bounded, require existing maintenance authorization, and never silently expose it to lower-privilege classroom roles.
-6. APK installation paths must remain constrained beneath the managed Android TV data directory.
+6. APK installation paths must remain constrained beneath the managed Android TV data directory, and the staged APK must be signature-checked against the protected `/signing/android-agent` keystore at use time. Staged JSON metadata is mutable and is not signing authority.
 7. Device identity is the stable RoomGoblin ID, not the IP address or ADB TCP endpoint.
 8. Enrollment and configuration are separate lifecycle operations. Pairing/ADB enrollment establishes trust and stable identity once. School/building/room/profile/display URL changes MUST use the managed-device update path and MUST NOT trigger re-pairing.
 9. Recovery metadata such as `persistentAdb` is part of the persisted normalized device model. Do not add operational policy fields only to call sites; if `JsonStore.upsertDevice()` must preserve them, `normalizeDevice()` must explicitly normalize them.
@@ -61,7 +61,7 @@ This is an AI/operator invariant. Future troubleshooting instructions, generated
 
 `ANDROID_TV_DATA_ROOT` defaults to `/managed/classroom-hub/data/android-tv`, which maps to the existing writable Hub data volume. The ADB client HOME/ANDROID_USER_HOME is pointed at the same root so pairing keys survive container replacement. `devices.json` contains non-secret inventory/profile data plus recovery policy metadata; protect the directory because it also contains ADB authorization keys and may contain a staged signed APK.
 
-`normalizeDevice()` is the persistence schema boundary. Any field omitted there is discarded during both write and reload. `persistentAdb` therefore has an explicit normalized object (`enabled`, `targetPort`, `bootRestore`, bootstrap/disable timestamps). Future device-policy fields that must survive process/container restart need the same treatment and regression coverage.
+`normalizeDevice()` is the persistence schema boundary. Any field omitted there is discarded during both write and reload. `persistentAdb` therefore has an explicit normalized object (`enabled`, `targetPort`, `bootRestore`, bootstrap/disable timestamps), and `androidId` is normalized as the stable 16-hex-digit endpoint-recovery identity. Future device-policy fields that must survive process/container restart need the same treatment and regression coverage.
 
 The Android agent stores its own Agent v2 token, display URL, persistent-ADB policy, native Sendspin client ID/endpoint/name and Sendspin client settings in device-protected SharedPreferences via `HubStorage`. This allows the foreground agent to recover before normal credential-protected user storage is fully available.
 
@@ -71,7 +71,7 @@ The Android agent stores its own Agent v2 token, display URL, persistent-ADB pol
 
 Do not collapse `edit assignment/content` back into enrollment. A technician should never need a new pairing code merely to move a device to another room, rename it, change its profile, or assign a different display receiver URL.
 
-The generic provider must tolerate dynamic IPs/ports. Network endpoint changes update the existing stable device record independently from school/room/content metadata.
+The generic provider must tolerate dynamic IPs/ports. Network endpoint changes update the existing stable device record independently from school/room/content metadata. A changed mDNS endpoint is accepted only when its probed Android ID matches the saved `androidId`; firmware/build fingerprints are not unique device identities. Existing records learn `androidId` on their next successful normal probe.
 
 ## Managed-device edit contract
 
@@ -119,7 +119,7 @@ This controls the Android endpoint. It does not guarantee physical television/pr
 
 ## Agent contract
 
-The Android package is `org.roomgoblin.display`. Configuration uses package-scoped broadcast action `org.roomgoblin.display.CONFIGURE` with string extra `display_url`. The app renders that URL in an immersive WebView. Agent v2 provides the durable foreground process, authenticated LAN control API, always-on kiosk watchdog, persistent ADB policy and native Sendspin subsystem.
+The Android package is `org.roomgoblin.display`. Configuration uses package-scoped broadcast action `org.roomgoblin.display.CONFIGURE` with string extra `display_url`. The exported receiver requires the platform `android.permission.DUMP` permission: this preserves delivery from the ADB shell UID and rejects ordinary third-party applications. The app renders that URL in an immersive WebView. Agent v2 provides the durable foreground process, authenticated LAN control API, bounded client worker/queue/header/body/time limits, always-on kiosk watchdog, persistent ADB policy and native Sendspin subsystem.
 
 OEM/Android background-launch restrictions still apply. Keep ADB recovery and Hub-side policy/launch assistance; do not assume a normal third-party Android application can achieve Device Owner/lock-task behavior without managed provisioning.
 

@@ -93,6 +93,10 @@ Browser console prefixes are intentionally stable for field troubleshooting:
 ```
 
 These logs must not include display credentials, Hub session cookies, setup tokens, maintenance tokens, or other secrets.
+Stream URL fields in player telemetry, receiver events, and display heartbeat
+metadata contain only the origin and pathname. Query parameters and fragments are
+removed because Ant Media URLs can carry subscriber credentials. The receiver's
+private full-URL comparison key is not sent in heartbeat metadata.
 
 ## Hub-side diagnostics
 

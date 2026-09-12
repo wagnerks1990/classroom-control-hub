@@ -64,7 +64,7 @@ Normal visual automation
 Background Music
 ```
 
-Morning Announcements use a hard priority lock. While active, announcement displays are reserved, Background Music remains paused, conflicting scheduled automations are deferred, and manual automation runs cannot overwrite locked targets.
+Morning Announcements use a hard priority lock. While active, announcement displays are reserved, Background Music remains paused, and conflicting display actions are deferred. Priority is checked at each delivery so delayed or already-running automations cannot overwrite the takeover. Non-display actions such as lighting continue normally.
 
 Manual and automatic announcement starts use the same runtime priority state.
 
@@ -90,13 +90,13 @@ When announcements end:
 5. re-evaluate current date/class/time;
 6. choose the newest currently applicable display automation independently per target;
 7. re-run the winning current automations;
-8. reconcile/resume Background Music afterward.
+8. reconcile/resume Background Music afterward; if display reconciliation fails, retain the audio hold and retry.
 
 The system deliberately does not restore stale pre-announcement snapshots.
 
 ## Background Music
 
-Background Music is an independent scheduler backed by Music Assistant. Silent/visual automation does not disturb it. Priority audio pauses it temporarily. Recovery reconciles against the actual Music Assistant player/group state.
+Background Music is an independent scheduler backed by Music Assistant. Silent/visual automation does not disturb it. Priority audio pauses it temporarily. Recovery reconciles against the actual Music Assistant player/group state. Runtime state retains the player that actually started playback, so later pause/stop operations cannot accidentally target a newly configured player while leaving the original playing.
 
 ## Integration health and responsiveness
 

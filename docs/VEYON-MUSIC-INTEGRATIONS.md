@@ -16,6 +16,11 @@ The current appliance profile is standardized on Veyon **key-file authentication
 
 Veyon also supports logon/username-password authentication in other deployments. That alternative must not be presented as active unless the backend authentication path is implemented and validated for it. Linux SSH credentials are not Veyon control credentials; they are endpoint-administration/deployment credentials.
 
+The classroom **Log In User** action collects the endpoint password in a masked
+modal field. RoomGoblin clears that field when the modal closes and again after
+submitting the one command; the password is not displayed or retained by the
+controller.
+
 ### Music Assistant
 
 Music Assistant normally runs as `music-assistant-server` with host networking so local player discovery works. RoomGoblin may deploy or adopt that container, but container presence alone does not mean the integration is ready.

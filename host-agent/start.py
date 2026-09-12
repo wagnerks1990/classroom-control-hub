@@ -3,7 +3,7 @@ import os, threading
 from pathlib import Path
 import server as core
 
-core.VERSION='1.0.0-alpha.80'
+core.VERSION='1.0.0-alpha.81'
 
 # Supported first-class add-ons. Existing containers outside this set can still
 # be adopted for inspect/log/start/stop/restart; creation and removal remain

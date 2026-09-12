@@ -27,6 +27,7 @@ BACKUP_ROOT_REAL="$(readlink -m "$BACKUP_ROOT")"
 BACKUP="$BACKUP_ROOT/migration-$STAMP"
 
 fail(){ echo "RoomGoblin installer failed: $*" >&2; exit 1; }
+source "$SOURCE/deploy/image-identity.sh"
 safe_managed_root(){
   local label="$1" raw="$2" resolved
   [[ "$raw" == /* ]] || fail "$label must be an absolute path"
@@ -70,7 +71,9 @@ if [[ "$INSTALL_MODE" == pull ]]; then
   echo "Waiting for validated CI image pair for ${SOURCE_COMMIT} ..."
   image_pair_ready=false
   for attempt in $(seq 1 "$IMAGE_WAIT_ATTEMPTS"); do
-    if docker pull "$HUB_IMAGE" && docker pull "$MAINT_IMAGE"; then image_pair_ready=true; break; fi
+    if docker pull "$HUB_IMAGE" && docker pull "$MAINT_IMAGE" \
+      && roomgoblin_verify_image_revision "$HUB_IMAGE" "$SOURCE_COMMIT" \
+      && roomgoblin_verify_image_revision "$MAINT_IMAGE" "$SOURCE_COMMIT"; then image_pair_ready=true; break; fi
     (( attempt < IMAGE_WAIT_ATTEMPTS )) && sleep 10
   done
   [[ "$image_pair_ready" == true ]] || fail "validated image pair is unavailable; wait for Publish Main Images to finish or use --build-local for development"
@@ -214,7 +217,12 @@ chmod 0700 "$ADB_VOLUME_MOUNT"
 sed -i '/^HUB_TLS_HOST=/d;/^HUB_HTTPS_PORT=/d;/^HUB_HTTP_PORT=/d' "$TARGET/.env"
 CURRENT_BIND="$(sed -n 's/^HUB_BIND_ADDRESS=//p' "$TARGET/.env" | tail -n 1)"
 if [[ -z "$CURRENT_BIND" ]]; then set_env_path HUB_BIND_ADDRESS "0.0.0.0"; fi
-set_env_path TRUST_PROXY_HOPS "0"
+CURRENT_TRUST_PROXY_HOPS="$(sed -n 's/^TRUST_PROXY_HOPS=//p' "$TARGET/.env" | tail -n 1)"
+if [[ -z "$CURRENT_TRUST_PROXY_HOPS" ]]; then
+  set_env_path TRUST_PROXY_HOPS "0"
+elif [[ ! "$CURRENT_TRUST_PROXY_HOPS" =~ ^[0-9]+$ || "$CURRENT_TRUST_PROXY_HOPS" -gt 8 ]]; then
+  fail "TRUST_PROXY_HOPS must be an integer between 0 and 8"
+fi
 
 # Alpha.70 could leave two SQLite database names on disk. Preserve the explicitly
 # configured active database. If the env setting is missing and classroom-hub.db

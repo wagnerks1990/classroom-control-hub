@@ -19,6 +19,8 @@ Default Agent port: `8765`.
 
 The Hub generates a unique device token during v2 configuration and stores it with the device record. The token is provisioned to the APK through the trusted ADB bootstrap path. Browser clients do not receive the raw token.
 
+The exported configuration receiver requires the platform `android.permission.DUMP` permission, which the ADB shell UID holds but ordinary apps do not. The Agent HTTP listener is bounded to eight client workers, a sixteen-client queue, five-second socket timeouts, bounded headers and a 64 KiB request body.
+
 Current Agent endpoints:
 
 - `GET /v1/status`
